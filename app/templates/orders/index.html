@@ -97,6 +97,19 @@ document.getElementById('order-form').addEventListener('submit', function(e) {
     var tradeStr = document.getElementById('trade_string').value;
     var isGeneric = document.getElementById('generic_checkbox').checked;
 
+    // Require house and account
+    var houseField = document.querySelector('[name="house"]');
+    var acctField = document.querySelector('[name="account"]');
+    var house = houseField ? houseField.value.trim() : '';
+    var acct = acctField ? acctField.value.trim() : '';
+    if (!house || !acct) {
+        e.preventDefault();
+        alert('House and Account are required.');
+        if (!house && houseField) houseField.focus();
+        else if (!acct && acctField) acctField.focus();
+        return;
+    }
+
     // Extract price from trade string
     var price = 0;
     var tokens = tradeStr.split(/\s+/);
