@@ -9,7 +9,7 @@
 builder = "NIXPACKS"
 
 [deploy]
-startCommand = "flask db upgrade && gunicorn wsgi:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120"
+startCommand = "flask db stamp head && flask db upgrade && gunicorn wsgi:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120"
 healthcheckPath = "/health"
 healthcheckTimeout = 10
 restartPolicyType = "ON_FAILURE"
