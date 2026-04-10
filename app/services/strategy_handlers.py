@@ -272,7 +272,8 @@ def build_risk_reversal(trade: TradeInput) -> list[dict]:
 
 
 def build_call_butterfly(trade: TradeInput) -> list[dict]:
-    s = sorted(trade.strikes[:3])
+    """Strikes in input order. Pattern: wing/body/wing."""
+    s = trade.strikes[:3]
     buy = trade.direction_side
     sell = "S" if buy == "B" else "B"
     return [
@@ -283,7 +284,8 @@ def build_call_butterfly(trade: TradeInput) -> list[dict]:
 
 
 def build_put_butterfly(trade: TradeInput) -> list[dict]:
-    s = sorted(trade.strikes[:3])
+    """Strikes in input order. Pattern: wing/body/wing."""
+    s = trade.strikes[:3]
     buy = trade.direction_side
     sell = "S" if buy == "B" else "B"
     return [
@@ -294,7 +296,8 @@ def build_put_butterfly(trade: TradeInput) -> list[dict]:
 
 
 def build_call_condor(trade: TradeInput) -> list[dict]:
-    s = sorted(trade.strikes[:4])
+    """Strikes in input order. Pattern: wing/body/body/wing."""
+    s = trade.strikes[:4]
     buy = trade.direction_side
     sell = "S" if buy == "B" else "B"
     return [
@@ -306,7 +309,8 @@ def build_call_condor(trade: TradeInput) -> list[dict]:
 
 
 def build_put_condor(trade: TradeInput) -> list[dict]:
-    s = sorted(trade.strikes[:4], reverse=True)
+    """Strikes in input order. Pattern: wing/body/body/wing."""
+    s = trade.strikes[:4]
     buy = trade.direction_side
     sell = "S" if buy == "B" else "B"
     return [
@@ -318,6 +322,7 @@ def build_put_condor(trade: TradeInput) -> list[dict]:
 
 
 def build_iron_condor(trade: TradeInput) -> list[dict]:
+    """Strikes in input order. Pattern: wing/body/body/wing, puts then calls."""
     s = sorted(trade.strikes[:4])
     buy = trade.direction_side
     sell = "S" if buy == "B" else "B"
@@ -330,6 +335,7 @@ def build_iron_condor(trade: TradeInput) -> list[dict]:
 
 
 def build_iron_butterfly(trade: TradeInput) -> list[dict]:
+    """Strikes sorted for iron butterfly (needs correct put/call assignment)."""
     s = sorted(trade.strikes[:3])
     buy = trade.direction_side
     sell = "S" if buy == "B" else "B"
