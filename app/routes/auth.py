@@ -42,25 +42,3 @@ def logout():
     return redirect(url_for("auth.login"))
 
 
-@auth_bp.route("/setup-admin")
-def setup_admin():
-    from app.models.tenant import Tenant
-    from app.models.user import User, UserRole
-    if User.query.filter_by(email="admin@axis.dev").first():
-        return "Already set up. Go to /login", 200
-    tenant = Tenant.query.first()
-    if not tenant:
-        tenant = Tenant(name="AXIS Trading", slug="axis-trading")
-        db.session.add(tenant)
-        db.session.flush()
-    admin = User(
-        tenant_id=tenant.id,
-        email="admin@axis.dev",
-        display_name="Admin User",
-        role=UserRole.ADMIN,
-        is_super_admin=True,
-    )
-    admin.set_password("admin123")
-    db.session.add(admin)
-    db.session.commit()
-    return "Super admin created: admin@axis.dev / admin123. Go to /login", 200
