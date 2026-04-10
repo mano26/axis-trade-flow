@@ -40,7 +40,12 @@ def index():
         .order_by(Order.ticket_number.desc())
         .all()
     )
-    return render_template("orders/index.html", orders=orders, today=today)
+    from app.models.lookup import get_lookup_values, LookupType
+    lookups = {
+        lt: get_lookup_values(current_user.tenant_id, lt)
+        for lt in LookupType.ALL
+    }
+    return render_template("orders/index.html", orders=orders, today=today, lookups=lookups)
 
 
 @orders_bp.route("/create", methods=["POST"])
@@ -49,6 +54,8 @@ def create():
     raw_input = request.form.get("trade_string", "").strip()
     is_generic = request.form.get("is_generic") == "1"
     quarter_tick_confirmed = request.form.get("quarter_tick_confirmed") == "1"
+    entry_house = request.form.get("house", "").strip()
+    entry_account = request.form.get("account", "").strip()
 
     if not raw_input:
         flash("Please enter a trade string.", "warning")
@@ -85,6 +92,8 @@ def create():
                 is_generic=True,
                 status=OrderStatus.OPEN,
                 created_by_id=current_user.id,
+                house=entry_house or None,
+                account=entry_account or None,
             )
             db.session.add(order)
             db.session.flush()
@@ -122,6 +131,8 @@ def create():
                 is_generic=False,
                 status=OrderStatus.OPEN,
                 created_by_id=current_user.id,
+                house=entry_house or None,
+                account=entry_account or None,
             )
             db.session.add(order)
             db.session.flush()
@@ -266,6 +277,9 @@ def save_legs(order_id):
     """
     order = _get_order_or_404(order_id)
     try:
+        # Capture existing prices before deleting legs
+        existing_prices = {leg.leg_index: leg.price for leg in order.legs if leg.price is not None}
+
         # Delete existing legs
         for leg in order.legs:
             db.session.delete(leg)
@@ -293,6 +307,9 @@ def save_legs(order_id):
 
             strike = float(strike_str) if strike_str else None
 
+            # Preserve existing price (e.g. CVD futures price from parser)
+            preserved_price = existing_prices.get(i)
+
             leg = OrderLeg(
                 order_id=order.id,
                 leg_index=leg_index,
@@ -303,7 +320,7 @@ def save_legs(order_id):
                 expiry=expiry.upper() if expiry else "",
                 strike=strike,
                 option_type=opt_type.upper() if opt_type else None,
-                price=None,
+                price=preserved_price,
                 mo_card_code=expiry.upper() if expiry else "",
                 package_premium=order.package_premium,
                 suppress_premium=False,

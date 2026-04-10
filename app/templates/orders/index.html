@@ -24,6 +24,30 @@
                 <span>Generic entry (manual legs)</span>
             </label>
         </div>
+        <div style="margin-top: 8px; display: flex; gap: 12px; align-items: center;">
+            <label style="font-size:13px; font-weight:600;">House:</label>
+            {% if lookups.house %}
+            <select name="house" class="filter-input text-upper" style="width:120px;">
+                <option value="">-- Select --</option>
+                {% for lv in lookups.house %}
+                <option value="{{ lv.value }}">{{ lv.value }}</option>
+                {% endfor %}
+            </select>
+            {% else %}
+            <input type="text" name="house" class="filter-input text-upper" style="width:120px;" placeholder="House">
+            {% endif %}
+            <label style="font-size:13px; font-weight:600;">Account:</label>
+            {% if lookups.account %}
+            <select name="account" class="filter-input text-upper" style="width:120px;">
+                <option value="">-- Select --</option>
+                {% for lv in lookups.account %}
+                <option value="{{ lv.value }}">{{ lv.value }}</option>
+                {% endfor %}
+            </select>
+            {% else %}
+            <input type="text" name="account" class="filter-input text-upper" style="width:120px;" placeholder="Account">
+            {% endif %}
+        </div>
     </form>
 </section>
 

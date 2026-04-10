@@ -79,7 +79,7 @@
      Editable Confirmation Legs (using proportional display volumes)
      ================================================================ -->
 <section class="legs-section">
-    <h2>Confirmation Legs {% if order.fills %}&amp; Prices{% endif %}</h2>
+    <h2>Confirmation Legs &amp; Prices</h2>
 
     <form method="POST" action="{{ url_for('orders.save_legs', order_id=order.id) }}" id="legs-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -88,7 +88,7 @@
                 <tr>
                     <th>B/S</th><th>Volume</th><th>Market</th><th>Contract</th>
                     <th>Expiry</th><th>Strike</th><th>C/P</th>
-                    {% if order.fills %}<th>Price</th>{% endif %}
+                    <th>Price</th>
                     <th></th>
                 </tr>
             </thead>
@@ -160,7 +160,6 @@
                         </select>
                         {% endif %}
                     </td>
-                    {% if order.fills %}
                     <td>
                         <input type="text" name="price_{{ leg.leg_index }}"
                                value="{{ '%.4f' % leg.price if leg.price else '' }}"
@@ -168,7 +167,6 @@
                                form="prices-form"
                                inputmode="decimal" autocomplete="off">
                     </td>
-                    {% endif %}
                     <td><button type="button" class="btn-remove" onclick="this.closest('tr').remove()">×</button></td>
                 </tr>
                 {% endfor %}
@@ -200,6 +198,7 @@
                     </td>
                     <td><input type="text" name="leg_strike_{{ i }}" value="" class="leg-text-input" placeholder="0.0000"></td>
                     <td><select name="leg_opttype_{{ i }}" class="leg-select"><option value="">—</option><option value="C">C</option><option value="P">P</option></select></td>
+                    <td><input type="text" name="price_{{ i }}" class="price-input" placeholder="0.0000" form="prices-form"></td>
                     <td><button type="button" class="btn-remove" onclick="this.closest('tr').remove()">×</button></td>
                 </tr>
                 {% endfor %}
@@ -363,7 +362,7 @@ function addLegRow() {
         '<td><input type="text" name="leg_expiry_' + idx + '" value="" class="leg-text-input text-upper" placeholder="MAR26"></td>' +
         '<td><input type="text" name="leg_strike_' + idx + '" value="" class="leg-text-input" placeholder="0.0000"></td>' +
         '<td><select name="leg_opttype_' + idx + '" class="leg-select"><option value="">—</option><option value="C">C</option><option value="P">P</option></select></td>' +
-        (hasFills ? '<td><input type="text" name="price_' + idx + '" class="price-input" placeholder="0.0000" form="prices-form"></td>' : '') +
+        '<td><input type="text" name="price_' + idx + '" class="price-input" placeholder="0.0000" form="prices-form"></td>' +
         '<td><button type="button" class="btn-remove" onclick="this.closest(\'tr\').remove()">×</button></td>';
     tbody.appendChild(tr);
     rowCounter++;
