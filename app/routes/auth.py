@@ -44,3 +44,24 @@ def logout():
     logout_user()
     flash("You have been logged out.", "info")
     return redirect(url_for("auth.login"))
+
+
+@auth_bp.route("/setup-admin")
+def setup_admin():
+    from app.models.tenant import Tenant
+    from app.models.user import User, UserRole
+    if Tenant.query.first():
+        return "Already set up. Go to /login", 200
+    tenant = Tenant(name="AXIS Trading", slug="axis-trading")
+    db.session.add(tenant)
+    db.session.flush()
+    admin = User(
+        tenant_id=tenant.id,
+        email="admin@axis.dev",
+        display_name="Admin User",
+        role=UserRole.ADMIN,
+    )
+    admin.set_password("admin123")
+    db.session.add(admin)
+    db.session.commit()
+    return "Admin created: admin@axis.dev / admin123. Go to /login", 200
