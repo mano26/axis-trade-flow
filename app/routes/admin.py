@@ -85,6 +85,47 @@ def deactivate_user(user_id):
     return redirect(url_for("admin.user_list"))
 
 
+@admin_bp.route("/users/<int:user_id>/reactivate", methods=["POST"])
+def reactivate_user(user_id):
+    user = User.query.filter_by(
+        id=user_id, tenant_id=current_user.tenant_id,
+    ).first_or_404()
+    user.is_active_user = True
+    audit_service.log_action(
+        action="user_reactivated", entity_type="user",
+        entity_id=user.id, tenant_id=current_user.tenant_id,
+        before_value={"is_active": False}, after_value={"is_active": True},
+    )
+    db.session.commit()
+    flash(f"User '{user.display_name}' reactivated.", "success")
+    return redirect(url_for("admin.user_list"))
+
+
+@admin_bp.route("/users/<int:user_id>/reset-password", methods=["GET", "POST"])
+def reset_password(user_id):
+    user = User.query.filter_by(
+        id=user_id, tenant_id=current_user.tenant_id,
+    ).first_or_404()
+    if request.method == "GET":
+        return render_template("auth/reset_password.html", user=user)
+    new_password = request.form.get("new_password", "")
+    confirm_password = request.form.get("confirm_password", "")
+    if not new_password or len(new_password) < 6:
+        flash("Password must be at least 6 characters.", "warning")
+        return redirect(url_for("admin.reset_password", user_id=user.id))
+    if new_password != confirm_password:
+        flash("Passwords do not match.", "warning")
+        return redirect(url_for("admin.reset_password", user_id=user.id))
+    user.set_password(new_password)
+    audit_service.log_action(
+        action="password_reset", entity_type="user",
+        entity_id=user.id, tenant_id=current_user.tenant_id,
+    )
+    db.session.commit()
+    flash(f"Password reset for '{user.display_name}'.", "success")
+    return redirect(url_for("admin.user_list"))
+
+
 # =========================================================================
 # Lookup Table Management
 # =========================================================================

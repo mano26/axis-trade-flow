@@ -1,0 +1,42 @@
+{% extends "layouts/base.html" %}
+{% block title %}Add User — AXIS Trade Flow{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Add User</h1>
+</div>
+
+<section>
+    <form method="POST" action="{{ url_for('admin.create_user') }}" style="max-width: 400px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-group" style="margin-bottom: 16px;">
+            <label for="display_name" style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">Full Name</label>
+            <input type="text" id="display_name" name="display_name" required
+                   style="width:100%; padding:8px 12px; border:1px solid #d0d0d0; border-radius:4px; font-size:14px;">
+        </div>
+        <div class="form-group" style="margin-bottom: 16px;">
+            <label for="email" style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">Email</label>
+            <input type="email" id="email" name="email" required
+                   style="width:100%; padding:8px 12px; border:1px solid #d0d0d0; border-radius:4px; font-size:14px;">
+        </div>
+        <div class="form-group" style="margin-bottom: 16px;">
+            <label for="password" style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">Password</label>
+            <input type="password" id="password" name="password" required minlength="6"
+                   style="width:100%; padding:8px 12px; border:1px solid #d0d0d0; border-radius:4px; font-size:14px;">
+        </div>
+        <div class="form-group" style="margin-bottom: 16px;">
+            <label for="role" style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">Role</label>
+            <select id="role" name="role"
+                    style="width:100%; padding:8px 12px; border:1px solid #d0d0d0; border-radius:4px; font-size:14px;">
+                {% for r in roles %}
+                <option value="{{ r }}" {% if r == 'user' %}selected{% endif %}>{{ r | upper }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div style="display: flex; gap: 12px;">
+            <button type="submit" class="btn btn-primary">Create User</button>
+            <a href="{{ url_for('admin.user_list') }}" class="btn">Cancel</a>
+        </div>
+    </form>
+</section>
+{% endblock %}

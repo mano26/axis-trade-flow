@@ -83,6 +83,13 @@ class User(UserMixin, db.Model):
         doc="Whether this user can log in. Deactivated users are locked out "
             "but their data and audit history are preserved."
     )
+    is_super_admin = db.Column(
+        db.Boolean,
+        default=False,
+        nullable=False,
+        doc="Super admin can manage all companies, users, and access all data. "
+            "Only one or two users should have this flag."
+    )
 
     # --- Timestamps ---
     created_at = db.Column(
@@ -138,8 +145,12 @@ class User(UserMixin, db.Model):
     # -------------------------------------------------------------------------
 
     def is_admin(self) -> bool:
-        """Returns True if the user has admin privileges."""
-        return self.role == UserRole.ADMIN
+        """Returns True if the user has admin or super admin privileges."""
+        return self.role == UserRole.ADMIN or self.is_super_admin
+
+    def is_super(self) -> bool:
+        """Returns True if the user is a super admin (cross-tenant access)."""
+        return self.is_super_admin
 
     def can_delete(self) -> bool:
         """

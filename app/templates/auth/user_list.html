@@ -1,0 +1,72 @@
+{% extends "layouts/base.html" %}
+{% block title %}Users — AXIS Trade Flow{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Users</h1>
+    <a href="{{ url_for('admin.create_user') }}" class="btn btn-primary">+ Add User</a>
+</div>
+
+<section>
+    {% if users %}
+    <table class="legs-table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Last Login</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for user in users %}
+            <tr>
+                <td>{{ user.display_name }}</td>
+                <td>{{ user.email }}</td>
+                <td>
+                    {{ user.role | upper }}
+                    {% if user.is_super_admin %}
+                    <span class="status-badge" style="background:#e8f5e9;color:#2e7d32;margin-left:4px;">SUPER</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if user.is_active_user %}
+                    <span class="status-badge status-allocated">ACTIVE</span>
+                    {% else %}
+                    <span class="status-badge status-cancelled">INACTIVE</span>
+                    {% endif %}
+                </td>
+                <td>{{ user.created_at.strftime('%m/%d/%Y') if user.created_at else '' }}</td>
+                <td>{{ user.last_login_at.strftime('%m/%d/%Y %H:%M') if user.last_login_at else 'Never' }}</td>
+                <td style="white-space:nowrap;">
+                    {% if user.id != current_user.id %}
+                        {% if user.is_active_user %}
+                        <form method="POST" action="{{ url_for('admin.deactivate_user', user_id=user.id) }}" style="display:inline">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Deactivate {{ user.display_name }}?')">Deactivate</button>
+                        </form>
+                        {% else %}
+                        <form method="POST" action="{{ url_for('admin.reactivate_user', user_id=user.id) }}" style="display:inline">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-sm">Reactivate</button>
+                        </form>
+                        {% endif %}
+                        <a href="{{ url_for('admin.reset_password', user_id=user.id) }}" class="btn btn-sm">Reset Password</a>
+                    {% else %}
+                        <span class="form-help">(you)</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="empty-state">No users found.</p>
+    {% endif %}
+</section>
+
+<a href="{{ url_for('orders.index') }}" class="btn btn-back">← Back to Orders</a>
+{% endblock %}

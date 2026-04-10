@@ -1,8 +1,8 @@
 """fresh schema
 
-Revision ID: dd47dafaf9d5
+Revision ID: f87a239a4794
 Revises: 
-Create Date: 2026-04-09 13:53:14.981390
+Create Date: 2026-04-10 11:57:00.931981
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'dd47dafaf9d5'
+revision = 'f87a239a4794'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -22,6 +22,7 @@ def upgrade():
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('name', sa.String(length=200), nullable=False),
     sa.Column('slug', sa.String(length=100), nullable=False),
+    sa.Column('brand_name', sa.String(length=200), nullable=True),
     sa.Column('is_active', sa.Boolean(), nullable=False),
     sa.Column('current_ticket_number', sa.Integer(), nullable=False),
     sa.Column('ticket_date', sa.Date(), nullable=True),
@@ -54,6 +55,7 @@ def upgrade():
     sa.Column('display_name', sa.String(length=200), nullable=False),
     sa.Column('role', sa.String(length=20), nullable=False),
     sa.Column('is_active_user', sa.Boolean(), nullable=False),
+    sa.Column('is_super_admin', sa.Boolean(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('last_login_at', sa.DateTime(timezone=True), nullable=True),
     sa.ForeignKeyConstraint(['tenant_id'], ['tenants.id'], ondelete='RESTRICT'),

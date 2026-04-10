@@ -35,6 +35,12 @@ class Tenant(db.Model):
         nullable=False,
         doc="URL-safe identifier for the tenant (e.g., 'acme-trading')."
     )
+    brand_name = db.Column(
+        db.String(200),
+        nullable=True,
+        doc="Custom branding name shown in the nav bar (e.g., 'Bullseye Trade Flow'). "
+            "Falls back to 'AXIS TRADE FLOW' if not set."
+    )
     is_active = db.Column(
         db.Boolean,
         default=True,
