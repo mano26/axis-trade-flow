@@ -67,10 +67,7 @@ class DevelopmentConfig(Config):
 
 class ProductionConfig(Config):
     DEBUG = False
-    SESSION_COOKIE_SECURE = True
-    PREFERRED_URL_SCHEME = "https"
-    # Trust Railway's proxy for HTTPS detection
-    PROXY_FIX = True
+    SESSION_COOKIE_SECURE = False
 
 
 class TestingConfig(Config):

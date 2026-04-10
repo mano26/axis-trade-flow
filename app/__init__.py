@@ -37,10 +37,6 @@ def create_app(config_name: str | None = None) -> Flask:
 
     app = Flask(__name__)
     app.config.from_object(config_by_name[config_name])
-    # Trust proxy headers (Railway terminates SSL at the proxy)
-    if app.config.get("PROXY_FIX"):
-        from werkzeug.middleware.proxy_fix import ProxyFix
-        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
     # -----------------------------------------------------------------
     # Initialize extensions with the app instance
