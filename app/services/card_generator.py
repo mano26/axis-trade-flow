@@ -195,7 +195,7 @@ def _build_card(
     h += f"<div class='card-header'><div class='card-top-row'>"
     h += f"<div class='card-type' style='color:{ink}'>{card_type}</div>"
     h += f"<div class='card-broker' style='color:{ink}'>{broker}</div>"
-    h += f"<div class='card-acct' style='color:{ink}'>{account}</div></div>"
+    h += f"</div>"
     # BK Broker line - only on futures cards, below and right-aligned
     if is_fut and bk_broker:
         h += f"<div class='card-bk' style='color:{ink}'>BK {bk_broker.upper()}</div>"
