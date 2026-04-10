@@ -66,14 +66,11 @@ class DevelopmentConfig(Config):
 
 
 class ProductionConfig(Config):
-    """
-    Production configuration for Railway deployment.
-
-    REGULATORY NOTE: Debug is disabled, cookies require HTTPS, and the secret
-    key must be set to a cryptographically random value via environment variable.
-    """
     DEBUG = False
-    SESSION_COOKIE_SECURE = True  # Require HTTPS for session cookie
+    SESSION_COOKIE_SECURE = True
+    PREFERRED_URL_SCHEME = "https"
+    # Trust Railway's proxy for HTTPS detection
+    PROXY_FIX = True
 
 
 class TestingConfig(Config):
