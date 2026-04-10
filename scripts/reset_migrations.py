@@ -6,6 +6,7 @@ from sqlalchemy import text
 
 app = create_app()
 with app.app_context():
+    db.drop_all()
     db.session.execute(text("DROP TABLE IF EXISTS alembic_version"))
     db.session.commit()
-    print("Dropped alembic_version table")
+    print("Dropped all tables")
