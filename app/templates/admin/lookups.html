@@ -1,0 +1,74 @@
+{% extends "layouts/base.html" %}
+{% block title %}Manage Lookups — Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Manage Dropdown Lists</h1>
+</div>
+
+<!-- Add new value form -->
+<section class="order-summary" style="margin-bottom: 24px;">
+    <h2>Add New Value</h2>
+    <form method="POST" action="{{ url_for('admin.lookup_add') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="inline-form-row">
+            <select name="lookup_type" class="lookup-select">
+                {% for lt in lookup_types %}
+                <option value="{{ lt }}">{{ lookup_labels[lt] }}</option>
+                {% endfor %}
+            </select>
+            <input type="text" name="value" placeholder="Value or comma-separated list (e.g., GFI, ICAP, BGC)" class="text-upper" style="width: 400px; padding: 8px 12px; border: 1px solid #d0d0d0; border-radius: 4px;">
+            <button type="submit" class="btn btn-primary">Add</button>
+        </div>
+    </form>
+</section>
+
+<!-- Display each lookup table -->
+{% for lt in lookup_types %}
+<section style="margin-bottom: 24px;">
+    <h2>{{ lookup_labels[lt] }}</h2>
+    {% if lookups[lt] %}
+    <table class="legs-table">
+        <thead>
+            <tr>
+                <th>Value</th>
+                <th>Status</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for lv in lookups[lt] %}
+            <tr{% if not lv.is_active %} style="opacity: 0.5;"{% endif %}>
+                <td>{{ lv.value }}</td>
+                <td>
+                    {% if lv.is_active %}
+                    <span class="status-badge status-allocated">ACTIVE</span>
+                    {% else %}
+                    <span class="status-badge status-cancelled">INACTIVE</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if lv.is_active %}
+                    <form method="POST" action="{{ url_for('admin.lookup_deactivate', lookup_id=lv.id) }}" style="display:inline">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-sm btn-danger">Deactivate</button>
+                    </form>
+                    {% else %}
+                    <form method="POST" action="{{ url_for('admin.lookup_activate', lookup_id=lv.id) }}" style="display:inline">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-sm">Reactivate</button>
+                    </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="empty-state">No values configured yet.</p>
+    {% endif %}
+</section>
+{% endfor %}
+
+<a href="{{ url_for('orders.index') }}" class="btn btn-back">← Back to Orders</a>
+{% endblock %}

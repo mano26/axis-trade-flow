@@ -1,0 +1,78 @@
+{% extends "layouts/base.html" %}
+{% block title %}Order Log — AXIS Trade Flow{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Order Log</h1>
+</div>
+
+<!-- Filters -->
+<section class="order-summary" style="margin-bottom: 20px;">
+    <form method="GET" action="{{ url_for('reports.order_log') }}">
+        <div class="inline-form-row" style="flex-wrap: wrap; gap: 8px;">
+            <label>From:</label>
+            <input type="date" name="date_from" value="{{ date_from.isoformat() }}" class="filter-input">
+            <label>To:</label>
+            <input type="date" name="date_to" value="{{ date_to.isoformat() }}" class="filter-input">
+            <label>Strategy:</label>
+            <input type="text" name="strategy" value="{{ strategy_filter }}" placeholder="All" class="filter-input text-upper" style="width: 80px;">
+            <label>House:</label>
+            <input type="text" name="house" value="{{ house_filter }}" placeholder="All" class="filter-input text-upper" style="width: 80px;">
+            <label>Search:</label>
+            <input type="text" name="search" value="{{ search_filter }}" placeholder="Trade string..." class="filter-input text-upper" style="width: 160px;">
+            <button type="submit" class="btn btn-primary">Filter</button>
+            <a href="{{ url_for('reports.order_log') }}" class="btn">Reset</a>
+        </div>
+    </form>
+</section>
+
+<!-- Results -->
+{% if orders %}
+<section>
+    <table class="legs-table">
+        <thead>
+            <tr>
+                <th>Ticket</th>
+                <th>Date</th>
+                <th>Time In</th>
+                <th>Time Out</th>
+                <th>B/S</th>
+                <th>Strategy</th>
+                <th>Trade String</th>
+                <th>House</th>
+                <th>Account</th>
+                <th>Status</th>
+                <th>Links</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for order in orders %}
+            <tr class="clickable-row" onclick="window.location='{{ url_for('orders.detail', order_id=order.id) }}'">
+                <td class="ticket-num">#{{ order.ticket_display }}</td>
+                <td>{{ order.trade_date.strftime('%m/%d/%Y') }}</td>
+                <td>{{ order.time_in.strftime('%H:%M:%S') if order.time_in else '' }}</td>
+                <td>{{ order.time_out.strftime('%H:%M:%S') if order.time_out else '' }}</td>
+                <td class="direction-{{ order.direction }}">{{ order.direction }}</td>
+                <td>{{ order.strategy | upper }}{% if order.is_generic %} (GEN){% endif %}</td>
+                <td class="trade-string">{{ order.raw_input }}</td>
+                <td>{{ order.house or '' }}</td>
+                <td>{{ order.account or '' }}</td>
+                <td><span class="status-badge status-{{ order.status }}">{{ order.status | replace('_', ' ') | upper }}</span></td>
+                <td onclick="event.stopPropagation()" style="white-space:nowrap;">
+                    {% if order.status in ('filled', 'partial_fill', 'partial_cancelled') %}
+                    <a href="{{ url_for('cards.generate', order_id=order.id) }}" class="btn btn-sm">Cards</a>
+                    <a href="{{ url_for('tickets.generate', order_id=order.id) }}" class="btn btn-sm">Ticket</a>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <p class="form-help" style="margin-top: 8px;">{{ orders | length }} order(s) found. Click a row to view details.</p>
+</section>
+{% else %}
+<p class="empty-state">No orders found for the selected filters.</p>
+{% endif %}
+
+<a href="{{ url_for('orders.index') }}" class="btn btn-back">← Back to Orders</a>
+{% endblock %}

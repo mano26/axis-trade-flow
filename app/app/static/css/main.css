@@ -1,0 +1,200 @@
+/* =============================================================================
+   AXIS Trade Flow — Main Stylesheet
+   =============================================================================
+   Design: Industrial/utilitarian aesthetic matching the trading floor context.
+   Colors derived from the VBA tool's navy/yellow scheme.
+   ============================================================================= */
+
+/* --- CSS Variables --- */
+:root {
+    --navy: #001f60;
+    --navy-light: #0a3080;
+    --yellow: #f7ff4f;
+    --yellow-muted: #f5f0c8;
+    --red: #cc2222;
+    --red-light: #ffe5e5;
+    --blue-ink: #1f4e79;
+    --green: #006600;
+    --green-light: #e6ffe6;
+    --bg: #f0f0f0;
+    --bg-card: #ffffff;
+    --border: #d0d0d0;
+    --text: #1a1a1a;
+    --text-muted: #666666;
+    --font-mono: 'Courier New', Courier, monospace;
+    --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    --radius: 4px;
+}
+
+/* --- Reset & Base --- */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--font-body); background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; }
+a { color: var(--blue-ink); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* --- Navigation --- */
+.nav-bar {
+    display: flex; align-items: center; gap: 24px;
+    background: var(--navy); color: white; padding: 0 24px; height: 48px;
+}
+.nav-brand { font-size: 16px; font-weight: 900; letter-spacing: 3px; color: var(--yellow); }
+.nav-links { display: flex; gap: 16px; flex: 1; }
+.nav-link { color: rgba(255,255,255,0.8); font-size: 13px; font-weight: 600; }
+.nav-link:hover { color: white; text-decoration: none; }
+.nav-user { display: flex; align-items: center; gap: 12px; }
+.nav-user-name { font-size: 12px; color: rgba(255,255,255,0.6); }
+.nav-logout { color: var(--yellow) !important; }
+
+/* --- Flash Messages --- */
+.flash-container { padding: 8px 24px; }
+.flash { padding: 10px 16px; border-radius: var(--radius); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+.flash-success { background: var(--green-light); color: var(--green); }
+.flash-danger { background: var(--red-light); color: var(--red); }
+.flash-warning { background: #fff8e1; color: #8a6d00; }
+.flash-info { background: #e3f2fd; color: #0d47a1; }
+.flash-close { background: none; border: none; font-size: 18px; cursor: pointer; color: inherit; }
+
+/* --- Main Content --- */
+.main-content { max-width: 1200px; margin: 0 auto; padding: 24px; }
+
+/* --- Page Header --- */
+.page-header { display: flex; align-items: baseline; gap: 16px; margin-bottom: 24px; }
+.page-header h1 { font-size: 22px; font-weight: 800; letter-spacing: 1px; }
+.page-date { font-family: var(--font-mono); font-size: 14px; color: var(--text-muted); }
+
+/* --- Trade Entry --- */
+.trade-entry-section { margin-bottom: 32px; }
+.trade-input-row { display: flex; gap: 8px; }
+.trade-input {
+    flex: 1; padding: 10px 14px; font-family: var(--font-mono); font-size: 15px;
+    border: 2px solid var(--navy); border-radius: var(--radius); background: var(--yellow);
+    text-transform: uppercase; letter-spacing: 0.5px;
+}
+.trade-input:focus { outline: none; border-color: var(--blue-ink); box-shadow: 0 0 0 3px rgba(31,78,121,0.15); }
+.trade-input::placeholder { color: rgba(0,0,0,0.35); text-transform: none; }
+
+/* --- Buttons --- */
+.btn {
+    display: inline-block; padding: 8px 16px; font-size: 13px; font-weight: 600;
+    border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer;
+    background: white; color: var(--text); text-align: center;
+}
+.btn:hover { background: #f5f5f5; text-decoration: none; }
+.btn-primary { background: var(--navy); color: white; border-color: var(--navy); }
+.btn-primary:hover { background: var(--navy-light); }
+.btn-danger { background: var(--red); color: white; border-color: var(--red); }
+.btn-danger:hover { background: #aa1111; }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+.btn-full { width: 100%; }
+.btn-back { margin-top: 24px; }
+
+/* --- Tables --- */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead { background: var(--navy); color: white; }
+th { padding: 8px 10px; text-align: center; font-weight: 700; font-size: 11px; letter-spacing: 0.5px; }
+td { padding: 6px 10px; text-align: center; border-bottom: 1px solid var(--border); }
+tbody tr:hover { background: rgba(0,31,96,0.03); }
+.clickable-row { cursor: pointer; }
+.clickable-row:hover { background: rgba(0,31,96,0.07) !important; }
+
+/* --- Status Badges --- */
+.status-badge {
+    display: inline-block; padding: 2px 8px; font-size: 11px; font-weight: 700;
+    border-radius: 3px; letter-spacing: 0.5px;
+}
+.status-open { background: #e3f2fd; color: #0d47a1; }
+.status-cancelled, .status-partial_cancelled { background: var(--red-light); color: var(--red); }
+.status-partial_fill { background: #fff8e1; color: #8a6d00; }
+.status-filled { background: var(--green-light); color: var(--green); }
+.status-reported { background: #f3e5f5; color: #6a1b9a; }
+.status-report_accepted { background: var(--green-light); color: var(--green); }
+.status-report_failed { background: var(--red-light); color: var(--red); }
+.status-amended { background: #fff3e0; color: #e65100; }
+.status-pending_allocation { background: #fff8e1; color: #8a6d00; }
+.status-allocated { background: var(--green-light); color: var(--green); }
+
+/* --- Direction Colors --- */
+.direction-B { color: var(--blue-ink); font-weight: 700; }
+.direction-S { color: var(--red); font-weight: 700; }
+
+/* --- Trade String Display --- */
+.trade-string { font-family: var(--font-mono); font-size: 12px; text-transform: uppercase; }
+.ticket-num { font-family: var(--font-mono); font-weight: 700; color: var(--red); }
+
+/* --- Order Summary --- */
+.order-summary { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 24px; }
+.summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.summary-item label { display: block; font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; }
+.summary-item span { font-size: 14px; }
+
+/* --- Sections --- */
+section { margin-bottom: 24px; }
+section h2 { font-size: 16px; font-weight: 700; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 2px solid var(--navy); }
+
+/* --- Fill Cards --- */
+.fill-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; margin-bottom: 12px; }
+.fill-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-weight: 600; }
+
+/* --- Action Buttons --- */
+.action-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* --- Empty State --- */
+.empty-state { color: var(--text-muted); font-style: italic; padding: 16px 0; }
+
+/* --- Auth --- */
+.auth-container { display: flex; justify-content: center; align-items: center; min-height: 80vh; }
+.auth-card { background: var(--bg-card); border: 2px solid var(--navy); border-radius: 8px; padding: 40px; width: 380px; text-align: center; }
+.auth-title { font-size: 24px; font-weight: 900; letter-spacing: 4px; color: var(--navy); margin-bottom: 4px; }
+.auth-subtitle { font-size: 12px; color: var(--text-muted); margin-bottom: 28px; }
+.auth-form { text-align: left; }
+
+/* --- Forms --- */
+.form-group { margin-bottom: 16px; }
+.form-group label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px; color: var(--text-muted); }
+.form-group input, .form-group select, .form-group textarea {
+    width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 14px;
+}
+.form-group input:focus { outline: none; border-color: var(--navy); box-shadow: 0 0 0 2px rgba(0,31,96,0.1); }
+
+/* --- Price & Fill Inputs --- */
+.price-input {
+    width: 100px; padding: 4px 8px; font-family: var(--font-mono); font-size: 13px;
+    text-align: right; border: 1px solid var(--border); border-radius: var(--radius);
+}
+.price-input:focus { outline: none; border-color: var(--navy); box-shadow: 0 0 0 2px rgba(0,31,96,0.1); }
+.fill-qty-input {
+    width: 120px; padding: 8px 12px; font-family: var(--font-mono); font-size: 16px;
+    text-align: center; border: 2px solid var(--navy); border-radius: var(--radius);
+}
+.form-help { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+.text-muted { color: var(--text-muted); font-size: 12px; font-style: italic; }
+
+/* --- Inline Forms --- */
+.inline-form-row { display: flex; align-items: center; gap: 12px; }
+.inline-form-row label { font-size: 13px; font-weight: 600; white-space: nowrap; }
+
+/* --- Counterparty Entry --- */
+.cp-entry-table input, .cp-entry-table select {
+    width: 100%; padding: 4px 8px; font-size: 13px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    background: white;
+}
+.cp-entry-table input:focus, .cp-entry-table select:focus { outline: none; border-color: var(--navy); }
+.cp-qty-input { width: 70px !important; text-align: center; font-family: var(--font-mono); }
+.cp-bracket-input { width: 60px !important; text-align: center; }
+.text-upper { text-transform: uppercase; }
+
+/* --- Dropdowns --- */
+.form-group select, .lookup-select {
+    width: 100%; padding: 8px 12px; font-size: 14px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    background: white; text-transform: uppercase;
+}
+.form-group select:focus, .lookup-select:focus { outline: none; border-color: var(--navy); box-shadow: 0 0 0 2px rgba(0,31,96,0.1); }
+
+/* --- Print Styles --- */
+@media print {
+    .nav-bar, .flash-container, .action-buttons, .btn-back { display: none !important; }
+    .main-content { max-width: none; padding: 0; }
+    body { background: white; }
+}

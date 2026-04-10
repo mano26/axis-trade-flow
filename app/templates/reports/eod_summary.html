@@ -1,0 +1,93 @@
+{% extends "layouts/base.html" %}
+{% block title %}EOD Summary — AXIS Trade Flow{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>End-of-Day Summary</h1>
+    <span class="page-date">{{ report_date.strftime('%m/%d/%Y') }}</span>
+</div>
+
+<section class="order-summary" style="margin-bottom: 20px;">
+    <form method="GET" action="{{ url_for('reports.eod_summary') }}">
+        <div class="inline-form-row">
+            <label>Date:</label>
+            <input type="date" name="date" value="{{ report_date.isoformat() }}" style="padding: 6px 10px; border: 1px solid #d0d0d0; border-radius: 4px;">
+            <button type="submit" class="btn btn-primary">View</button>
+        </div>
+    </form>
+</section>
+
+<section>
+    <h2>Summary</h2>
+    <div class="summary-grid">
+        <div class="summary-item">
+            <label>Total Orders</label>
+            <span>{{ total_orders }}</span>
+        </div>
+        <div class="summary-item">
+            <label>Options Volume</label>
+            <span>{{ total_options_vol }}</span>
+        </div>
+        <div class="summary-item">
+            <label>Futures Volume</label>
+            <span>{{ total_futures_vol }}</span>
+        </div>
+    </div>
+</section>
+
+{% if strategy_counts %}
+<section>
+    <h2>By Strategy</h2>
+    <table class="legs-table">
+        <thead>
+            <tr>
+                <th>Strategy</th>
+                <th>Orders</th>
+                <th>Options Volume</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for strategy, data in strategy_counts.items() %}
+            <tr>
+                <td>{{ strategy | upper }}</td>
+                <td>{{ data.count }}</td>
+                <td>{{ data.volume }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+{% endif %}
+
+{% if orders %}
+<section>
+    <h2>Orders</h2>
+    <table class="legs-table">
+        <thead>
+            <tr>
+                <th>Ticket</th>
+                <th>Time In</th>
+                <th>Time Out</th>
+                <th>B/S</th>
+                <th>Strategy</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for order in orders %}
+            <tr class="clickable-row" onclick="window.location='{{ url_for('orders.detail', order_id=order.id) }}'">
+                <td class="ticket-num">#{{ order.ticket_display }}</td>
+                <td>{{ order.time_in.strftime('%H:%M:%S') if order.time_in else '' }}</td>
+                <td>{{ order.time_out.strftime('%H:%M:%S') if order.time_out else '' }}</td>
+                <td class="direction-{{ order.direction }}">{{ order.direction }}</td>
+                <td>{{ order.strategy | upper }}</td>
+                <td><span class="status-badge status-{{ order.status }}">{{ order.status | replace('_', ' ') | upper }}</span></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+{% endif %}
+
+<a href="{{ url_for('orders.index') }}" class="btn btn-back">← Back to Orders</a>
+{% endblock %}

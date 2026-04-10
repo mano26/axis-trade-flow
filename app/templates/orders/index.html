@@ -1,0 +1,112 @@
+{% extends "layouts/base.html" %}
+{% block title %}Orders — AXIS Trade Flow{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Trade Entry</h1>
+    <span class="page-date">{{ today.strftime('%m/%d/%Y') }}</span>
+</div>
+
+<section class="trade-entry-section">
+    <form method="POST" action="{{ url_for('orders.create') }}" class="trade-entry-form" id="order-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="is_generic" id="is_generic_hidden" value="0">
+        <input type="hidden" name="quarter_tick_confirmed" id="quarter_tick_hidden" value="0">
+        <div class="trade-input-row">
+            <input type="text" name="trade_string" id="trade_string" class="trade-input"
+                   placeholder="Enter trade string (e.g., SFRH6 C 96.00 96.25 CS 4/500)"
+                   autofocus autocomplete="off" spellcheck="false">
+            <button type="submit" class="btn btn-primary">Submit Order</button>
+        </div>
+        <div style="margin-top: 8px;">
+            <label class="checkbox-label">
+                <input type="checkbox" id="generic_checkbox" onchange="toggleGeneric()">
+                <span>Generic entry (manual legs)</span>
+            </label>
+        </div>
+    </form>
+</section>
+
+<section class="order-blotter">
+    <h2>Today's Orders</h2>
+    {% if orders %}
+    <table class="blotter-table">
+        <thead>
+            <tr>
+                <th>Ticket</th>
+                <th>B/S</th>
+                <th>Strategy</th>
+                <th>Trade String</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for order in orders %}
+            <tr class="clickable-row" onclick="window.location='{{ url_for('orders.detail', order_id=order.id) }}'">
+                <td class="ticket-num">#{{ order.ticket_display }}</td>
+                <td class="direction-{{ order.direction }}">{{ order.direction }}</td>
+                <td>{{ order.strategy | upper }}{% if order.is_generic %} (GEN){% endif %}</td>
+                <td class="trade-string">{{ order.raw_input }}</td>
+                <td><span class="status-badge status-{{ order.status }}">{{ order.status | replace('_', ' ') | upper }}</span></td>
+                <td>
+                    <a href="{{ url_for('orders.detail', order_id=order.id) }}" class="btn btn-sm">View</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="empty-state">No orders entered today.</p>
+    {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleGeneric() {
+    var cb = document.getElementById('generic_checkbox');
+    document.getElementById('is_generic_hidden').value = cb.checked ? '1' : '0';
+}
+
+document.getElementById('order-form').addEventListener('submit', function(e) {
+    var tradeStr = document.getElementById('trade_string').value;
+    var isGeneric = document.getElementById('generic_checkbox').checked;
+
+    // Extract price from trade string
+    var price = 0;
+    var tokens = tradeStr.split(/\s+/);
+    for (var i = 0; i < tokens.length; i++) {
+        var t = tokens[i];
+        if (t.indexOf('/') > -1 && t.indexOf('@') === -1) {
+            var parts = t.split('/');
+            if (parts.length === 2 && !isNaN(parts[0])) {
+                price = parseFloat(parts[0]);
+            }
+        } else if (t.indexOf('@') > -1) {
+            var parts = t.split('@');
+            if (parts.length === 2 && !isNaN(parts[1])) {
+                price = parseFloat(parts[1]);
+            }
+        }
+    }
+
+    // Check for 0.25 tick increment (not 0.50)
+    if (price > 0 && (price % 0.5) !== 0 && (price % 0.25) === 0 && !isGeneric) {
+        e.preventDefault();
+        var msg = 'This trade has a 0.25 tick increment price (' + price + ' ticks).\n\n' +
+                  'Is this a quarter-tick eligible month?\n\n' +
+                  'Click OK if eligible (will process normally).\n' +
+                  'Click Cancel to enter as generic trade.';
+        if (confirm(msg)) {
+            document.getElementById('quarter_tick_hidden').value = '1';
+            e.target.submit();
+        } else {
+            document.getElementById('generic_checkbox').checked = true;
+            document.getElementById('is_generic_hidden').value = '1';
+            e.target.submit();
+        }
+    }
+});
+</script>
+{% endblock %}

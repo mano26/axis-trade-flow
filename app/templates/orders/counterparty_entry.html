@@ -1,0 +1,106 @@
+{% extends "layouts/base.html" %}
+{% block title %}Enter Counterparties — Order #{{ order.ticket_display }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Counterparties — Order #{{ order.ticket_display }}</h1>
+</div>
+
+<section class="order-summary">
+    <div class="summary-grid">
+        <div class="summary-item">
+            <label>Trade String</label>
+            <span class="trade-string">{{ order.raw_input }}</span>
+        </div>
+        <div class="summary-item">
+            <label>Fill Quantity</label>
+            <span>{{ fill.fill_quantity }}</span>
+        </div>
+        <div class="summary-item">
+            <label>Allocation Status</label>
+            <span class="status-badge status-{{ fill.allocation_status }}">
+                {{ fill.allocation_status | replace('_', ' ') | upper }}
+            </span>
+        </div>
+    </div>
+</section>
+
+<section>
+    <h2>House &amp; Account</h2>
+    <form method="POST" action="{{ url_for('fills.enter_counterparties', fill_id=fill.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="summary-grid" style="margin-bottom: 20px;">
+            <div class="form-group">
+                <label for="house">House</label>
+                <input type="text" id="house" name="house"
+                       value="{{ order.house or '' }}"
+                       placeholder="e.g., GFI"
+                       class="text-upper">
+            </div>
+            <div class="form-group">
+                <label for="account">Account</label>
+                <input type="text" id="account" name="account"
+                       value="{{ order.account or '' }}"
+                       placeholder="Account ID"
+                       class="text-upper">
+            </div>
+        </div>
+
+        <h2>Counterparty Allocations</h2>
+        <p class="form-help" style="margin-bottom: 12px;">
+            Split the fill quantity ({{ fill.fill_quantity }}) across counterparties.
+            All quantities must sum to {{ fill.fill_quantity }}.
+        </p>
+
+        <table class="legs-table cp-entry-table">
+            <thead>
+                <tr>
+                    <th>Qty</th>
+                    <th>Broker</th>
+                    <th>Opposite/House</th>
+                    <th>Bracket</th>
+                    <th>Notes</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for i in range(10) %}
+                {% set cp = fill.counterparties[i] if i < fill.counterparties|length else none %}
+                <tr>
+                    <td>
+                        <input type="number" name="cp_qty_{{ i }}"
+                               value="{{ cp.quantity if cp else (fill.fill_quantity if i == 0 else '') }}"
+                               min="0" class="cp-qty-input">
+                    </td>
+                    <td>
+                        <input type="text" name="cp_broker_{{ i }}"
+                               value="{{ cp.broker if cp else '' }}"
+                               placeholder="GFI" class="text-upper">
+                    </td>
+                    <td>
+                        <input type="text" name="cp_symbol_{{ i }}"
+                               value="{{ cp.symbol if cp else '' }}"
+                               placeholder="CITADEL/CIT" class="text-upper">
+                    </td>
+                    <td>
+                        <input type="text" name="cp_bracket_{{ i }}"
+                               value="{{ cp.bracket if cp else '' }}"
+                               placeholder="A" maxlength="2" class="text-upper cp-bracket-input">
+                    </td>
+                    <td>
+                        <input type="text" name="cp_notes_{{ i }}"
+                               value="{{ cp.notes if cp else '' }}"
+                               placeholder="Optional">
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <div class="action-buttons" style="margin-top: 16px;">
+            <button type="submit" class="btn btn-primary">Save Counterparties</button>
+            <a href="{{ url_for('orders.detail', order_id=order.id) }}" class="btn">Skip (Pending Allocation)</a>
+        </div>
+    </form>
+</section>
+{% endblock %}

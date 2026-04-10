@@ -1,0 +1,45 @@
+# =============================================================================
+# AXIS Trade Flow — Python Dependencies
+# =============================================================================
+# Pinned for reproducible builds on Railway.
+# Update versions deliberately; test before deploying.
+# =============================================================================
+
+# --- Core Framework ---
+Flask==3.1.0
+gunicorn==23.0.0
+
+# --- Database ---
+SQLAlchemy==2.0.36
+Flask-SQLAlchemy==3.1.1
+psycopg2-binary==2.9.10          # PostgreSQL adapter
+alembic==1.14.1                   # Schema migrations
+Flask-Migrate==4.0.7              # Flask-Alembic integration
+
+# --- Authentication & Security ---
+Flask-Login==0.6.3
+Flask-WTF==1.2.2                  # CSRF protection + form validation
+WTForms==3.2.1
+Werkzeug==3.1.3                   # Password hashing (bundled with Flask)
+email-validator==2.2.0            # Email field validation
+
+# --- Template Rendering ---
+Jinja2==3.1.4                     # Bundled with Flask; pinned for clarity
+MarkupSafe==3.0.2
+
+# --- API / Serialization ---
+marshmallow==3.23.1               # Request/response serialization
+flask-marshmallow==1.2.1
+
+# --- Utilities ---
+python-dotenv==1.0.1              # .env file loading
+python-dateutil==2.9.0            # Date arithmetic for expiry calculations
+
+# --- Rithmic API (STUBBED — uncomment when integrating) ---
+# protobuf==5.29.2                # Protocol Buffers for Rithmic API
+# grpcio==1.68.1                  # gRPC transport for Rithmic
+
+# --- Development / Testing ---
+pytest==8.3.4
+pytest-flask==1.3.0
+factory-boy==3.3.1                # Test fixtures

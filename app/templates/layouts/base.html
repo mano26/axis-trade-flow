@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}AXIS Trade Flow{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <!-- ================================================================
+         Navigation Bar
+         Displays the AXIS branding, nav links, and current user info.
+         Only shown when the user is authenticated.
+         ================================================================ -->
+    {% if current_user.is_authenticated %}
+    <nav class="nav-bar">
+        <div class="nav-brand">AXIS TRADE FLOW</div>
+        <div class="nav-links">
+            <a href="{{ url_for('orders.index') }}" class="nav-link">Orders</a>
+            <a href="{{ url_for('reports.order_log') }}" class="nav-link">Order Log</a>
+            <a href="{{ url_for('reports.eod_summary') }}" class="nav-link">EOD Summary</a>
+            {% if current_user.is_admin() %}
+            <a href="{{ url_for('admin.lookup_list') }}" class="nav-link">Lookups</a>
+            <a href="{{ url_for('admin.user_list') }}" class="nav-link">Users</a>
+            {% endif %}
+        </div>
+        <div class="nav-user">
+            <span class="nav-user-name">{{ current_user.display_name }}</span>
+            <a href="{{ url_for('auth.logout') }}" class="nav-link nav-logout">Logout</a>
+        </div>
+    </nav>
+    {% endif %}
+
+    <!-- ================================================================
+         Flash Messages
+         Displays one-time notification messages (success, error, etc.)
+         ================================================================ -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="flash-container">
+        {% for category, message in messages %}
+        <div class="flash flash-{{ category }}">
+            {{ message }}
+            <button class="flash-close" onclick="this.parentElement.remove()">×</button>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    <!-- ================================================================
+         Main Content
+         ================================================================ -->
+    <main class="main-content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

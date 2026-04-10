@@ -1,0 +1,76 @@
+{% extends "layouts/base.html" %}
+{% block title %}Record Fill — Order #{{ order.ticket_display }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Record Fill — Order #{{ order.ticket_display }}</h1>
+    <span class="status-badge status-{{ order.status }}">{{ order.status | replace('_', ' ') | upper }}</span>
+</div>
+
+<section class="order-summary">
+    <div class="summary-grid">
+        <div class="summary-item">
+            <label>Trade String</label>
+            <span class="trade-string">{{ order.raw_input }}</span>
+        </div>
+        <div class="summary-item">
+            <label>Total Quantity</label>
+            <span>{{ order.total_quantity }}</span>
+        </div>
+        <div class="summary-item">
+            <label>Already Filled</label>
+            <span>{{ order.filled_quantity }}</span>
+        </div>
+        <div class="summary-item">
+            <label>Remaining</label>
+            <span>{{ order.remaining_quantity }}</span>
+        </div>
+    </div>
+</section>
+
+<section class="legs-section">
+    <h2>Confirmation Legs</h2>
+    <table class="legs-table">
+        <thead>
+            <tr>
+                <th>B/S</th><th>Volume</th><th>Contract</th><th>Expiry</th>
+                <th>Strike</th><th>C/P</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for leg in order.legs %}
+            <tr>
+                <td class="direction-{{ leg.side }}">{{ leg.side }}</td>
+                <td>{{ leg.volume }}</td>
+                <td>{{ leg.contract_type }}</td>
+                <td>{{ leg.expiry }}</td>
+                <td>{{ '%.4f' % leg.strike if leg.strike else '—' }}</td>
+                <td>{{ leg.option_type or 'FUT' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+
+<section>
+    <h2>Fill Details</h2>
+    <form method="POST" action="{{ url_for('fills.create', order_id=order.id) }}" class="fill-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="form-group">
+            <label for="fill_quantity">Fill Quantity</label>
+            <input type="number" id="fill_quantity" name="fill_quantity"
+                   min="1" max="{{ order.remaining_quantity }}"
+                   value="{{ order.remaining_quantity }}"
+                   required autofocus
+                   class="fill-qty-input">
+            <span class="form-help">Maximum: {{ order.remaining_quantity }}</span>
+        </div>
+
+        <div class="action-buttons">
+            <button type="submit" class="btn btn-primary">Record Fill</button>
+            <a href="{{ url_for('orders.detail', order_id=order.id) }}" class="btn">Cancel</a>
+        </div>
+    </form>
+</section>
+{% endblock %}

@@ -1,0 +1,42 @@
+{% extends "layouts/base.html" %}
+{% block title %}Modify Order #{{ order.ticket_display }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Modify Order #{{ order.ticket_display }}</h1>
+</div>
+
+<section class="order-summary">
+    <div class="summary-grid">
+        <div class="summary-item">
+            <label>Current Trade String</label>
+            <span class="trade-string">{{ order.raw_input }}</span>
+        </div>
+        <div class="summary-item">
+            <label>Status</label>
+            <span class="status-badge status-{{ order.status }}">{{ order.status | upper }}</span>
+        </div>
+    </div>
+</section>
+
+<section>
+    <h2>New Trade String</h2>
+    <p class="form-help" style="margin-bottom: 12px;">
+        Enter the updated trade string. The ticket number (#{{ order.ticket_display }}) stays the same.
+        The previous trade string and legs will be replaced.
+    </p>
+
+    <form method="POST" action="{{ url_for('orders.modify', order_id=order.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="trade-input-row">
+            <input type="text" name="trade_string" class="trade-input"
+                   value="{{ order.raw_input }}"
+                   autofocus autocomplete="off" spellcheck="false">
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+        </div>
+    </form>
+</section>
+
+<a href="{{ url_for('orders.detail', order_id=order.id) }}" class="btn btn-back">← Back to Order</a>
+{% endblock %}
