@@ -769,31 +769,37 @@ def _validate_generic_prices(order, leg_prices):
     Validate generic trade prices using qty * price net calculation.
     For each leg: sign = +1 if sell, -1 if buy.
     Net = sum(sign * volume * price) for all legs.
-    |Net / base_volume| should equal package premium.
+    |Net / order.total_quantity| should equal package premium.
+
+    We divide by order.total_quantity (not the first leg's volume) because
+    the package premium is always expressed per total-order lot. A trader
+    may split one side into multiple partial legs at different prices to
+    represent an average (e.g. two 500-lot buy legs on a 1000-lot order),
+    and those partial legs must reconcile to the same package premium as if
+    entered as a single 1000-lot leg.
     """
     if not order.package_premium:
         return  # No premium to validate against
 
+    if not order.total_quantity or order.total_quantity == 0:
+        return
+
     price_map = {lp.leg_index: lp.price for lp in leg_prices}
     net = 0.0
-    base_vol = None
 
     for leg in order.legs:
         if leg.leg_index not in price_map:
             continue
         if leg.option_type is None and leg.strike is None:
             continue  # Skip futures legs
-        if base_vol is None:
-            base_vol = leg.volume
         sign = 1.0 if leg.side == "S" else -1.0
         net += sign * leg.volume * price_map[leg.leg_index]
 
-    if base_vol and base_vol > 0:
-        net_per_unit = abs(net) / base_vol
-        if abs(net_per_unit - order.package_premium) > 0.000001:
-            raise ValidationError([
-                f"Price reconciliation failed. "
-                f"Expected: {order.package_premium:.4f}, "
-                f"Calculated: {net_per_unit:.4f}, "
-                f"Discrepancy: {abs(net_per_unit - order.package_premium):.4f}."
-            ])
+    net_per_unit = abs(net) / order.total_quantity
+    if abs(net_per_unit - order.package_premium) > 0.000001:
+        raise ValidationError([
+            f"Price reconciliation failed. "
+            f"Expected: {order.package_premium:.4f}, "
+            f"Calculated: {net_per_unit:.4f}, "
+            f"Discrepancy: {abs(net_per_unit - order.package_premium):.4f}."
+        ])
