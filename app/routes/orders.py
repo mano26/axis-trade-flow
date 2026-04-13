@@ -333,12 +333,11 @@ def save_legs(order_id):
             db.session.add(leg)
             leg_index += 1
 
-        # Set total_quantity from first leg volume
-        if leg_index > 0:
-            db.session.flush()
-            first_leg = OrderLeg.query.filter_by(order_id=order.id, leg_index=0).first()
-            if first_leg:
-                order.total_quantity = first_leg.volume
+        # Do NOT overwrite total_quantity from leg volumes.
+        # total_quantity is set at order creation from the trade string price format
+        # (e.g. 4.25/1000 → 1000) and represents the overall order size.
+        # A generic order can have multiple buy legs at different prices to represent
+        # an average fill, so the first-leg volume is not a reliable proxy.
 
         db.session.commit()
         flash(f"Legs saved — {leg_index} leg(s).", "success")
