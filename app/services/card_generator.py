@@ -17,16 +17,13 @@ def generate_cards_html(order: Order) -> str:
     account = order.account or ""
     bk_broker = order.bk_broker or ""
 
-    # Collect legs with proportional volumes
+    # Collect legs — always use full order leg volume, not a fill ratio.
+    # Card quantities per counterparty are driven by FillCounterparty.quantity,
+    # not by a ratio of filled vs total.
     legs = []
     for leg in order.legs:
         is_fut = leg.option_type is None and leg.strike is None
-        # Proportional volume
-        if order.filled_quantity > 0:
-            ratio = order.filled_quantity / order.total_quantity
-            vol = round(leg.volume * ratio)
-        else:
-            vol = leg.volume
+        vol = leg.volume
 
         strike_str = ""
         if leg.strike:
@@ -195,7 +192,7 @@ def _build_card(
     h += f"<div class='card-header'><div class='card-top-row'>"
     h += f"<div class='card-type' style='color:{ink}'>{card_type}</div>"
     h += f"<div class='card-broker' style='color:{ink}'>{broker}</div>"
-    h += f"</div>"
+    h += f"<div class='card-acct' style='color:{ink}'>{account}</div></div>"
     # BK Broker line - only on futures cards, below and right-aligned
     if is_fut and bk_broker:
         h += f"<div class='card-bk' style='color:{ink}'>BK {bk_broker.upper()}</div>"

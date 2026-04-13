@@ -15,16 +15,13 @@ def generate_ticket_html(order: Order) -> str:
     account = order.account or ""
     bk_broker = order.bk_broker or ""
 
-    # Collect legs
+    # Collect legs — always use full order leg volume, not a fill ratio.
+    # The ticket is the master record for the trade; fill quantities are
+    # tracked separately via Fill and FillCounterparty records.
     legs = []
     for leg in order.legs:
         is_fut = leg.option_type is None and leg.strike is None
-        # Proportional volume
-        if order.filled_quantity > 0:
-            ratio = order.filled_quantity / order.total_quantity
-            vol = round(leg.volume * ratio)
-        else:
-            vol = leg.volume
+        vol = leg.volume
 
         if is_fut:
             opt_type = "FUT"

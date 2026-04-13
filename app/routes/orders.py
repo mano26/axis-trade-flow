@@ -180,13 +180,17 @@ def detail(order_id):
         for lt in LookupType.ALL
     }
 
-    # Calculate proportional display volumes based on filled qty
+    # Build display_legs — always use leg.volume as the editable value.
+    # The Save Legs form must always submit the full order size so that
+    # clicking Save Legs never permanently corrupts stored leg volumes.
+    # A read-only filled qty hint is shown separately in the summary header.
     display_legs = []
     for leg in order.legs:
         d = {
             "leg_index": leg.leg_index,
             "side": leg.side,
             "volume": leg.volume,
+            "display_volume": leg.volume,   # always full size — never ratio-adjusted
             "market": leg.market,
             "contract_type": leg.contract_type,
             "expiry": leg.expiry,
@@ -194,14 +198,6 @@ def detail(order_id):
             "option_type": leg.option_type,
             "price": leg.price,
         }
-        # If there are fills, show proportional volumes
-        if order.filled_quantity > 0 and order.filled_quantity < order.total_quantity:
-            ratio = order.filled_quantity / order.total_quantity
-            d["display_volume"] = round(leg.volume * ratio)
-        elif order.filled_quantity > 0 and order.filled_quantity == order.total_quantity:
-            d["display_volume"] = leg.volume
-        else:
-            d["display_volume"] = leg.volume
         display_legs.append(d)
 
     # Check if prices are entered on the latest fill (for blocking CP save)
@@ -280,24 +276,16 @@ def record_fill(order_id):
 def save_legs(order_id):
     """
     Save editable leg data from the detail page.
-    Works for both parsed and generic orders.
-    For generic orders, this creates/updates legs from the manual entry grid.
-    For parsed orders, this updates existing leg fields (B/S, volume, strike, etc.)
+    Only valid for generic orders — parsed orders use toggle_leg_side
+    for B/S corrections and Modify Order for structural changes.
     """
     order = _get_order_or_404(order_id)
+    if not order.is_generic:
+        flash("Leg editing is only available for generic orders. Use Modify Order to change a parsed trade.", "warning")
+        return redirect(url_for("orders.detail", order_id=order.id))
     try:
-        # Capture existing prices from OrderLeg before deleting.
-        # Key by leg_index so we can restore after rebuild.
+        # Capture existing prices before deleting legs (CVD futures price etc.)
         existing_prices = {leg.leg_index: leg.price for leg in order.legs if leg.price is not None}
-
-        # Also capture the FillLegPrice records keyed by leg_index so that
-        # price reconciliation records survive a Save Legs operation.
-        fill_price_map: dict[int, list] = {}  # leg_index → list of (fill_id, price)
-        for fill in order.fills:
-            for flp in fill.leg_prices:
-                fill_price_map.setdefault(flp.leg_index, []).append(
-                    (flp.fill_id, flp.price)
-                )
 
         # Delete existing legs
         for leg in order.legs:
@@ -325,8 +313,6 @@ def save_legs(order_id):
                 continue
 
             strike = float(strike_str) if strike_str else None
-
-            # Preserve existing price (e.g. CVD futures price from parser)
             preserved_price = existing_prices.get(i)
 
             leg = OrderLeg(
@@ -347,31 +333,10 @@ def save_legs(order_id):
             db.session.add(leg)
             leg_index += 1
 
-        db.session.flush()
-
-        # Restore FillLegPrice records onto the new leg indices.
-        # The new legs occupy indices 0..leg_index-1 in the same positional
-        # order as before, so the old fill_price_map keys still correspond.
-        for old_idx, fill_price_entries in fill_price_map.items():
-            if old_idx < leg_index:  # leg still exists at this index
-                for fill_id, price in fill_price_entries:
-                    existing_flp = FillLegPrice.query.filter_by(
-                        fill_id=fill_id, leg_index=old_idx
-                    ).first()
-                    if existing_flp:
-                        existing_flp.price = price
-                    else:
-                        db.session.add(FillLegPrice(
-                            fill_id=fill_id,
-                            leg_index=old_idx,
-                            price=price,
-                        ))
-
-        # For generic orders, set total_quantity from first leg volume
-        if order.is_generic and leg_index > 0:
-            first_leg = OrderLeg.query.filter_by(
-                order_id=order.id, leg_index=0
-            ).first()
+        # Set total_quantity from first leg volume
+        if leg_index > 0:
+            db.session.flush()
+            first_leg = OrderLeg.query.filter_by(order_id=order.id, leg_index=0).first()
             if first_leg:
                 order.total_quantity = first_leg.volume
 
@@ -381,6 +346,50 @@ def save_legs(order_id):
         db.session.rollback()
         flash(f"Error saving legs: {e}", "danger")
     return redirect(url_for("orders.detail", order_id=order.id))
+
+
+@orders_bp.route("/<int:order_id>/legs/<int:leg_index>/side", methods=["POST"])
+@login_required
+def toggle_leg_side(order_id, leg_index):
+    """
+    Toggle the B/S direction of a single parsed-order leg.
+    Accepts JSON: {"side": "B"} or {"side": "S"}.
+    Returns JSON: {"ok": true, "side": "B"}.
+    This is the only structural edit allowed on parsed order legs.
+    """
+    order = _get_order_or_404(order_id)
+    if order.is_generic:
+        return jsonify({"ok": False, "error": "Use Save Legs for generic orders."}), 400
+
+    data = request.get_json(silent=True) or {}
+    new_side = (data.get("side") or "").upper().strip()
+    if new_side not in ("B", "S"):
+        return jsonify({"ok": False, "error": "side must be B or S"}), 400
+
+    leg = OrderLeg.query.filter_by(
+        order_id=order.id, leg_index=leg_index
+    ).first_or_404()
+
+    old_side = leg.side
+    if old_side == new_side:
+        return jsonify({"ok": True, "side": new_side})
+
+    try:
+        leg.side = new_side
+        audit_service.log_action(
+            action="leg_side_toggled",
+            entity_type="order",
+            entity_id=order.id,
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.id,
+            before_value={"leg_index": leg_index, "side": old_side},
+            after_value={"leg_index": leg_index, "side": new_side},
+        )
+        db.session.commit()
+        return jsonify({"ok": True, "side": new_side})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @orders_bp.route("/<int:order_id>/save-prices", methods=["POST"])
