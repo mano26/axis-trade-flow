@@ -45,17 +45,22 @@ def generate_cards_html(order: Order) -> str:
             "is_fut": is_fut,
         })
 
-    # Delta ratio for futures card quantities
-    total_opt_vol = 0
-    total_fut_vol = 0
+    # Base option volume — the smallest non-futures leg volume.
+    # For a 1x2 spread this is the 1x leg. Used to scale card quantities
+    # per leg so each card shows the correct ratio-adjusted counterparty qty.
+    opt_vols = [l["volume"] for l in legs if not l["is_fut"]]
+    base_opt_vol = min(opt_vols) if opt_vols else 1
+
+    # Stamp each leg with its ratio relative to the base option leg.
     for l in legs:
         if l["is_fut"]:
-            total_fut_vol = l["volume"]
-        elif total_opt_vol == 0:
-            total_opt_vol = l["volume"]
-    if total_opt_vol == 0:
-        total_opt_vol = 1
-    delta_ratio = total_fut_vol / total_opt_vol
+            l["leg_ratio"] = 1.0  # futures qty scaled separately via delta_ratio
+        else:
+            l["leg_ratio"] = l["volume"] / base_opt_vol
+
+    # Delta ratio for futures card quantities
+    total_fut_vol = next((l["volume"] for l in legs if l["is_fut"]), 0)
+    delta_ratio = total_fut_vol / base_opt_vol if base_opt_vol else 0
 
     # Collect counterparties grouped by bracket + broker
     groups = []  # list of {bracket, broker, cps: [{qty, symbol}]}
@@ -217,7 +222,9 @@ def _build_card(
             if is_fut:
                 dq = round(cp["qty"] * delta_ratio)
             else:
-                dq = cp["qty"]
+                # Scale cp qty by this leg's ratio relative to the base leg.
+                # e.g. for a 1x2, the 2x leg shows 2× the counterparty allocation.
+                dq = round(cp["qty"] * leg["leg_ratio"])
 
             # Split symbol on /
             sym = cp["symbol"]
