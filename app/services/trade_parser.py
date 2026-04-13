@@ -481,8 +481,10 @@ def strip_trailing_parenthetical(input_line: str) -> str:
       'sfrh7 96.25 96.50 c 1x2 4/500 (96.50)' -> 'sfrh7 96.25 96.50 c 1x2 4/500'
       'sfrh7 96.25 ^ 3/100 (2x call)' -> 'sfrh7 96.25 ^ 3/100'
     """
-    # Match a parenthetical at the end, after whitespace
-    match = re.search(r'\s+\([^)]+\)\s*$', input_line)
+    # Match a parenthetical at the end, after whitespace.
+    # Exclude functional operator tokens (+) and (-) which are used as
+    # direction overrides on CVD prices and D delta tokens.
+    match = re.search(r'\s+\((?![+-]\))[^)]*\)\s*$', input_line)
     if match:
         return input_line[:match.start()].strip()
     return input_line
@@ -524,15 +526,18 @@ def parse_bracket_wrapper(input_line: str) -> list[TradeInput]:
     for seg in segments:
         seg = seg.strip()
         if seg:
-            sub_parts = parse_trade_input(seg)
-            for t in sub_parts:
-                t.direction_side = pkg_side
-                t.suppress_premium = True
-                if t.volume == 0 and pkg_vol > 0:
-                    t.volume = pkg_vol
-                if t.premium == 0 and pkg_prem > 0:
-                    t.premium = pkg_prem
-                result.append(t)
+            # Normalise whitespace within the segment the same way parse_trade_input does,
+            # then call parse_single_leg directly — segments have no price/qty token.
+            import re as _re
+            seg = _re.sub(r'\s+', ' ', seg).strip()
+            seg_tokens = seg.split(' ')
+            t = parse_single_leg(seg_tokens)
+            validate_strikes(t)
+            t.direction_side = pkg_side
+            t.suppress_premium = True
+            t.volume = pkg_vol
+            t.premium = round(pkg_prem * 0.01, 4)
+            result.append(t)
     return result
 
 
