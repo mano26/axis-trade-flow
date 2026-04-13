@@ -312,7 +312,7 @@ class TestParentheticalStripping:
 class TestVSEdgeCases:
 
     def test_vs_at_end_raises(self):
-        with pytest.raises(ParseError, match="no right leg"):
+        with pytest.raises(ParseError, match="no right segment"):
             parse_trade_input("SFRH6 C 96.00 VS 4/500")
 
     def test_vs_stupid_same_direction(self):
@@ -420,3 +420,125 @@ class TestMultiContractInference:
         result = parse_trade_input("SFRH6 SFRM6 C 96.00 CS STUPID 4/500")
         assert len(result) == 2
         assert result[0].direction_side == result[1].direction_side
+
+
+# ---------------------------------------------------------------------------
+# Stupid / Strip / WITH
+# ---------------------------------------------------------------------------
+
+class TestStupidStripWith:
+
+    def test_stupid_same_contract_two_strikes_same_direction(self):
+        """SFRU6 96.00 96.25 C stupid 4/500 → two same-direction singles."""
+        result = parse_trade_input("SFRU6 96.00 96.25 C stupid 4/500")
+        assert len(result) == 2
+        assert result[0].direction_side == "B"
+        assert result[1].direction_side == "B"
+        assert result[0].strikes == [96.00]
+        assert result[1].strikes == [96.25]
+        assert all(t.suppress_premium for t in result)
+
+    def test_stupid_sell_direction(self):
+        result = parse_trade_input("SFRU6 96.00 96.25 C stupid 500@4")
+        assert all(t.direction_side == "S" for t in result)
+
+    def test_strip_four_contracts_same_strike(self):
+        """SFRM7 SFRU7 SFRZ7 SFRH8 99.00 C strip 45/750 → 4 singles, all buy."""
+        result = parse_trade_input("SFRM7 SFRU7 SFRZ7 SFRH8 99.00 C strip 45/750")
+        assert len(result) == 4
+        assert all(t.direction_side == "B" for t in result)
+        assert all(t.strikes == [99.0] for t in result)
+        assert all(t.is_strip for t in result)
+        assert all(t.suppress_premium for t in result)
+        # All distinct expiries
+        from app.services.strategy_handlers import build_legs
+        all_legs = []
+        for t in result:
+            all_legs.extend(build_legs(t))
+        expiries = [l["expiry"] for l in all_legs]
+        assert len(set(expiries)) == 4
+
+    def test_strip_volume_correct(self):
+        result = parse_trade_input("SFRM7 SFRU7 SFRZ7 SFRH8 99.00 C strip 45/750")
+        assert all(t.volume == 750 for t in result)
+
+    def test_strip_package_premium_correct(self):
+        """45 ticks → 0.45 stored."""
+        result = parse_trade_input("SFRM7 SFRU7 SFRZ7 SFRH8 99.00 C strip 45/750")
+        assert all(abs(t.premium - 0.45) < 1e-9 for t in result)
+
+    def test_with_straddle_and_single_call(self):
+        """SFRM6 96.75 ^ WITH SFRZ6 96.00 C stupid 25/1000 → straddle + single, both buy."""
+        result = parse_trade_input("SFRM6 96.75 ^ WITH SFRZ6 96.00 C stupid 25/1000")
+        assert len(result) == 2
+        assert result[0].strategy == "straddle"
+        assert result[1].strategy == "single"
+        assert result[0].direction_side == "B"
+        assert result[1].direction_side == "B"
+        assert all(t.suppress_premium for t in result)
+
+    def test_with_ps_and_cs_same_contract(self):
+        """SFRM6 96.00 96.25 PS WITH SFRM6 97.50 98.00 CS stupid 10/200 → 4 legs.
+        Both segments go the same direction (buy = debit on both).
+        Within each spread, legs still have their own B/S per convention."""
+        result = parse_trade_input("SFRM6 96.00 96.25 PS WITH SFRM6 97.50 98.00 CS stupid 10/200")
+        assert len(result) == 2
+        assert result[0].strategy == "ps"
+        assert result[1].strategy == "cs"
+        # Both segments take the overall buy direction
+        assert result[0].direction_side == "B"
+        assert result[1].direction_side == "B"
+        from app.services.strategy_handlers import build_legs
+        all_legs = []
+        for t in result:
+            all_legs.extend(build_legs(t))
+        assert len(all_legs) == 4
+        # Each spread has 1 buy leg and 1 sell leg within it
+        sides = [l["side"] for l in all_legs]
+        assert sides.count("B") == 2
+        assert sides.count("S") == 2
+
+    def test_with_three_segments(self):
+        result = parse_trade_input("SFRM6 96.00 C WITH SFRU6 96.00 C WITH SFRZ6 96.00 C stupid 4/500")
+        assert len(result) == 3
+        assert all(t.direction_side == "B" for t in result)
+        assert all(t.suppress_premium for t in result)
+
+    def test_with_sell_direction_all_sell(self):
+        result = parse_trade_input("SFRM6 96.00 C WITH SFRU6 96.00 C stupid 500@4")
+        assert all(t.direction_side == "S" for t in result)
+
+    def test_vs_still_flips_direction(self):
+        """VS without stupid still flips direction."""
+        result = parse_trade_input("SFRH6 C 96.00 VS SFRM6 C 96.25 4/500")
+        assert result[0].direction_side == "B"
+        assert result[1].direction_side == "S"
+
+    def test_vs_with_stupid_same_direction(self):
+        """VS with stupid flag → same direction."""
+        result = parse_trade_input("SFRH6 C 96.00 VS SFRM6 C 96.25 stupid 4/500")
+        assert result[0].direction_side == "B"
+        assert result[1].direction_side == "B"
+
+    def test_with_at_start_raises(self):
+        with pytest.raises(ParseError, match="no left segment"):
+            parse_trade_input("WITH SFRM6 C 96.00 4/500")
+
+    def test_with_at_end_raises(self):
+        with pytest.raises(ParseError, match="no right segment"):
+            parse_trade_input("SFRM6 C 96.00 WITH 4/500")
+
+    def test_ps_one_strike_in_with_raises(self):
+        """PS with only 1 strike inside WITH segment raises a clear error."""
+        with pytest.raises(ParseError, match="requires 2 strikes"):
+            parse_trade_input("SFRM6 96.25 PS WITH SFRM6 97.50 98.00 CS stupid 10/200")
+
+    def test_stupid_is_strip_flag(self):
+        result = parse_trade_input("SFRM7 SFRU7 SFRZ7 SFRH8 99.00 C strip 45/750")
+        assert all(t.is_strip for t in result)
+        assert all(t.is_stupid for t in result)
+
+    def test_stupid_flag_not_set_on_normal_spread(self):
+        result = parse_trade_input("SFRH6 C 96.00 96.25 CS 4/500")
+        assert result[0].is_stupid is False
+        assert result[0].is_strip is False

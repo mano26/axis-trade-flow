@@ -167,7 +167,7 @@ class TestVSTradeParsing:
         assert result[1].suppress_premium is True
 
     def test_vs_at_start_raises(self):
-        with pytest.raises(ParseError, match="no left leg"):
+        with pytest.raises(ParseError, match="no left segment"):
             parse_trade_input("VS SFRM6 C 96.25 4/500")
 
 
