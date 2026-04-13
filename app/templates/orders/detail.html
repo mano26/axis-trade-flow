@@ -225,6 +225,38 @@
 {% if order.fills %}
 <section>
     <h2>Counterparties</h2>
+
+    {# ── Allocated fills (read-only summary rows) ── #}
+    {% for fd in all_fills_display %}
+    {% if fd.fill.allocation_status == 'allocated' and fd.counterparties %}
+    <div style="margin-bottom: 16px;">
+        <p class="form-help" style="margin-bottom: 6px;">
+            Fill #{{ loop.index }} — {{ fd.fill.fill_quantity }} contracts
+            <span class="status-badge status-allocated" style="margin-left: 6px;">ALLOCATED</span>
+        </p>
+        <table class="legs-table cp-entry-table">
+            <thead>
+                <tr><th>Qty</th><th>Filling Broker</th><th>Counterparty/House</th><th>Bracket</th><th>Notes</th></tr>
+            </thead>
+            <tbody>
+                {% for cp in fd.counterparties %}
+                <tr>
+                    <td>{{ cp.quantity }}</td>
+                    <td>{{ cp.broker }}</td>
+                    <td>{{ cp.symbol }}</td>
+                    <td>{{ cp.bracket }}</td>
+                    <td>{{ cp.notes or '' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+    {% endfor %}
+
+    {# ── Latest fill entry form (only when pending allocation) ── #}
+    {% set fill = latest_fill %}
+    {% if fill and fill.allocation_status != 'allocated' %}
     {% if not has_prices %}
     <p class="form-help" style="color: var(--red); margin-bottom: 12px;">Save leg prices before entering counterparties.</p>
     {% endif %}
@@ -264,11 +296,9 @@
             </div>
             {% endif %}
         </div>
-
-        {% set fill = latest_fill %}
         {% if fill and has_prices %}
         <p class="form-help" style="margin-bottom: 8px;">
-            Allocate {{ fill.fill_quantity }} contracts. Quantities must sum to {{ fill.fill_quantity }}.
+            Allocate {{ fill.fill_quantity }} contracts (Fill #{{ order.fills|length }}). Quantities must sum to {{ fill.fill_quantity }}.
         </p>
         <table class="legs-table cp-entry-table">
             <thead>
@@ -307,14 +337,11 @@
         </table>
         <div style="margin-top: 8px;">
             <button type="button" class="btn btn-primary" onclick="submitCounterparties()">Save Counterparties</button>
-            {% if fill.allocation_status == 'allocated' %}
-            <span class="status-badge status-allocated" style="margin-left: 8px;">ALLOCATED</span>
-            {% else %}
             <span class="status-badge status-pending_allocation" style="margin-left: 8px;">PENDING</span>
-            {% endif %}
         </div>
         {% endif %}
     </form>
+    {% endif %}
 </section>
 {% endif %}
 
@@ -323,6 +350,9 @@
     <div class="action-buttons">
         {% if order.status == 'open' %}
         <a href="{{ url_for('orders.modify', order_id=order.id) }}" class="btn">Modify Order</a>
+        {% endif %}
+        {% if order.status == 'partial_fill' %}
+        <a href="{{ url_for('orders.modify_balance', order_id=order.id) }}" class="btn">Modify Balance</a>
         {% endif %}
         {% if order.status in ('open', 'partial_fill') %}
         <form method="POST" action="{{ url_for('orders.cancel', order_id=order.id) }}" style="display:inline">

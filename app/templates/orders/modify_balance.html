@@ -1,0 +1,53 @@
+{% extends "layouts/base.html" %}
+{% block title %}Modify Balance — Order #{{ order.ticket_display }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Modify Balance — Order #{{ order.ticket_display }}</h1>
+    <span class="status-badge status-partial_fill">PARTIAL FILL</span>
+</div>
+
+<section class="order-summary">
+    <div class="summary-grid">
+        <div class="summary-item">
+            <label>Original Trade String</label>
+            <span class="trade-string">{{ order.raw_input }}</span>
+        </div>
+        <div class="summary-item">
+            <label>Filled</label>
+            <span>{{ order.filled_quantity }} contracts</span>
+        </div>
+        <div class="summary-item">
+            <label>Working Balance</label>
+            <span>{{ order.remaining_quantity }} contracts</span>
+        </div>
+    </div>
+</section>
+
+<section>
+    <h2>Revised Balance</h2>
+    <p class="form-help" style="margin-bottom: 12px;">
+        Enter the revised trade string for the remaining
+        <strong>{{ order.remaining_quantity }} contracts</strong>.
+        Order #{{ order.ticket_display }} will be closed at {{ order.filled_quantity }} filled contracts,
+        and a new ticket will be opened for the balance.
+    </p>
+
+    <form method="POST" action="{{ url_for('orders.modify_balance', order_id=order.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="trade-input-row">
+            <input type="text" name="trade_string" class="trade-input"
+                   value="{{ order.raw_input }}"
+                   autofocus autocomplete="off" spellcheck="false"
+                   placeholder="Enter revised trade string for the balance">
+            <button type="submit" class="btn btn-primary"
+                    onclick="return confirm('This will close order #{{ order.ticket_display }} and open a new ticket for the balance. Continue?')">
+                Close Partial &amp; Open New Ticket
+            </button>
+        </div>
+    </form>
+</section>
+
+<a href="{{ url_for('orders.detail', order_id=order.id) }}" class="btn btn-back">← Back to Order</a>
+{% endblock %}

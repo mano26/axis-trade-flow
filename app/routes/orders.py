@@ -204,15 +204,24 @@ def detail(order_id):
             d["display_volume"] = leg.volume
         display_legs.append(d)
 
-    # Check if prices are entered (for blocking CP save)
-    has_prices = False
-    if latest_fill and latest_fill.leg_prices:
-        has_prices = len(latest_fill.leg_prices) > 0
+    # Check if prices are entered on the latest fill (for blocking CP save)
+    has_prices = bool(latest_fill and latest_fill.leg_prices)
+
+    # Collect all fills with their counterparties for display — not just the latest.
+    # Each entry: {fill, counterparties, has_prices}
+    all_fills_display = []
+    for fill in order.fills:
+        all_fills_display.append({
+            "fill": fill,
+            "counterparties": fill.counterparties,
+            "has_prices": bool(fill.leg_prices),
+        })
 
     return render_template(
         "orders/detail.html",
         order=order,
         latest_fill=latest_fill,
+        all_fills_display=all_fills_display,
         lookups=lookups,
         display_legs=display_legs,
         has_prices=has_prices,
@@ -277,8 +286,18 @@ def save_legs(order_id):
     """
     order = _get_order_or_404(order_id)
     try:
-        # Capture existing prices before deleting legs
+        # Capture existing prices from OrderLeg before deleting.
+        # Key by leg_index so we can restore after rebuild.
         existing_prices = {leg.leg_index: leg.price for leg in order.legs if leg.price is not None}
+
+        # Also capture the FillLegPrice records keyed by leg_index so that
+        # price reconciliation records survive a Save Legs operation.
+        fill_price_map: dict[int, list] = {}  # leg_index → list of (fill_id, price)
+        for fill in order.fills:
+            for flp in fill.leg_prices:
+                fill_price_map.setdefault(flp.leg_index, []).append(
+                    (flp.fill_id, flp.price)
+                )
 
         # Delete existing legs
         for leg in order.legs:
@@ -327,6 +346,26 @@ def save_legs(order_id):
             )
             db.session.add(leg)
             leg_index += 1
+
+        db.session.flush()
+
+        # Restore FillLegPrice records onto the new leg indices.
+        # The new legs occupy indices 0..leg_index-1 in the same positional
+        # order as before, so the old fill_price_map keys still correspond.
+        for old_idx, fill_price_entries in fill_price_map.items():
+            if old_idx < leg_index:  # leg still exists at this index
+                for fill_id, price in fill_price_entries:
+                    existing_flp = FillLegPrice.query.filter_by(
+                        fill_id=fill_id, leg_index=old_idx
+                    ).first()
+                    if existing_flp:
+                        existing_flp.price = price
+                    else:
+                        db.session.add(FillLegPrice(
+                            fill_id=fill_id,
+                            leg_index=old_idx,
+                            price=price,
+                        ))
 
         # For generic orders, set total_quantity from first leg volume
         if order.is_generic and leg_index > 0:
@@ -533,6 +572,121 @@ def modify(order_id):
         db.session.rollback()
         flash(f"Error modifying order: {e}", "danger")
     return redirect(url_for("orders.detail", order_id=order.id))
+
+
+@orders_bp.route("/<int:order_id>/modify-balance", methods=["GET", "POST"])
+@login_required
+def modify_balance(order_id):
+    """
+    Modify the working balance of a partially-filled order.
+
+    Workflow:
+    1. Validates the order is in PARTIAL_FILL status.
+    2. GET: Shows a form pre-populated with the current trade string and
+       remaining quantity so the user can revise the balance.
+    3. POST: Closes the partial fill (PARTIAL_CANCELLED → FILLED, total
+       shrinks to filled qty) then opens a new OPEN order for the revised
+       balance, copying house/account from the original.
+
+    The original order retains all fills and counterparties. The new order
+    gets the next sequential ticket number and starts clean (no fills).
+    """
+    order = _get_order_or_404(order_id)
+
+    if order.status != OrderStatus.PARTIAL_FILL:
+        flash("Only partially-filled orders can have their balance modified.", "warning")
+        return redirect(url_for("orders.detail", order_id=order.id))
+
+    if request.method == "GET":
+        return render_template(
+            "orders/modify_balance.html",
+            order=order,
+        )
+
+    new_input = request.form.get("trade_string", "").strip()
+    if not new_input:
+        flash("Please enter a trade string for the balance.", "warning")
+        return redirect(url_for("orders.modify_balance", order_id=order.id))
+
+    try:
+        # Parse the new trade string first — fail early before touching the DB
+        trade_parts = parse_trade_input(new_input)
+        all_legs = []
+        for part in trade_parts:
+            all_legs.extend(build_legs(part))
+
+        new_direction = trade_parts[0].direction_side
+        new_volume = trade_parts[0].volume
+        new_premium = trade_parts[0].premium
+        new_strategy = trade_parts[0].strategy
+
+        # ── Close the partial fill on the original order ──
+        old_status = order.status  # PARTIAL_FILL
+        order.transition_to(OrderStatus.PARTIAL_CANCELLED)
+        # transition_to(PARTIAL_CANCELLED) shrinks total_qty to filled_qty
+        # and sets status to FILLED internally.
+
+        audit_service.log_order_status_change(
+            order, current_user.tenant_id, old_status, order.status,
+            notes=f"Balance modified — new ticket will be opened for {new_volume} contracts.",
+        )
+
+        # ── Open new order for the balance ──
+        ticket_num = _get_next_ticket_number(current_user.tenant_id)
+        new_order = Order(
+            tenant_id=current_user.tenant_id,
+            ticket_number=ticket_num,
+            ticket_display=f"{ticket_num:04d}",
+            trade_date=date.today(),
+            raw_input=new_input,
+            direction=new_direction,
+            total_quantity=new_volume,
+            package_premium=new_premium,
+            strategy=new_strategy,
+            is_generic=False,
+            status=OrderStatus.OPEN,
+            created_by_id=current_user.id,
+            house=order.house,
+            account=order.account,
+        )
+        db.session.add(new_order)
+        db.session.flush()
+
+        for idx, leg_data in enumerate(all_legs):
+            leg = OrderLeg(
+                order_id=new_order.id,
+                leg_index=idx,
+                side=leg_data["side"],
+                volume=leg_data["volume"],
+                market=leg_data["market"],
+                contract_type=leg_data["contract_type"],
+                expiry=leg_data["expiry"],
+                strike=leg_data.get("strike"),
+                option_type=leg_data.get("option_type"),
+                price=leg_data.get("price"),
+                mo_card_code=leg_data.get("mo_card_code"),
+                package_premium=leg_data.get("package_premium"),
+                suppress_premium=leg_data.get("suppress_premium", False),
+            )
+            db.session.add(leg)
+
+        audit_service.log_order_created(new_order, current_user.tenant_id)
+        db.session.commit()
+
+        flash(
+            f"Order #{order.ticket_display} closed at {order.total_quantity} contracts. "
+            f"New order #{new_order.ticket_display} opened for {new_volume} contracts.",
+            "success",
+        )
+        return redirect(url_for("orders.detail", order_id=new_order.id))
+
+    except ParseError as e:
+        flash(f"Parse error: {e}", "danger")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error modifying balance: {e}", "danger")
+
+    return redirect(url_for("orders.modify_balance", order_id=order.id))
 
 
 # =========================================================================

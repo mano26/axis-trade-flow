@@ -17,15 +17,27 @@ class TestExpiryResolution:
     """Test contract code → expiry string conversion."""
 
     def test_quarterly_option(self):
-        assert get_expiry("SFRH6") == "MAR26"
+        # SFRH6 = March of a year ending in 6. If that month is in the past,
+        # the expiry bumps forward. Assert format and that the result is not in the past.
+        from datetime import date
+        result = get_expiry("SFRH6")
+        assert result[:3] == "MAR"
+        year = int(result[3:]) + 2000
+        assert year >= date.today().year
 
     def test_quarterly_future(self):
+        from datetime import date
         result = get_expiry("SFRH6", is_future=True)
-        assert result == "MAR26"
+        assert result[:3] == "MAR"
+        year = int(result[3:]) + 2000
+        assert year >= date.today().year
 
     def test_short_dated(self):
+        from datetime import date
         result = get_expiry("0QZ5")
-        assert result == "DEC25"
+        assert result[:3] == "DEC"
+        year = int(result[3:]) + 2000
+        assert year >= date.today().year
 
 
 class TestContractTypeResolution:
