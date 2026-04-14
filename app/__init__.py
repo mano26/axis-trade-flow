@@ -47,6 +47,28 @@ def create_app(config_name: str | None = None) -> Flask:
     csrf.init_app(app)
 
     # -----------------------------------------------------------------
+    # Jinja2 template filters
+    # -----------------------------------------------------------------
+    from zoneinfo import ZoneInfo
+    from datetime import datetime, timezone as _tz
+
+    _CHICAGO = ZoneInfo("America/Chicago")
+
+    @app.template_filter("chicago_time")
+    def chicago_time_filter(dt):
+        """Convert a UTC datetime to Chicago time, formatted HH:MM:SS CT."""
+        if dt is None:
+            return ""
+        if isinstance(dt, str):
+            try:
+                dt = datetime.fromisoformat(dt.replace("Z", "+00:00"))
+            except Exception:
+                return dt[:19]
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=_tz.utc)
+        return dt.astimezone(_CHICAGO).strftime("%H:%M:%S CT")
+
+    # -----------------------------------------------------------------
     # Register blueprints (route modules)
     # -----------------------------------------------------------------
     _register_blueprints(app)

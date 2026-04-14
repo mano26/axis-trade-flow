@@ -38,21 +38,31 @@
         </div>
         <div class="summary-item">
             <label>Time In</label>
-            <span>{{ order.time_in.strftime('%H:%M:%S') if order.time_in else '' }}</span>
+            <span>{{ order.time_in | chicago_time if order.time_in else '' }}</span>
         </div>
+        {% if order.fills %}
+        <div class="summary-item">
+            <label>Fill Time(s)</label>
+            <span>
+                {% for fill in order.fills %}
+                {{ fill.fill_timestamp | chicago_time }}{% if not loop.last %}, {% endif %}
+                {% endfor %}
+            </span>
+        </div>
+        {% endif %}
         {% if order.modification_timestamps %}
         <div class="summary-item">
             <label>Modified</label>
             <span>
                 {% for ts in order.modification_timestamps %}
-                {{ ts[:19] }}{% if not loop.last %}, {% endif %}
+                {{ ts | chicago_time }}{% if not loop.last %}, {% endif %}
                 {% endfor %}
             </span>
         </div>
         {% endif %}
         <div class="summary-item">
             <label>Time Out</label>
-            <span>{{ order.time_out.strftime('%H:%M:%S') if order.time_out else '—' }}</span>
+            <span>{{ order.time_out | chicago_time if order.time_out else '—' }}</span>
         </div>
     </div>
 </section>

@@ -6,7 +6,21 @@
 # =============================================================================
 
 from __future__ import annotations
+from zoneinfo import ZoneInfo
 from app.models.order import Order
+
+_EXCHANGE_TZ = ZoneInfo("America/Chicago")
+
+
+def _fmt_ts(dt) -> str:
+    """Convert a UTC-aware datetime to Chicago time and format as HH:MM:SS."""
+    if dt is None:
+        return ""
+    if dt.tzinfo is None:
+        # Treat naive datetimes as UTC
+        from datetime import timezone
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(_EXCHANGE_TZ).strftime("%H:%M:%S")
 
 
 def generate_ticket_html(order: Order) -> str:
@@ -56,13 +70,14 @@ def generate_ticket_html(order: Order) -> str:
     fut_on_buy = any(l["is_fut"] and l["side"] == "BUY" for l in legs)
     fut_on_sell = any(l["is_fut"] and l["side"] == "SELL" for l in legs)
 
-    # Collect bracket and broker
-    bracket = ""
+    # Collect ALL brackets across all fills (multiple partials → multiple brackets)
+    # and all brokers.
+    brackets_seen = []
     brokers = []
     for fill in order.fills:
         for cp in fill.counterparties:
-            if cp.bracket and not bracket:
-                bracket = cp.bracket
+            if cp.bracket and cp.bracket not in brackets_seen:
+                brackets_seen.append(cp.bracket)
             if cp.broker and cp.broker not in brokers:
                 brokers.append(cp.broker)
     broker_str = " / ".join(brokers)
@@ -79,18 +94,29 @@ def generate_ticket_html(order: Order) -> str:
     if max_rows > 4:
         max_rows = 4
 
-    # Timestamps
-    time_in = order.time_in.strftime("%H:%M:%S") if order.time_in else ""
-    time_out = order.time_out.strftime("%H:%M:%S") if order.time_out else ""
-    mods = ""
+    # Timestamps — all converted from UTC to Chicago time.
+    time_in = _fmt_ts(order.time_in)
+    time_out = _fmt_ts(order.time_out)
+
+    # Modification timestamps are stored as ISO strings (UTC). Parse and convert.
+    mod_times = []
     if order.modification_timestamps:
-        mods = ", ".join(ts[:8] for ts in order.modification_timestamps)
+        from datetime import datetime, timezone
+        for ts in order.modification_timestamps:
+            try:
+                dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                mod_times.append(_fmt_ts(dt))
+            except Exception:
+                mod_times.append(ts[:8])  # fallback: use raw string
+
+    # Per-fill timestamps — each fill records when it occurred.
+    fill_times = [_fmt_ts(f.fill_timestamp) for f in order.fills if f.fill_timestamp]
 
     html = _ticket_html_header(max_rows)
     html += _build_ticket(
-        order.ticket_display, legs, max_rows, bracket, broker_str,
+        order.ticket_display, legs, max_rows, brackets_seen, broker_str,
         account, bk_broker, fut_on_buy, fut_on_sell,
-        time_in, mods, time_out,
+        time_in, mod_times, fill_times, time_out,
     )
     html += "</div></body></html>"
     return html
@@ -175,9 +201,9 @@ body {{ font-family:Arial,Helvetica,sans-serif; background:#e0e0e0; padding:0; }
 
 def _build_ticket(
     ticket_num: str, legs: list, max_rows: int,
-    bracket: str, broker: str, account: str, bk_broker: str,
+    brackets: list, broker: str, account: str, bk_broker: str,
     fut_on_buy: bool, fut_on_sell: bool,
-    time_in: str, mods: str, time_out: str,
+    time_in: str, mod_times: list, fill_times: list, time_out: str,
 ) -> str:
     h = "<div class='ticket'>\n"
 
@@ -195,11 +221,16 @@ def _build_ticket(
     h += "</div>\n"
 
     # Timestamps (once, between body and footer)
+    # IN: order entry, FILL: each partial fill, MOD: each modification, OUT: completion
     ts_parts = []
     if time_in:
         ts_parts.append(f"IN: {time_in}")
-    if mods:
-        ts_parts.append(f"MOD: {mods}")
+    for ft in fill_times:
+        if ft and ft != time_in:
+            ts_parts.append(f"FILL: {ft}")
+    for mt in mod_times:
+        if mt:
+            ts_parts.append(f"MOD: {mt}")
     if time_out:
         ts_parts.append(f"OUT: {time_out}")
     if ts_parts:
@@ -207,7 +238,7 @@ def _build_ticket(
 
     # Footer
     h += "<div class='tkt-footer'>\n"
-    h += _build_bracket_row(bracket)
+    h += _build_bracket_row(brackets)
     h += "<div class='footer-row'>"
     h += "<div class='footer-section'>"
     h += "<span class='check-box'></span> INITIAL &nbsp;&nbsp;&nbsp;"
@@ -297,7 +328,17 @@ def _build_type_section(legs: list, side_name: str, type_name: str, max_rows: in
     return h
 
 
-def _build_bracket_row(active_bracket: str) -> str:
+def _build_bracket_row(active_brackets) -> str:
+    """
+    Render the bracket row. active_brackets may be a list of bracket letters
+    (for multiple partial fills in different brackets) or a single string.
+    All matching letters are circled.
+    """
+    if isinstance(active_brackets, str):
+        active_set = {active_brackets.upper()} if active_brackets else set()
+    else:
+        active_set = {b.upper() for b in active_brackets if b}
+
     letters = [
         "$", "A", "B", "C", "D", "E", "F", "G", "H", "I",
         "J", "K", "L", "M", "N", "O", "P", "Q", " ",
@@ -310,7 +351,7 @@ def _build_bracket_row(active_bracket: str) -> str:
             h += "<div style='width:8px'></div>\n"
         else:
             cls = "bkt-letter"
-            if l.upper() == active_bracket.upper():
+            if l.upper() in active_set:
                 cls += " circled"
             h += f"<div class='{cls}'>{l}</div>\n"
     h += "</div>\n"
@@ -334,18 +375,18 @@ def build_ticket_data_snapshot(order: Order) -> dict:
             "strike": f"{leg.strike:.2f}" if leg.strike else "",
             "price": str(leg.price) if leg.price else "",
         })
-    bracket = ""
+    brackets = []
     brokers = []
     for fill in order.fills:
         for cp in fill.counterparties:
-            if cp.bracket and not bracket:
-                bracket = cp.bracket
+            if cp.bracket and cp.bracket not in brackets:
+                brackets.append(cp.bracket)
             if cp.broker and cp.broker not in brokers:
                 brokers.append(cp.broker)
     return {
         "ticket_number": order.ticket_display,
         "legs": legs,
-        "bracket": bracket,
+        "brackets": brackets,
         "broker": " / ".join(brokers),
         "account": order.account,
         "bk_broker": order.bk_broker,
