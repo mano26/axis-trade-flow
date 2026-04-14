@@ -45,22 +45,23 @@ def generate_cards_html(order: Order) -> str:
             "is_fut": is_fut,
         })
 
-    # Base option volume — the smallest non-futures leg volume.
-    # For a 1x2 spread this is the 1x leg. Used to scale card quantities
-    # per leg so each card shows the correct ratio-adjusted counterparty qty.
-    opt_vols = [l["volume"] for l in legs if not l["is_fut"]]
-    base_opt_vol = min(opt_vols) if opt_vols else 1
+    # Leg ratio: each leg's share of the total order quantity.
+    # Using order.total_quantity as the base correctly handles both:
+    #   - Parsed ratio spreads (1x2: leg vols 4000/8000, total=4000 → ratios 1.0/2.0)
+    #   - Generic split legs  (500+500 buy + 1000 sell, total=1000 → ratios 0.5/0.5/1.0)
+    # The card quantity for each leg = cp.quantity * leg_ratio.
+    total_qty = order.total_quantity or 1
 
-    # Stamp each leg with its ratio relative to the base option leg.
     for l in legs:
         if l["is_fut"]:
             l["leg_ratio"] = 1.0  # futures qty scaled separately via delta_ratio
         else:
-            l["leg_ratio"] = l["volume"] / base_opt_vol
+            l["leg_ratio"] = l["volume"] / total_qty
 
     # Delta ratio for futures card quantities
     total_fut_vol = next((l["volume"] for l in legs if l["is_fut"]), 0)
-    delta_ratio = total_fut_vol / base_opt_vol if base_opt_vol else 0
+    opt_vol = next((l["volume"] for l in legs if not l["is_fut"]), total_qty)
+    delta_ratio = total_fut_vol / opt_vol if opt_vol else 0
 
     # Collect counterparties grouped by bracket + broker
     groups = []  # list of {bracket, broker, cps: [{qty, symbol}]}
