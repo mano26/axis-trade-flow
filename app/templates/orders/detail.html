@@ -138,9 +138,19 @@
     {% if order.fills %}
     <form method="POST" action="{{ url_for('orders.save_prices', order_id=order.id) }}" id="prices-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% if oldest_pending_fill %}
+        <input type="hidden" name="fill_id" value="{{ oldest_pending_fill.id }}">
+        {% endif %}
         <div style="margin-top: 8px;">
             <button type="submit" class="btn btn-primary">Save Prices</button>
+            {% if oldest_pending_fill and order.fills|length > 1 %}
+            <span class="form-help" style="margin-left: 8px;">
+                Saving prices for Fill #{{ order.fills.index(oldest_pending_fill) + 1 }}
+                ({{ oldest_pending_fill.fill_quantity }} contracts).
+            </span>
+            {% else %}
             <span class="form-help" style="margin-left: 8px;">Validated against package premium.</span>
+            {% endif %}
         </div>
     </form>
     {% endif %}
@@ -256,9 +266,19 @@
     {% if order.fills %}
     <form method="POST" action="{{ url_for('orders.save_prices', order_id=order.id) }}" id="prices-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% if oldest_pending_fill %}
+        <input type="hidden" name="fill_id" value="{{ oldest_pending_fill.id }}">
+        {% endif %}
         <div style="margin-top: 8px;">
             <button type="submit" class="btn btn-primary">Save Prices</button>
+            {% if oldest_pending_fill and order.fills|length > 1 %}
+            <span class="form-help" style="margin-left: 8px;">
+                Saving prices for Fill #{{ order.fills.index(oldest_pending_fill) + 1 }}
+                ({{ oldest_pending_fill.fill_quantity }} contracts).
+            </span>
+            {% else %}
             <span class="form-help" style="margin-left: 8px;">Validated against package premium.</span>
+            {% endif %}
         </div>
     </form>
     {% endif %}
@@ -297,14 +317,24 @@
     {% endif %}
     {% endfor %}
 
-    {# ── Latest fill entry form (only when pending allocation) ── #}
-    {% set fill = latest_fill %}
-    {% if fill and fill.allocation_status != 'allocated' %}
-    {% if not has_prices %}
-    <p class="form-help" style="color: var(--red); margin-bottom: 12px;">Save leg prices before entering counterparties.</p>
+    {# ── Entry form for every pending fill, in order ── #}
+    {# House/account only shown once on the first pending form #}
+    {% set ns = namespace(first_pending=true) %}
+    {% for fd in all_fills_display %}
+    {% if fd.fill.allocation_status != 'allocated' %}
+    {% set fill = fd.fill %}
+    {% set fill_num = loop.index %}
+    {% set fill_has_prices = fd.has_prices %}
+    {% if not fill_has_prices %}
+    <p class="form-help" style="color: var(--red); margin-bottom: 12px;">
+        Fill #{{ fill_num }} ({{ fill.fill_quantity }} contracts): save leg prices before entering counterparties.
+    </p>
     {% endif %}
-    <form method="POST" action="{{ url_for('orders.save_counterparties', order_id=order.id) }}" id="cp-form">
+    <form method="POST" action="{{ url_for('orders.save_counterparties', order_id=order.id) }}"
+          id="cp-form-{{ fill.id }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="fill_id" value="{{ fill.id }}">
+        {% if ns.first_pending %}
         <div class="summary-grid" style="margin-bottom: 16px;">
             <div class="form-group">
                 <label for="house">House</label>
@@ -339,9 +369,11 @@
             </div>
             {% endif %}
         </div>
-        {% if fill and has_prices %}
+        {% set ns.first_pending = false %}
+        {% endif %}
+        {% if fill_has_prices %}
         <p class="form-help" style="margin-bottom: 8px;">
-            Allocate {{ fill.fill_quantity }} contracts (Fill #{{ order.fills|length }}). Quantities must sum to {{ fill.fill_quantity }}.
+            Fill #{{ fill_num }} — Allocate {{ fill.fill_quantity }} contracts. Quantities must sum to {{ fill.fill_quantity }}.
         </p>
         <table class="legs-table cp-entry-table">
             <thead>
@@ -379,12 +411,15 @@
             </tbody>
         </table>
         <div style="margin-top: 8px;">
-            <button type="button" class="btn btn-primary" onclick="submitCounterparties()">Save Counterparties</button>
+            <button type="button" class="btn btn-primary"
+                    onclick="submitCounterparties('cp-form-{{ fill.id }}')">Save Counterparties</button>
             <span class="status-badge status-pending_allocation" style="margin-left: 8px;">PENDING</span>
         </div>
         {% endif %}
     </form>
+    {% if not loop.last %}<hr style="margin: 16px 0; border-color: #ddd;">{% endif %}
     {% endif %}
+    {% endfor %}
 </section>
 {% endif %}
 
@@ -480,8 +515,9 @@ document.addEventListener('click', function(e) {
     });
 });
 
-function submitCounterparties() {
-    var form = document.getElementById('cp-form');
+function submitCounterparties(formId) {
+    var form = document.getElementById(formId || 'cp-form');
+    if (!form) return;
     {% if order.has_futures_legs %}
     var bkField = document.getElementById('bk_broker');
     if (bkField && !bkField.value.trim()) {

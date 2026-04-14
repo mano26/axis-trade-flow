@@ -213,10 +213,18 @@ def detail(order_id):
             "has_prices": bool(fill.leg_prices),
         })
 
+    # Oldest pending fill — prices should be entered in chronological order.
+    # The prices form targets this fill so earlier partial fills get allocated first.
+    oldest_pending_fill = next(
+        (f for f in order.fills if f.allocation_status != "allocated"),
+        latest_fill,
+    )
+
     return render_template(
         "orders/detail.html",
         order=order,
         latest_fill=latest_fill,
+        oldest_pending_fill=oldest_pending_fill,
         all_fills_display=all_fills_display,
         lookups=lookups,
         display_legs=display_legs,
@@ -398,7 +406,14 @@ def save_prices(order_id):
     if not order.fills:
         flash("Please record a fill before entering prices.", "warning")
         return redirect(url_for("orders.detail", order_id=order.id))
-    fill = order.fills[-1]
+    # Use fill_id from form if provided so prices can be saved for any pending fill.
+    fill_id_str = request.form.get("fill_id", "").strip()
+    if fill_id_str:
+        fill = Fill.query.filter_by(
+            id=int(fill_id_str), order_id=order.id
+        ).first_or_404()
+    else:
+        fill = order.fills[-1]
     try:
         leg_prices = []
         for leg in order.legs:
@@ -444,9 +459,18 @@ def save_counterparties(order_id):
     if not order.fills:
         flash("Please record a fill before entering counterparties.", "warning")
         return redirect(url_for("orders.detail", order_id=order.id))
-    fill = order.fills[-1]
 
-    # Block if prices not entered
+    # Use fill_id from the form if provided — allows allocating any pending fill,
+    # not just the latest. Falls back to latest fill for backwards compatibility.
+    fill_id_str = request.form.get("fill_id", "").strip()
+    if fill_id_str:
+        fill = Fill.query.filter_by(
+            id=int(fill_id_str), order_id=order.id
+        ).first_or_404()
+    else:
+        fill = order.fills[-1]
+
+    # Block if prices not entered for this specific fill
     if not fill.leg_prices or len(fill.leg_prices) == 0:
         flash("Please save leg prices before entering counterparties.", "warning")
         return redirect(url_for("orders.detail", order_id=order.id))
