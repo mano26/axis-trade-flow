@@ -732,16 +732,19 @@ def _get_order_or_404(order_id):
 
 
 def _get_next_ticket_number(tenant_id):
+    """
+    Return the next ticket number for the tenant.
+    Counter is persistent across days — increments by 1 each order,
+    wraps from 9999 back to 1. Never resets daily.
+    Ticket display is always zero-padded to 4 digits (0001–9999).
+    """
     tenant = db.session.get(Tenant, tenant_id)
-    today = date.today()
-    if tenant.ticket_date != today:
-        tenant.current_ticket_number = 0
-        tenant.ticket_date = today
-    tenant.current_ticket_number += 1
-    if tenant.current_ticket_number > 9999:
-        tenant.current_ticket_number = 1
+    next_num = (tenant.current_ticket_number or 0) + 1
+    if next_num > 9999:
+        next_num = 1
+    tenant.current_ticket_number = next_num
     db.session.flush()
-    return tenant.current_ticket_number
+    return next_num
 
 
 def _extract_price_info(raw_input: str) -> tuple:

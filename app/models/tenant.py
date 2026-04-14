@@ -50,19 +50,20 @@ class Tenant(db.Model):
     )
 
     # --- Ticket Counter State ---
-    # Tracks the last ticket number issued for this tenant on the current
-    # trading day. Resets to 0 at the start of each day.
+    # Persistent sequential counter across all days. Increments 1 per order,
+    # wraps from 9999 back to 1. Never resets daily — each tenant has a
+    # continuous sequence so ticket numbers are unique within a tenant's lifetime
+    # (until the wrap, after which the ticket_date on the Order distinguishes them).
     current_ticket_number = db.Column(
         db.Integer,
         default=0,
         nullable=False,
-        doc="Last ticket number assigned today (0 = none yet). Resets daily."
+        doc="Last ticket number assigned. Increments each order, wraps 9999→1. Never resets daily."
     )
     ticket_date = db.Column(
         db.Date,
         nullable=True,
-        doc="The trading date for which current_ticket_number applies. "
-            "When today's date differs, the counter resets."
+        doc="Retained for schema compatibility. No longer used for counter reset logic."
     )
 
     # --- Timestamps ---
