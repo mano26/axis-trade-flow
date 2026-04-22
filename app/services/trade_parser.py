@@ -493,11 +493,43 @@ def validate_strikes(trade: TradeInput) -> bool:
 # Parenthetical Stripper
 # =========================================================================
 
+def extract_direction_hint(input_line: str) -> tuple[str, str]:
+    """
+    Check whether the trailing parenthetical contains a contract code
+    that acts as a direction hint for VS trades.
+
+    Syntax: any trade string ending with (CONTRACT) where CONTRACT is a
+    valid contract code (e.g. SFRU6, SFRH7, 0QM6).  The hinted contract
+    is the one that takes the price-format direction; all VS-opposite
+    segments flip.
+
+    Returns (hint_code, cleaned_input) where hint_code is "" if no hint
+    was found or the parens contain something that is not a contract code.
+
+    Examples:
+      'SFRM6 96.375 ^ VS SFRU6 96.50 ^ 16/1000 (SFRU6)'
+        -> hint="SFRU6",  cleaned='SFRM6 96.375 ^ VS SFRU6 96.50 ^ 16/1000'
+      'SFRM6 96.375 ^ VS SFRU6 96.50 ^ 16/1000 (2 legs)'
+        -> hint="", cleaned='SFRM6 96.375 ^ VS SFRU6 96.50 ^ 16/1000'
+    """
+    match = re.search(r'\s+\((?![+-]\))([^)]*)\)\s*$', input_line)
+    if not match:
+        return "", input_line
+    inner = match.group(1).strip()
+    cleaned = input_line[:match.start()].strip()
+    if inner and is_contract_code(inner):
+        return inner.upper(), cleaned
+    return "", cleaned
+
+
 def strip_trailing_parenthetical(input_line: str) -> str:
     """
     Remove a trailing parenthetical note from the trade string.
     These are human reminders like (96.50) or (2 legs) that should
     not be parsed. Only strips if it's at the end after the price format.
+
+    For contract-code direction hints like (SFRU6), use
+    extract_direction_hint() instead — this function strips those too.
 
     Examples:
       'sfrh7 96.25 96.50 c 1x2 4/500 (96.50)' -> 'sfrh7 96.25 96.50 c 1x2 4/500'
@@ -578,7 +610,11 @@ def parse_trade_input(input_line: str) -> list[TradeInput]:
     if input_line.startswith("["):
         return parse_bracket_wrapper(input_line)
 
-    # --- Strip trailing parenthetical notes ---
+    # --- Extract contract direction hint (e.g. (SFRU6)) before stripping ---
+    # For VS trades only: the hinted contract takes the price-format direction.
+    direction_hint, input_line = extract_direction_hint(input_line)
+
+    # --- Strip remaining trailing parenthetical notes ---
     input_line = strip_trailing_parenthetical(input_line)
 
     # --- Normalize whitespace around @ and / ---
@@ -746,6 +782,18 @@ def parse_trade_input(input_line: str) -> list[TradeInput]:
     if len(segment_token_lists) < 2:
         raise ParseError("WITH/VS found but could not split into segments.")
 
+    # If a direction hint was supplied (e.g. trailing (SFRU6)), find which
+    # segment index contains that contract code.  That segment takes the
+    # price-format direction; all VS-opposite segments flip.
+    # For WITH/stupid trades the hint is ignored (all same direction anyway).
+    hint_seg_idx = -1
+    if direction_hint and vs_mode:
+        for idx, seg_tokens in enumerate(segment_token_lists):
+            codes_upper = [t.upper() for t in seg_tokens if is_contract_code(t)]
+            if direction_hint.upper() in codes_upper:
+                hint_seg_idx = idx
+                break
+
     # Parse each segment independently
     result = []
     for seg_idx, seg_tokens in enumerate(segment_token_lists):
@@ -754,11 +802,18 @@ def parse_trade_input(input_line: str) -> list[TradeInput]:
         seg.premium = parsed_premium
         seg.suppress_premium = True
 
-        # Direction: WITH → all same; VS → flip all after first;
-        # stupid flag on any segment also forces same direction for VS
+        # Direction assignment:
+        # WITH / stupid → all same direction (hint irrelevant)
+        # VS with hint  → hinted segment gets parsed_side, others flip
+        # VS without hint → first segment gets parsed_side, others flip
         any_stupid = any(s.is_stupid for s in result) or seg.is_stupid
         if with_mode or any_stupid:
             seg.direction_side = parsed_side
+        elif hint_seg_idx >= 0:
+            # Hint active: hinted segment = parsed_side, all others = opposite
+            seg.direction_side = parsed_side if seg_idx == hint_seg_idx else (
+                "S" if parsed_side == "B" else "B"
+            )
         elif vs_mode and seg_idx > 0:
             seg.direction_side = "S" if parsed_side == "B" else "B"
         else:
@@ -776,6 +831,18 @@ def parse_trade_input(input_line: str) -> list[TradeInput]:
             )
 
         validate_strikes(seg)
-        result.append(seg)
+
+        # Multi-contract stupid expansion inside VS/WITH:
+        # e.g. "SFRU6 SFRZ6 96.50 C stupid VS SFRH7 99.00 C" — the left
+        # segment has 2 contracts + is_stupid and must expand to 2 legs,
+        # both taking the same direction as the segment.
+        if seg.is_stupid and len(real_codes) > 1:
+            for code in real_codes:
+                dup = copy.deepcopy(seg)
+                dup.contract_codes = [code]
+                add_pack_helper_if_short_dated(dup, code)
+                result.append(dup)
+        else:
+            result.append(seg)
 
     return result

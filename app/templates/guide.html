@@ -245,6 +245,11 @@ SFRH6 96.00 C 3/500 CVD 96.38(-) D 40   &lt;- force futures price to sell</div>
     <h3>VS — Opposing Segments</h3>
     <p><span class="code">VS</span> splits a trade into two segments going in <strong>opposite</strong> directions — the standard calendar/spread-of-spread separator.</p>
     <div class="code-block">SFRM6 96.00 C VS SFRU6 96.00 C 4/500    &lt;- buy M6, sell U6 call</div>
+    <p>By default the <strong>first segment</strong> takes the direction of the price format (buy for <span class="code">/</span>, sell for <span class="code">@</span>). To specify which segment is the buy/sell without reordering, add a <strong>contract code in parentheses</strong> at the end of the string. The named contract takes the price-format direction; the other flips.</p>
+    <div class="code-block">SFRM6 96.375 ^ VS SFRU6 96.50 ^ 16/1000           &lt;- buys M6, sells U6 (default)
+SFRM6 96.375 ^ VS SFRU6 96.50 ^ 16/1000 (SFRU6)  &lt;- sells M6, buys U6
+SFRM6 96.375 ^ VS SFRU6 96.50 ^ 1000@16 (SFRU6)  &lt;- buys M6, sells U6</div>
+    <div class="tip-box">The parenthetical hint must be an exact contract code (e.g. <span class="code">SFRU6</span>, <span class="code">SFRH7</span>, <span class="code">0QM6</span>). Anything else — a note, a number, a strike — is stripped and ignored as usual.</div>
 
     <h3>WITH — Same-Direction Segments</h3>
     <p><span class="code">WITH</span> splits a trade into two or more segments going in the <strong>same</strong> direction. Use it when the two segments have different strategies or different contracts.</p>
