@@ -110,9 +110,12 @@ document.getElementById('order-form').addEventListener('submit', function(e) {
         return;
     }
 
-    // Extract price from trade string
+    // Extract price from trade string.
+    // Normalise spaces around @ and / first so both '5000@2.25' and
+    // '5000 @ 2.25' are treated identically before tokenising.
     var price = 0;
-    var tokens = tradeStr.split(/\s+/);
+    var normStr = tradeStr.replace(/\s*@\s*/g, '@').replace(/\s*\/\s*/g, '/');
+    var tokens = normStr.split(/\s+/);
     for (var i = 0; i < tokens.length; i++) {
         var t = tokens[i];
         if (t.indexOf('/') > -1 && t.indexOf('@') === -1) {
@@ -131,10 +134,9 @@ document.getElementById('order-form').addEventListener('submit', function(e) {
     // Check for 0.25 tick increment (not 0.50)
     if (price > 0 && (price % 0.5) !== 0 && (price % 0.25) === 0 && !isGeneric) {
         e.preventDefault();
-        var msg = 'This trade has a 0.25 tick increment price (' + price + ' ticks).\n\n' +
-                  'Is this a quarter-tick eligible month?\n\n' +
-                  'Click OK if eligible (will process normally).\n' +
-                  'Click Cancel to enter as generic trade.';
+        var msg = 'This trade has a 0.25 tick price (' + price + ' ticks).\n\n' +
+                  'OK  →  Submit as parsed trade (quarter-tick eligible month)\n' +
+                  'Cancel  →  Submit as generic trade (enter legs manually)';
         if (confirm(msg)) {
             document.getElementById('quarter_tick_hidden').value = '1';
             e.target.submit();
