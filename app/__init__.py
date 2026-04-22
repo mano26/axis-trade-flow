@@ -49,10 +49,12 @@ def create_app(config_name: str | None = None) -> Flask:
     # -----------------------------------------------------------------
     # Jinja2 template filters
     # -----------------------------------------------------------------
-    from zoneinfo import ZoneInfo
-    from datetime import datetime, timezone as _tz
-
-    _CHICAGO = ZoneInfo("America/Chicago")
+    from datetime import datetime, timezone as _tz, timedelta
+    try:
+        from zoneinfo import ZoneInfo
+        _CHICAGO = ZoneInfo("America/Chicago")
+    except Exception:
+        _CHICAGO = _tz(timedelta(hours=-6), "CT")  # CST fallback
 
     @app.template_filter("chicago_time")
     def chicago_time_filter(dt):

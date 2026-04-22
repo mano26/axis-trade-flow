@@ -6,10 +6,15 @@
 # =============================================================================
 
 from __future__ import annotations
-from zoneinfo import ZoneInfo
 from app.models.order import Order
 
-_EXCHANGE_TZ = ZoneInfo("America/Chicago")
+try:
+    from zoneinfo import ZoneInfo
+    _EXCHANGE_TZ = ZoneInfo("America/Chicago")
+except Exception:
+    # tzdata package not installed — fall back to UTC offset
+    from datetime import timezone, timedelta
+    _EXCHANGE_TZ = timezone(timedelta(hours=-6), "CT")  # CST fallback
 
 
 def _fmt_ts(dt) -> str:
@@ -17,7 +22,6 @@ def _fmt_ts(dt) -> str:
     if dt is None:
         return ""
     if dt.tzinfo is None:
-        # Treat naive datetimes as UTC
         from datetime import timezone
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(_EXCHANGE_TZ).strftime("%H:%M:%S")
