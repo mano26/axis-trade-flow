@@ -1045,8 +1045,11 @@ def _extract_price_info(raw_input: str) -> tuple:
     Works for both parsed and generic modes.
     Returns (direction, volume, premium).
     """
-    # Strip trailing parenthetical
+    # Strip trailing parenthetical, then normalise spaces around @ and /
+    # so '5000 @ 2.25' and '4/500' both tokenise correctly.
     cleaned = re.sub(r'\s+\([^)]+\)\s*$', '', raw_input.strip())
+    cleaned = re.sub(r'\s*@\s*', '@', cleaned)
+    cleaned = re.sub(r'\s*/\s*', '/', cleaned)
     tokens = cleaned.split()
 
     direction = ""
