@@ -20,6 +20,7 @@
             <a href="{{ url_for('orders.index') }}" class="nav-link">Orders</a>
             <a href="{{ url_for('reports.order_log') }}" class="nav-link">Order Log</a>
             <a href="{{ url_for('reports.eod_summary') }}" class="nav-link">EOD Summary</a>
+            <a href="{{ url_for('auth.guide') }}" class="nav-link">Guide</a>
             {% if current_user.is_admin() %}
             <a href="{{ url_for('admin.lookup_list') }}" class="nav-link">Lookups</a>
             <a href="{{ url_for('admin.user_list') }}" class="nav-link">Users</a>

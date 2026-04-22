@@ -1,0 +1,371 @@
+{% extends "layouts/base.html" %}
+{% block title %}User Guide — AXIS Trade Flow{% endblock %}
+
+{% block head %}
+<style>
+.guide-wrap { max-width: 900px; margin: 0 auto; padding: 32px 24px 60px; }
+.guide-hero { background: var(--navy); color: #fff; border-radius: 8px; padding: 32px 36px; margin-bottom: 36px; }
+.guide-hero h1 { font-size: 28px; font-weight: 900; letter-spacing: 2px; margin-bottom: 6px; }
+.guide-hero p { color: rgba(255,255,255,0.75); font-size: 14px; margin: 0; }
+.guide-toc { background: #f5f7fa; border: 1px solid #dde3ec; border-radius: 6px; padding: 18px 24px; margin-bottom: 36px; }
+.guide-toc h3 { font-size: 11px; font-weight: 700; letter-spacing: 2px; color: #888; text-transform: uppercase; margin-bottom: 10px; }
+.guide-toc ol { margin: 0; padding-left: 20px; }
+.guide-toc li { margin: 4px 0; }
+.guide-toc a { color: var(--navy); font-weight: 600; font-size: 13px; text-decoration: none; }
+.guide-toc a:hover { text-decoration: underline; }
+.guide-section { margin-bottom: 40px; }
+.guide-section h2 { font-size: 19px; font-weight: 900; color: var(--navy); border-bottom: 2px solid var(--navy); padding-bottom: 6px; margin-bottom: 16px; }
+.guide-section h3 { font-size: 14px; font-weight: 700; color: #333; margin: 20px 0 8px; }
+.guide-section p { font-size: 14px; line-height: 1.7; color: #333; margin-bottom: 10px; }
+.guide-section ul, .guide-section ol { font-size: 14px; line-height: 1.7; color: #333; margin: 0 0 10px 0; padding-left: 22px; }
+.guide-section li { margin-bottom: 4px; }
+.code { font-family: 'Courier New', Courier, monospace; background: #eef2f7; border: 1px solid #d0d9e8; border-radius: 3px; padding: 1px 5px; font-size: 13px; color: #1a3a6b; }
+.code-block { font-family: 'Courier New', Courier, monospace; background: #f0f4fa; border: 1px solid #c8d5e8; border-radius: 5px; padding: 12px 16px; font-size: 13px; color: #1a3a6b; line-height: 1.8; margin: 10px 0 14px; white-space: pre-wrap; }
+.strat-table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 10px 0 16px; }
+.strat-table th { background: var(--navy); color: #fff; text-align: left; padding: 7px 10px; font-weight: 700; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
+.strat-table td { padding: 7px 10px; border-bottom: 1px solid #e5e9f0; vertical-align: top; }
+.strat-table tr:nth-child(even) td { background: #f8f9fb; }
+.workflow-steps { counter-reset: step; list-style: none; padding: 0; margin: 0 0 14px; }
+.workflow-steps li { counter-increment: step; display: flex; gap: 14px; align-items: flex-start; margin-bottom: 12px; }
+.workflow-steps li::before { content: counter(step); background: var(--navy); color: #fff; font-size: 12px; font-weight: 900; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+.workflow-steps li span { font-size: 14px; line-height: 1.6; color: #333; }
+.tip-box { background: #fffbe6; border-left: 4px solid #f5a623; border-radius: 0 5px 5px 0; padding: 10px 14px; margin: 12px 0; font-size: 13px; color: #555; }
+.warn-box { background: #fff1f0; border-left: 4px solid #cc2222; border-radius: 0 5px 5px 0; padding: 10px 14px; margin: 12px 0; font-size: 13px; color: #555; }
+.guide-nav-btn { display: inline-block; background: var(--navy); color: #fff; padding: 10px 24px; border-radius: 5px; font-weight: 700; font-size: 14px; text-decoration: none; margin-top: 8px; }
+.guide-nav-btn:hover { background: #1a3f7a; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="guide-wrap">
+
+<div class="guide-hero">
+    <h1>AXIS TRADE FLOW — USER GUIDE</h1>
+    <p>Everything you need to enter trades, record fills, and generate cards &amp; tickets.</p>
+</div>
+
+<div class="guide-toc">
+    <h3>Contents</h3>
+    <ol>
+        <li><a href="#workflow">Workflow Overview</a></li>
+        <li><a href="#syntax">Trade String Syntax</a></li>
+        <li><a href="#strategies">Strategy Keywords &amp; Aliases</a></li>
+        <li><a href="#price-format">Price Format &amp; Direction</a></li>
+        <li><a href="#advanced">Advanced Modifiers (CVD, Ratios, Stupid/Strip)</a></li>
+        <li><a href="#tick-check">Quarter-Tick Check</a></li>
+        <li><a href="#generic">Generic Trade Mode</a></li>
+        <li><a href="#fills">Recording Fills</a></li>
+        <li><a href="#cards-tickets">Cards &amp; Tickets</a></li>
+        <li><a href="#amend">Amending a Trade</a></li>
+        <li><a href="#order-log">Order Log</a></li>
+    </ol>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="guide-section" id="workflow">
+    <h2>1 — Workflow Overview</h2>
+    <p>Every trade follows the same sequence. Completing each step in order ensures the ticket and cards are accurate before printing.</p>
+    <ol class="workflow-steps">
+        <li><span><strong>Enter the trade string</strong> on the Orders page and submit. The system parses the string and creates a confirmed order record.</span></li>
+        <li><span><strong>Record a fill</strong> once the trade is done. Enter the filled quantity (may be partial).</span></li>
+        <li><span><strong>Save leg prices</strong> — enter the price for each leg. The system validates that leg prices reconcile to the stated package premium.</span></li>
+        <li><span><strong>Save counterparties</strong> — enter the filling broker, counterparty, and bracket for each lot allocation.</span></li>
+        <li><span><strong>Print cards and ticket</strong> — only available once all counterparties are allocated.</span></li>
+    </ol>
+    <div class="tip-box">For partial fills, repeat steps 2–4 for each partial. Each fill gets its own counterparty allocation. Cards and tickets always reflect the complete order.</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="guide-section" id="syntax">
+    <h2>2 — Trade String Syntax</h2>
+    <p>The general structure is:</p>
+    <div class="code-block">&lt;contract&gt; &lt;strike(s)&gt; &lt;C/P&gt; &lt;strategy&gt; [ratio] &lt;price_format&gt;</div>
+
+    <h3>Contract Codes</h3>
+    <p>Use standard CME Globex codes for SOFR options. Examples:</p>
+    <div class="code-block">SFRH6    SFRM6    SFRU6    SFRZ6
+SFRH27   SFRM7    SFRU7    SFRZ7
+0QH6     0QM6     2QZ6</div>
+    <p>Short-dated pack codes (<span class="code">0QN6</span>, <span class="code">2QM6</span>, etc.) are recognised automatically.</p>
+
+    <h3>Strikes</h3>
+    <p>List one or more strikes as decimals after the contract code. Order does not matter — the system sorts them correctly for each strategy.</p>
+    <div class="code-block">SFRH6 96.25 CS 4/500           &lt;- one strike per leg inferred
+SFRH6 96.00 96.25 CS 4/500    &lt;- explicit strikes
+SFRH6 95.75 96.00 96.25 C FLY 2/200</div>
+
+    <h3>Option Type</h3>
+    <p>Use <span class="code">C</span> or <span class="code">CALL</span> for calls, <span class="code">P</span> or <span class="code">PUT</span> for puts. For strategies that imply a type (CS, PS, BFLYC, BFLYP, etc.) the type token may be omitted.</p>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="guide-section" id="strategies">
+    <h2>3 — Strategy Keywords &amp; Aliases</h2>
+    <p>Any of the aliases below can be used interchangeably — the system normalises them.</p>
+
+    <table class="strat-table">
+        <thead><tr><th>Strategy</th><th>Accepted Keywords</th><th>Strikes</th><th>Example</th></tr></thead>
+        <tbody>
+        <tr>
+            <td><strong>Single Option</strong></td>
+            <td><span class="code">C</span> / <span class="code">P</span> (no strategy keyword needed)</td>
+            <td>1</td>
+            <td><span class="code">SFRH6 96.00 C 3/500</span></td>
+        </tr>
+        <tr>
+            <td><strong>Straddle</strong></td>
+            <td><span class="code">^</span></td>
+            <td>1</td>
+            <td><span class="code">SFRH6 96.00 ^ 3/500</span></td>
+        </tr>
+        <tr>
+            <td><strong>Strangle</strong></td>
+            <td><span class="code">^^</span></td>
+            <td>2</td>
+            <td><span class="code">SFRH6 95.75 96.25 ^^ 4/500</span></td>
+        </tr>
+        <tr>
+            <td><strong>Risk Reversal</strong></td>
+            <td><span class="code">RR</span> · <span class="code">RISKREV</span> · <span class="code">RV</span></td>
+            <td>2</td>
+            <td><span class="code">SFRH6 95.75 96.25 RR 3/500</span></td>
+        </tr>
+        <tr>
+            <td><strong>Call Spread</strong></td>
+            <td><span class="code">CS</span> · <span class="code">CALLSPREAD</span> · <span class="code">CALLSP</span> · <span class="code">CSPD</span></td>
+            <td>2</td>
+            <td><span class="code">SFRH6 96.00 96.25 CS 4/500</span></td>
+        </tr>
+        <tr>
+            <td><strong>Put Spread</strong></td>
+            <td><span class="code">PS</span> · <span class="code">PUTSPREAD</span> · <span class="code">PUTSP</span> · <span class="code">PSPD</span></td>
+            <td>2</td>
+            <td><span class="code">SFRH6 95.75 96.00 PS 4/500</span></td>
+        </tr>
+        <tr>
+            <td><strong>Call Butterfly</strong></td>
+            <td><span class="code">BFLYC</span> · <span class="code">C FLY</span> · <span class="code">CALLFLY</span> · <span class="code">BUTTERFLYC</span></td>
+            <td>3</td>
+            <td><span class="code">SFRH6 96.00 96.25 96.50 C FLY 2/200</span></td>
+        </tr>
+        <tr>
+            <td><strong>Put Butterfly</strong></td>
+            <td><span class="code">BFLYP</span> · <span class="code">P FLY</span> · <span class="code">PUTBFLY</span> · <span class="code">BUTTERFLYP</span></td>
+            <td>3</td>
+            <td><span class="code">SFRH6 95.50 95.75 96.00 P FLY 2/200</span></td>
+        </tr>
+        <tr>
+            <td><strong>Butterfly (mixed)</strong></td>
+            <td><span class="code">BFLY</span> · <span class="code">FLY</span> · <span class="code">BUTTERFLY</span></td>
+            <td>3</td>
+            <td><span class="code">SFRH6 95.75 96.00 96.25 FLY 2/200</span></td>
+        </tr>
+        <tr>
+            <td><strong>Call Condor</strong></td>
+            <td><span class="code">CONDORC</span> · <span class="code">C CON</span> · <span class="code">CALLCONDOR</span></td>
+            <td>4</td>
+            <td><span class="code">SFRH6 96.00 96.25 96.50 96.75 C CON 2/200</span></td>
+        </tr>
+        <tr>
+            <td><strong>Put Condor</strong></td>
+            <td><span class="code">CONDORP</span> · <span class="code">P CON</span> · <span class="code">PUTCONDOR</span></td>
+            <td>4</td>
+            <td><span class="code">SFRH6 95.25 95.50 95.75 96.00 P CON 2/200</span></td>
+        </tr>
+        <tr>
+            <td><strong>Iron Condor</strong></td>
+            <td><span class="code">IC</span> · <span class="code">IRON CON</span> · <span class="code">IRONCONDOR</span></td>
+            <td>4</td>
+            <td><span class="code">SFRH6 95.75 96.00 96.25 96.50 IC 4/500</span></td>
+        </tr>
+        <tr>
+            <td><strong>Iron Butterfly</strong></td>
+            <td><span class="code">IRON FLY</span></td>
+            <td>3</td>
+            <td><span class="code">SFRH6 95.75 96.00 96.25 IRON FLY 3/300</span></td>
+        </tr>
+        <tr>
+            <td><strong>Call Tree (Xmas)</strong></td>
+            <td><span class="code">TREE</span> · <span class="code">CTREE</span> · <span class="code">C TREE</span> · <span class="code">XMAS</span></td>
+            <td>3</td>
+            <td><span class="code">SFRH6 96.00 96.25 96.50 C TREE 4/500</span></td>
+        </tr>
+        <tr>
+            <td><strong>Put Tree (Xmas)</strong></td>
+            <td><span class="code">PTREE</span> · <span class="code">P TREE</span> · <span class="code">PUTTREE</span> · <span class="code">PUTXMAS</span></td>
+            <td>3</td>
+            <td><span class="code">SFRH6 95.50 95.75 96.00 P TREE 5/500</span></td>
+        </tr>
+        <tr>
+            <td><strong>Calendar Spread</strong></td>
+            <td>Two contract codes + <span class="code">CS</span> or <span class="code">PS</span> with 1 strike</td>
+            <td>1</td>
+            <td><span class="code">SFRM6 SFRU6 CS 96.00 4/500</span></td>
+        </tr>
+        </tbody>
+    </table>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="guide-section" id="price-format">
+    <h2>4 — Price Format &amp; Direction</h2>
+    <p>The price/quantity token tells the system both the package premium and the direction of the trade.</p>
+
+    <h3>Buy (Debit)</h3>
+    <div class="code-block">price/qty        e.g.  4/500   (pay 4 ticks for 500 lots)</div>
+    <p>The number before the slash is the price in ticks. The number after is the quantity.</p>
+
+    <h3>Sell (Credit)</h3>
+    <div class="code-block">qty@price        e.g.  500@4   (collect 4 ticks on 500 lots)</div>
+    <p>Spaces around <span class="code">@</span> and <span class="code">/</span> are accepted: <span class="code">500 @ 4</span> and <span class="code">500@4</span> both work.</p>
+
+    <div class="tip-box"><strong>Prices are in ticks.</strong> The system converts to decimal internally (4 ticks = 0.04 points). Tick size for SOFR options is 0.25 of a basis point (0.0025), so 4 ticks = 0.01 points.</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="guide-section" id="advanced">
+    <h2>5 — Advanced Modifiers</h2>
+
+    <h3>Ratio Spreads</h3>
+    <p>Add a ratio token like <span class="code">1X2</span>, <span class="code">1X3</span>, or <span class="code">1X2X1</span> to create unequal-leg structures. The base quantity from the price format is multiplied by each ratio number.</p>
+    <div class="code-block">SFRU6 96.3125 96.1875 P 1X2 7.5/4000    &lt;- buy 4000 @ 96.3125, sell 8000 @ 96.1875
+SFRH6 96.00 96.25 96.50 C FLY 1X2X1 2/200</div>
+
+    <h3>CVD (Covered / Delta Hedge)</h3>
+    <p>Appending <span class="code">CVD &lt;futures_price&gt; D &lt;delta%&gt;</span> adds a futures leg to the trade at the specified delta.</p>
+    <div class="code-block">SFRH6 96.00 C 3/500 CVD 96.38 D 40      &lt;- buy 500 calls, sell 200 futures (40% delta)
+SFRH6 96.00 C 3/500 CVD 96.38 D 40 (+)  &lt;- force futures to buy side
+SFRH6 96.00 C 3/500 CVD 96.38(-) D 40   &lt;- force futures price to sell</div>
+
+    <h3>VS — Opposing Segments</h3>
+    <p><span class="code">VS</span> splits a trade into two segments going in <strong>opposite</strong> directions — the standard calendar/spread-of-spread separator.</p>
+    <div class="code-block">SFRM6 96.00 C VS SFRU6 96.00 C 4/500    &lt;- buy M6, sell U6 call</div>
+
+    <h3>WITH — Same-Direction Segments</h3>
+    <p><span class="code">WITH</span> splits a trade into two or more segments going in the <strong>same</strong> direction. Use it when the two segments have different strategies or different contracts.</p>
+    <div class="code-block">SFRM6 96.75 ^ WITH SFRZ6 96.00 C stupid 25/1000   &lt;- buy straddle AND buy call
+SFRM6 96.00 96.25 PS WITH SFRM6 97.50 98.00 CS stupid 10/200</div>
+
+    <h3>STUPID / STRIP</h3>
+    <p>Modifiers that indicate all segments go the same direction (no direction flip).</p>
+    <ul>
+        <li><span class="code">STUPID</span> — same-direction 2-segment trade</li>
+        <li><span class="code">STRIP</span> — same-direction 3+ segment trade (typically multiple contracts, same strike)</li>
+    </ul>
+    <div class="code-block">SFRU6 96.00 96.25 C stupid 4/500               &lt;- buy both calls
+SFRM7 SFRU7 SFRZ7 SFRH8 99.00 C strip 45/750  &lt;- buy all 4 contracts</div>
+
+    <h3>Bracket Wrapper [ ]</h3>
+    <p>Wrap multiple comma-separated segments in square brackets with a shared price/quantity at the end. Each segment inside uses its own contract and strategy but shares the package price.</p>
+    <div class="code-block">[SFRH6 C 96.00, SFRM6 P 95.50] 4/500</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="guide-section" id="tick-check">
+    <h2>6 — Quarter-Tick Check</h2>
+    <p>When a trade price falls on a 0.25-tick increment (e.g. 2.25 ticks, 4.75 ticks) rather than a half-tick or whole-tick, the system pauses and asks for confirmation before submitting.</p>
+    <p>A dialog will appear:</p>
+    <ul>
+        <li><strong>OK</strong> — the contract month is quarter-tick eligible. Submit as a parsed trade.</li>
+        <li><strong>Cancel</strong> — submit as a generic trade so you can enter legs manually.</li>
+    </ul>
+    <div class="warn-box">Quarter-tick pricing is only valid for eligible expiry months. If you are unsure, click Cancel and enter as generic.</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="guide-section" id="generic">
+    <h2>7 — Generic Trade Mode</h2>
+    <p>For complex or non-standard trades that the parser cannot handle, check the <strong>Generic Trade</strong> box before submitting. The trade string is stored as a reference but the system does not attempt to parse it into legs.</p>
+    <p>After creating a generic order:</p>
+    <ol class="workflow-steps">
+        <li><span>Go to the order detail page. The legs table will be empty and fully editable.</span></li>
+        <li><span>Enter each leg manually: B/S, volume, market, contract, expiry, strike, C/P.</span></li>
+        <li><span>Click <strong>Save Legs</strong>. You can add or remove rows before saving.</span></li>
+        <li><span>Then proceed with Record Fill → Save Prices → Save Counterparties as normal.</span></li>
+    </ol>
+    <div class="tip-box">The package premium from the trade string is used to validate prices on a generic order. Make sure the total net dollar value of all legs (qty × price) divided by the total order quantity equals the stated premium.</div>
+    <p><strong>Split fills / averaged prices:</strong> You can enter the same side as two rows at different prices to represent an average fill. For example, two buy rows at 500 lots each for a 1000-lot order. Price validation will average them against the stated premium correctly.</p>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="guide-section" id="fills">
+    <h2>8 — Recording Fills</h2>
+
+    <h3>Single Fill</h3>
+    <p>On the order detail page, enter the fill quantity in the <em>Record Fill</em> section and click <strong>Record Fill</strong>. For a complete fill enter the remaining quantity (pre-filled by default).</p>
+
+    <h3>Partial Fills</h3>
+    <p>Enter a quantity less than the total to record a partial fill. The order status becomes <em>PARTIAL FILL</em>. Repeat as needed — each partial gets its own set of prices and counterparties. The balance remains open for additional fills.</p>
+
+    <h3>Save Prices</h3>
+    <p>Enter the price for each leg in the Confirmation Legs table. When there are multiple pending fills, prices are saved to the oldest unallocated fill first. The system validates that prices reconcile to the package premium before saving.</p>
+
+    <h3>Save Counterparties</h3>
+    <p>For each fill enter the filling broker, counterparty symbol, bracket, and quantity. Quantities must sum to the fill quantity. Once saved the fill status becomes <em>ALLOCATED</em>.</p>
+
+    <div class="tip-box">If you record a second partial before allocating the first, both pending fills will appear with separate entry forms. Work from top to bottom — allocate the earliest fill first.</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="guide-section" id="cards-tickets">
+    <h2>9 — Cards &amp; Tickets</h2>
+    <p>Cards and tickets are available from the order detail page and the order log once all fills are fully allocated.</p>
+
+    <h3>Cards</h3>
+    <p>One card is printed per leg per bracket. Each card shows the quantity, contract/month, strike, premium, counterparty, and bracket. For multi-leg trades the bracket letter is circled and suffixed with <em>6</em> to indicate a spread.</p>
+    <p>Quantities on the card are scaled by the leg's ratio relative to the base lot size. For a 1×2 spread where the counterparty allocated 1000 lots at the base leg, the 2× leg card will show 2000.</p>
+
+    <h3>Ticket</h3>
+    <p>One ticket per order. Shows all legs on both buy and sell sides, plus timestamps (IN, FILL, MOD, OUT) all in Chicago time. All brackets used across all fills are circled in the bracket row at the bottom.</p>
+
+    <div class="tip-box">Use your browser's Print function (Ctrl+P) on the cards or ticket page. The print stylesheet removes the navigation bar and formats each card to 3.5×5.5 inches, each ticket to 8×5.5 inches.</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="guide-section" id="amend">
+    <h2>10 — Amending a Trade</h2>
+    <p>After a fill is fully allocated you can still correct it. On the order detail page, find the allocated fill in the Counterparties section and click <strong>Edit</strong>.</p>
+    <p>The amendment form lets you change:</p>
+    <ul>
+        <li>Leg prices (re-validated against the package premium)</li>
+        <li>Filling broker, counterparty, and bracket for each allocation</li>
+        <li>House and account</li>
+    </ul>
+    <p>Save Amendment commits both price and counterparty changes in a single transaction. The order status updates to <em>AMENDED</em> and a full before/after record is written to the audit trail.</p>
+    <div class="tip-box">To amend the trade structure itself (strikes, strategy, direction) use the <strong>Modify Order</strong> button. This re-parses a new trade string and rebuilds the legs.</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="guide-section" id="order-log">
+    <h2>11 — Order Log</h2>
+    <p>The Order Log shows all orders across any date range. Use the filters to search by:</p>
+    <ul>
+        <li><strong>Date range</strong> — defaults to today</li>
+        <li><strong>Ticket number</strong> — type a full or partial number</li>
+        <li><strong>Strategy</strong> — type the strategy code (e.g. <span class="code">cs</span>, <span class="code">bflyc</span>, <span class="code">ptree</span>)</li>
+        <li><strong>House</strong> — partial match</li>
+        <li><strong>Account</strong> — partial match</li>
+        <li><strong>Search</strong> — searches the raw trade string (e.g. type <span class="code">SFRK6</span> to find all trades on that contract)</li>
+    </ul>
+    <p>Click any row to open the order detail. Cards and tickets are accessible directly from the log for filled orders.</p>
+</div>
+
+
+<div style="text-align:center; margin-top: 48px; padding-top: 24px; border-top: 1px solid #dde3ec;">
+    <a href="{{ url_for('orders.index') }}" class="guide-nav-btn">Go to Orders →</a>
+    <p style="margin-top: 14px; font-size: 12px; color: #aaa;">This guide is always available from the navigation bar.</p>
+</div>
+
+</div>
+{% endblock %}
