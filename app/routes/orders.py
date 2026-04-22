@@ -111,9 +111,11 @@ def create():
 
             all_legs = []
             primary_strategy = trade_parts[0].strategy
-            direction = trade_parts[0].direction_side
-            total_volume = trade_parts[0].volume
-            package_premium = trade_parts[0].premium
+            # direction comes from the price format token (/ = buy, @ = sell),
+            # NOT from trade_parts[0].direction_side — that can be flipped by a
+            # direction hint like (SFRU6) and must not affect the order-level field.
+            # _extract_price_info is already called above for the tick check.
+            direction, total_volume, package_premium = _extract_price_info(raw_input)
 
             for part in trade_parts:
                 legs = build_legs(part)
