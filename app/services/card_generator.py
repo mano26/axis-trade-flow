@@ -47,22 +47,17 @@ def generate_cards_html(order: Order) -> str:
         })
 
     # Leg ratio: each leg's share of the total order quantity.
-    # Using order.total_quantity as the base correctly handles both:
-    #   - Parsed ratio spreads (1x2: leg vols 4000/8000, total=4000 → ratios 1.0/2.0)
-    #   - Generic split legs  (500+500 buy + 1000 sell, total=1000 → ratios 0.5/0.5/1.0)
-    # The card quantity for each leg = cp.quantity * leg_ratio.
+    # Used uniformly for ALL leg types (options and futures).
+    # Examples:
+    #   1x2 spread:  legs 4000/8000, total=4000 → ratios 1.0/2.0
+    #   Generic CVD: legs 1000/1250/400, total=250 → ratios 4.0/5.0/1.6
+    #   Parsed CVD:  legs 500 opt/200 fut, total=500 → ratios 1.0/0.4
+    # cp.quantity * leg_ratio = correct card quantity for every leg.
     total_qty = order.total_quantity or 1
+    delta_ratio = 0  # retained for reference but no longer used in _build_card
 
     for l in legs:
-        if l["is_fut"]:
-            l["leg_ratio"] = 1.0  # futures qty scaled separately via delta_ratio
-        else:
-            l["leg_ratio"] = l["volume"] / total_qty
-
-    # Delta ratio for futures card quantities
-    total_fut_vol = next((l["volume"] for l in legs if l["is_fut"]), 0)
-    opt_vol = next((l["volume"] for l in legs if not l["is_fut"]), total_qty)
-    delta_ratio = total_fut_vol / opt_vol if opt_vol else 0
+        l["leg_ratio"] = l["volume"] / total_qty
 
     # Collect counterparties grouped by bracket + broker
     groups = []  # list of {bracket, broker, cps: [{qty, symbol}]}
@@ -221,12 +216,9 @@ def _build_card(
         h += f"<div class='slot' style='border-color:{ink}'>"
         if slot < len(cps):
             cp = cps[slot]
-            if is_fut:
-                dq = round(cp["qty"] * delta_ratio)
-            else:
-                # Scale cp qty by this leg's ratio relative to the base leg.
-                # e.g. for a 1x2, the 2x leg shows 2× the counterparty allocation.
-                dq = round(cp["qty"] * leg["leg_ratio"])
+            # Scale cp qty by this leg's ratio (leg.volume / order.total_quantity).
+            # Uniform for options and futures — no special delta_ratio path needed.
+            dq = round(cp["qty"] * leg["leg_ratio"])
 
             # Split symbol on /
             sym = cp["symbol"]
