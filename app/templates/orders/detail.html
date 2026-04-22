@@ -144,8 +144,12 @@
         <div style="margin-top: 8px;">
             <button type="submit" class="btn btn-primary">Save Prices</button>
             {% if oldest_pending_fill and order.fills|length > 1 %}
+            {%- set ns = namespace(fill_num=1) %}
+            {%- for fd in all_fills_display %}
+              {%- if fd.fill.id == oldest_pending_fill.id %}{% set ns.fill_num = loop.index %}{% endif %}
+            {%- endfor %}
             <span class="form-help" style="margin-left: 8px;">
-                Saving prices for Fill #{{ order.fills.index(oldest_pending_fill) + 1 }}
+                Saving prices for Fill #{{ ns.fill_num }}
                 ({{ oldest_pending_fill.fill_quantity }} contracts).
             </span>
             {% else %}
@@ -272,8 +276,12 @@
         <div style="margin-top: 8px;">
             <button type="submit" class="btn btn-primary">Save Prices</button>
             {% if oldest_pending_fill and order.fills|length > 1 %}
+            {%- set ns = namespace(fill_num=1) %}
+            {%- for fd in all_fills_display %}
+              {%- if fd.fill.id == oldest_pending_fill.id %}{% set ns.fill_num = loop.index %}{% endif %}
+            {%- endfor %}
             <span class="form-help" style="margin-left: 8px;">
-                Saving prices for Fill #{{ order.fills.index(oldest_pending_fill) + 1 }}
+                Saving prices for Fill #{{ ns.fill_num }}
                 ({{ oldest_pending_fill.fill_quantity }} contracts).
             </span>
             {% else %}
@@ -289,30 +297,162 @@
 <section>
     <h2>Counterparties</h2>
 
-    {# ── Allocated fills (read-only summary rows) ── #}
+    {# ── Allocated fills — read-only with Edit toggle ── #}
     {% for fd in all_fills_display %}
     {% if fd.fill.allocation_status == 'allocated' and fd.counterparties %}
+    {% set fill = fd.fill %}
+    {% set fidx = loop.index %}
     <div style="margin-bottom: 16px;">
         <p class="form-help" style="margin-bottom: 6px;">
-            Fill #{{ loop.index }} — {{ fd.fill.fill_quantity }} contracts
+            Fill #{{ fidx }} — {{ fill.fill_quantity }} contracts
             <span class="status-badge status-allocated" style="margin-left: 6px;">ALLOCATED</span>
+            <button type="button" class="btn btn-sm" style="margin-left: 10px;"
+                    onclick="toggleAmend({{ fill.id }}, this)">Edit</button>
         </p>
-        <table class="legs-table cp-entry-table">
-            <thead>
-                <tr><th>Qty</th><th>Filling Broker</th><th>Counterparty/House</th><th>Bracket</th><th>Notes</th></tr>
-            </thead>
-            <tbody>
-                {% for cp in fd.counterparties %}
+
+        {# Read-only view #}
+        <div id="amend-view-{{ fill.id }}">
+            {# Prices row #}
+            {% if fd.has_prices %}
+            <table class="legs-table" style="margin-bottom: 8px;">
+                <thead><tr><th>Leg</th><th>Strike</th><th>C/P</th><th>Price</th></tr></thead>
+                <tbody>
+                {% for lp in fill.leg_prices %}
+                {% set leg = order.legs | selectattr("leg_index","equalto",lp.leg_index) | first %}
                 <tr>
-                    <td>{{ cp.quantity }}</td>
-                    <td>{{ cp.broker }}</td>
-                    <td>{{ cp.symbol }}</td>
-                    <td>{{ cp.bracket }}</td>
-                    <td>{{ cp.notes or '' }}</td>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ "%.4f" % leg.strike if leg and leg.strike else "FUT" }}</td>
+                    <td>{{ leg.option_type if leg and leg.option_type else "" }}</td>
+                    <td>{{ "%.4f" % lp.price }}</td>
                 </tr>
                 {% endfor %}
-            </tbody>
-        </table>
+                </tbody>
+            </table>
+            {% endif %}
+            {# Counterparties #}
+            <table class="legs-table cp-entry-table">
+                <thead>
+                    <tr><th>Qty</th><th>Filling Broker</th><th>Counterparty/House</th><th>Bracket</th><th>Notes</th></tr>
+                </thead>
+                <tbody>
+                    {% for cp in fd.counterparties %}
+                    <tr>
+                        <td>{{ cp.quantity }}</td>
+                        <td>{{ cp.broker }}</td>
+                        <td>{{ cp.symbol }}</td>
+                        <td>{{ cp.bracket }}</td>
+                        <td>{{ cp.notes or '' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {# Combined amendment form — hidden until Edit clicked #}
+        <div id="amend-form-{{ fill.id }}" style="display:none; margin-top: 8px;">
+        <form method="POST"
+              action="{{ url_for('orders.amend_fill', order_id=order.id, fill_id=fill.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            {# House / Account / BK #}
+            <div class="summary-grid" style="margin-bottom: 12px;">
+                <div class="form-group">
+                    <label>House</label>
+                    {% if lookups.house %}
+                    <select name="house" class="text-upper">
+                        <option value="">-- Select --</option>
+                        {% for lv in lookups.house %}<option value="{{ lv.value }}" {% if order.house == lv.value %}selected{% endif %}>{{ lv.value }}</option>{% endfor %}
+                    </select>
+                    {% else %}
+                    <input type="text" name="house" value="{{ order.house or '' }}" class="text-upper">
+                    {% endif %}
+                </div>
+                <div class="form-group">
+                    <label>Account</label>
+                    {% if lookups.account %}
+                    <select name="account" class="text-upper">
+                        <option value="">-- Select --</option>
+                        {% for lv in lookups.account %}<option value="{{ lv.value }}" {% if order.account == lv.value %}selected{% endif %}>{{ lv.value }}</option>{% endfor %}
+                    </select>
+                    {% else %}
+                    <input type="text" name="account" value="{{ order.account or '' }}" class="text-upper">
+                    {% endif %}
+                </div>
+                {% if order.has_futures_legs %}
+                <div class="form-group">
+                    <label>BK Broker</label>
+                    <input type="text" name="bk_broker" value="{{ order.bk_broker or '' }}" class="text-upper">
+                </div>
+                {% endif %}
+            </div>
+
+            {# Prices #}
+            {% if fd.has_prices %}
+            <p class="form-help" style="margin-bottom: 6px; font-weight: 600;">Prices</p>
+            <table class="legs-table" style="margin-bottom: 12px;">
+                <thead><tr><th>Leg</th><th>Strike</th><th>C/P</th><th>Price</th></tr></thead>
+                <tbody>
+                {% for leg in order.legs %}
+                {% if leg.option_type is not none or leg.strike is not none %}
+                {% set existing_price = fill.leg_prices | selectattr("leg_index","equalto",leg.leg_index) | map(attribute="price") | first | default("") %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ "%.4f" % leg.strike if leg.strike else "FUT" }}</td>
+                    <td>{{ leg.option_type or "" }}</td>
+                    <td><input type="text" name="price_{{ leg.leg_index }}"
+                               value="{{ "%.4f" % existing_price if existing_price != "" else "" }}"
+                               class="price-input" style="width:80px;"
+                               inputmode="decimal" autocomplete="off"></td>
+                </tr>
+                {% endif %}
+                {% endfor %}
+                </tbody>
+            </table>
+            {% endif %}
+
+            {# Counterparties #}
+            <p class="form-help" style="margin-bottom: 6px; font-weight: 600;">Counterparties</p>
+            <table class="legs-table cp-entry-table">
+                <thead>
+                    <tr><th>Qty</th><th>Filling Broker</th><th>Counterparty/House</th><th>Bracket</th><th>Notes</th></tr>
+                </thead>
+                <tbody>
+                    {% for i in range(10) %}
+                    {% set cp = fill.counterparties[i] if i < fill.counterparties|length else none %}
+                    <tr>
+                        <td><input type="number" name="cp_qty_{{ i }}" value="{{ cp.quantity if cp else '' }}" min="0" class="cp-qty-input"></td>
+                        <td>
+                            {% if lookups.filling_broker %}
+                            <select name="cp_broker_{{ i }}" class="text-upper"><option value=""></option>{% for lv in lookups.filling_broker %}<option value="{{ lv.value }}" {% if cp and cp.broker == lv.value %}selected{% endif %}>{{ lv.value }}</option>{% endfor %}</select>
+                            {% else %}
+                            <input type="text" name="cp_broker_{{ i }}" value="{{ cp.broker if cp else '' }}" class="text-upper">
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if lookups.counterparty %}
+                            <select name="cp_symbol_{{ i }}" class="text-upper"><option value=""></option>{% for lv in lookups.counterparty %}<option value="{{ lv.value }}" {% if cp and cp.symbol == lv.value %}selected{% endif %}>{{ lv.value }}</option>{% endfor %}</select>
+                            {% else %}
+                            <input type="text" name="cp_symbol_{{ i }}" value="{{ cp.symbol if cp else '' }}" class="text-upper">
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if lookups.bracket %}
+                            <select name="cp_bracket_{{ i }}" class="text-upper cp-bracket-input"><option value=""></option>{% for lv in lookups.bracket %}<option value="{{ lv.value }}" {% if cp and cp.bracket == lv.value %}selected{% endif %}>{{ lv.value }}</option>{% endfor %}</select>
+                            {% else %}
+                            <input type="text" name="cp_bracket_{{ i }}" value="{{ cp.bracket if cp else '' }}" maxlength="2" class="text-upper cp-bracket-input">
+                            {% endif %}
+                        </td>
+                        <td><input type="text" name="cp_notes_{{ i }}" value="{{ cp.notes if cp else '' }}" placeholder="Optional"></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <div style="margin-top: 8px; display: flex; gap: 8px;">
+                <button type="submit" class="btn btn-primary">Save Amendment</button>
+                <button type="button" class="btn" onclick="toggleAmend({{ fill.id }}, null, true)">Cancel</button>
+            </div>
+        </form>
+        </div>
     </div>
     {% endif %}
     {% endfor %}
@@ -455,6 +595,31 @@
 {% block scripts %}
 <script>
 var rowCounter = {{ display_legs | length if display_legs else (6 if order.is_generic else 0) }};
+
+// ── Amendment toggle ──
+function toggleAmend(fillId, btn, cancel) {
+    var view = document.getElementById('amend-view-' + fillId);
+    var form = document.getElementById('amend-form-' + fillId);
+    if (!view || !form) return;
+    if (cancel) {
+        view.style.display = '';
+        form.style.display = 'none';
+        // restore Edit button text if btn reference was lost — find it
+        var btns = document.querySelectorAll('[onclick*="toggleAmend(' + fillId + ',"]');
+        btns.forEach(function(b) { if (b.textContent.trim() === 'Cancel') {} else { b.textContent = 'Edit'; } });
+        return;
+    }
+    var isEditing = form.style.display !== 'none';
+    if (isEditing) {
+        view.style.display = '';
+        form.style.display = 'none';
+        if (btn) btn.textContent = 'Edit';
+    } else {
+        view.style.display = 'none';
+        form.style.display = '';
+        if (btn) btn.textContent = 'Cancel';
+    }
+}
 
 function addLegRow() {
     var tbody = document.getElementById('legs-tbody');
