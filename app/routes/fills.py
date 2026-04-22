@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # =============================================================================
 # Fill Routes
 # =============================================================================
@@ -188,6 +189,14 @@ def enter_counterparties(fill_id: int):
 
     # POST: Save counterparties
     try:
+        # Save house/account onto the order
+        house = request.form.get("house", "").strip()
+        account = request.form.get("account", "").strip()
+        if house:
+            order.house = house
+        if account:
+            order.account = account
+
         counterparties = []
         # Read counterparty rows from form (up to 20 rows)
         for i in range(20):

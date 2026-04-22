@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # =============================================================================
 # Reports Routes
 # =============================================================================
@@ -18,6 +19,8 @@ def order_log():
     date_to = _parse_date(request.args.get("date_to"), default=date.today())
     strategy_filter = request.args.get("strategy", "").strip()
     house_filter = request.args.get("house", "").strip()
+    account_filter = request.args.get("account", "").strip()
+    ticket_filter = request.args.get("ticket", "").strip()
     search_filter = request.args.get("search", "").strip()
     sort_col = request.args.get("sort", "ticket_number")
     sort_dir = request.args.get("dir", "desc")
@@ -34,7 +37,18 @@ def order_log():
         query = query.filter(Order.strategy == strategy_filter.lower())
     if house_filter:
         query = query.filter(Order.house.ilike(f"%{house_filter}%"))
+    if account_filter:
+        query = query.filter(Order.account.ilike(f"%{account_filter}%"))
+    if ticket_filter:
+        # Match on display string (zero-padded) or raw number
+        query = query.filter(
+            db.or_(
+                Order.ticket_display.ilike(f"%{ticket_filter}%"),
+                Order.ticket_number == int(ticket_filter) if ticket_filter.isdigit() else db.false(),
+            )
+        )
     if search_filter:
+        # Search raw_input (trade string) — partial match, case-insensitive
         query = query.filter(Order.raw_input.ilike(f"%{search_filter}%"))
 
     sort_column = getattr(Order, sort_col, Order.ticket_number)
@@ -52,6 +66,8 @@ def order_log():
         date_to=date_to,
         strategy_filter=strategy_filter,
         house_filter=house_filter,
+        account_filter=account_filter,
+        ticket_filter=ticket_filter,
         search_filter=search_filter,
         sort_col=sort_col,
         sort_dir=sort_dir,

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # =============================================================================
 # Application Configuration
 # =============================================================================
@@ -66,8 +67,14 @@ class DevelopmentConfig(Config):
 
 
 class ProductionConfig(Config):
+    """
+    Production configuration for Railway deployment.
+
+    REGULATORY NOTE: Debug is disabled, cookies require HTTPS, and the secret
+    key must be set to a cryptographically random value via environment variable.
+    """
     DEBUG = False
-    SESSION_COOKIE_SECURE = False
+    SESSION_COOKIE_SECURE = True  # Require HTTPS for session cookie
 
 
 class TestingConfig(Config):
