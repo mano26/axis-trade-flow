@@ -8,6 +8,17 @@
     {% if order.is_generic %}
     <span class="status-badge" style="background:#fff3e0;color:#e65100;margin-left:4px;">GENERIC</span>
     {% endif %}
+    {% if current_user.is_super() %}
+    <form method="POST" action="{{ url_for('orders.delete', order_id=order.id) }}"
+          style="display:inline; margin-left:16px;"
+          onsubmit="return confirm('Permanently delete order #{{ order.ticket_display }}?\n\nThis cannot be undone.')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn"
+                style="background:#cc2222;color:#fff;border-color:#cc2222;font-size:12px;padding:4px 12px;">
+            Delete Order
+        </button>
+    </form>
+    {% endif %}
 </div>
 
 <section class="order-summary">

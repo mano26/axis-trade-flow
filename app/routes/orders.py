@@ -1,1128 +1,709 @@
-# -*- coding: utf-8 -*-
-# =============================================================================
-# Order Routes
-# =============================================================================
-# Handles the full order lifecycle including generic mode.
-# URL prefix: /orders
-# =============================================================================
+{% extends "layouts/base.html" %}
+{% block title %}Order #{{ order.ticket_display }}{% endblock %}
 
-from datetime import date, datetime, timezone
-import re
-from flask import (
-    Blueprint, render_template, redirect, url_for, flash,
-    request, jsonify,
-)
-from flask_login import login_required, current_user
-from app.extensions import db
-from app.models.order import Order, OrderLeg, OrderStatus
-from app.models.fill import Fill, FillLegPrice, FillCounterparty, AllocationStatus
-from app.models.tenant import Tenant
-from app.services.trade_parser import parse_trade_input, ParseError
-from app.services.strategy_handlers import build_legs
-from app.services.validation import (
-    validate_fill_prices,
-    validate_counterparty_quantities,
-    validate_counterparty_completeness,
-    ValidationError,
-)
-from app.services import audit_service
+{% block content %}
+<div class="page-header">
+    <h1>Order #{{ order.ticket_display }}</h1>
+    <span class="status-badge status-{{ order.status }}">{{ order.status | replace('_', ' ') | upper }}</span>
+    {% if order.is_generic %}
+    <span class="status-badge" style="background:#fff3e0;color:#e65100;margin-left:4px;">GENERIC</span>
+    {% endif %}
+    {% if current_user.is_super() %}
+    <form method="POST" action="{{ url_for('orders.delete', order_id=order.id) }}"
+          style="display:inline; margin-left:16px;"
+          onsubmit="return confirm('Permanently delete order #{{ order.ticket_display }}?\n\nThis cannot be undone.')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn"
+                style="background:#cc2222;color:#fff;border-color:#cc2222;font-size:12px;padding:4px 12px;">
+            Delete Order
+        </button>
+    </form>
+    {% endif %}
+</div>
 
-orders_bp = Blueprint("orders", __name__)
+<section class="order-summary">
+    <div class="summary-grid">
+        <div class="summary-item">
+            <label>Trade String</label>
+            <span class="trade-string">{{ order.raw_input }}</span>
+        </div>
+        <div class="summary-item">
+            <label>Direction</label>
+            <span class="direction-{{ order.direction }}">{{ 'BUY' if order.direction == 'B' else 'SELL' }}</span>
+        </div>
+        <div class="summary-item">
+            <label>Quantity</label>
+            <span>{{ order.filled_quantity }} / {{ order.total_quantity }} ({{ order.remaining_quantity }} remaining)</span>
+        </div>
+        <div class="summary-item">
+            <label>Strategy</label>
+            <span>{{ order.strategy | upper }}</span>
+        </div>
+        <div class="summary-item">
+            <label>Package Premium</label>
+            <span>{{ '%.4f' % order.package_premium if order.package_premium else '' }}</span>
+        </div>
+        <div class="summary-item">
+            <label>Date</label>
+            <span>{{ order.trade_date.strftime('%m/%d/%Y') }}</span>
+        </div>
+        <div class="summary-item">
+            <label>Time In</label>
+            <span>{{ order.time_in | chicago_time if order.time_in else '' }}</span>
+        </div>
+        {% if order.fills %}
+        <div class="summary-item">
+            <label>Fill Time(s)</label>
+            <span>
+                {% for fill in order.fills %}
+                {{ fill.fill_timestamp | chicago_time }}{% if not loop.last %}, {% endif %}
+                {% endfor %}
+            </span>
+        </div>
+        {% endif %}
+        {% if order.modification_timestamps %}
+        <div class="summary-item">
+            <label>Modified</label>
+            <span>
+                {% for ts in order.modification_timestamps %}
+                {{ ts | chicago_time }}{% if not loop.last %}, {% endif %}
+                {% endfor %}
+            </span>
+        </div>
+        {% endif %}
+        <div class="summary-item">
+            <label>Time Out</label>
+            <span>{{ order.time_out | chicago_time if order.time_out else '—' }}</span>
+        </div>
+    </div>
+</section>
 
+{% if order.status in ('open', 'partial_fill') %}
+<section>
+    <h2>Record Fill</h2>
+    <form method="POST" action="{{ url_for('orders.record_fill', order_id=order.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="inline-form-row">
+            <label for="fill_quantity">Fill Qty:</label>
+            <input type="number" id="fill_quantity" name="fill_quantity"
+                   min="1" max="{{ order.remaining_quantity }}"
+                   value="{{ order.remaining_quantity }}"
+                   class="fill-qty-input">
+            <span class="form-help">of {{ order.remaining_quantity }} remaining</span>
+            <button type="submit" class="btn btn-primary">Record Fill</button>
+        </div>
+    </form>
+</section>
+{% endif %}
 
-@orders_bp.route("/")
-@login_required
-def index():
-    today = date.today()
-    orders = (
-        Order.query
-        .filter_by(tenant_id=current_user.tenant_id, trade_date=today)
-        .filter(Order.deleted_at.is_(None))
-        .order_by(Order.ticket_number.desc())
-        .all()
-    )
-    from app.models.lookup import get_lookup_values, LookupType
-    lookups = {
-        lt: get_lookup_values(current_user.tenant_id, lt)
-        for lt in LookupType.ALL
+<!-- ================================================================
+     Editable Confirmation Legs (using proportional display volumes)
+     ================================================================ -->
+<section class="legs-section">
+    <h2>Confirmation Legs &amp; Prices</h2>
+
+    {% if not order.is_generic %}
+    {# ── Parsed order: read-only table, B/S toggles via fetch, price inputs only ── #}
+    <table class="legs-table" id="legs-table">
+        <thead>
+            <tr>
+                <th>B/S</th><th>Volume</th><th>Market</th><th>Contract</th>
+                <th>Expiry</th><th>Strike</th><th>C/P</th><th>Price</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for leg in display_legs %}
+            <tr>
+                <td>
+                    <button type="button"
+                            class="btn-side-toggle btn-side-{{ leg.side }}"
+                            data-order-id="{{ order.id }}"
+                            data-leg-index="{{ leg.leg_index }}"
+                            data-current-side="{{ leg.side }}"
+                            title="Click to flip B/S">
+                        {{ leg.side }}
+                    </button>
+                </td>
+                <td>{{ leg.volume }}</td>
+                <td>{{ leg.market }}</td>
+                <td>{{ leg.contract_type }}</td>
+                <td>{{ leg.expiry }}</td>
+                <td>{{ '%.4f' % leg.strike if leg.strike else '—' }}</td>
+                <td>{{ leg.option_type or 'FUT' }}</td>
+                <td>
+                    {% if order.fills %}
+                    <input type="text" name="price_{{ leg.leg_index }}"
+                           value="{{ '%.4f' % leg.price if leg.price else '' }}"
+                           class="price-input" placeholder="0.0000"
+                           form="prices-form"
+                           inputmode="decimal" autocomplete="off">
+                    {% else %}
+                    {{ '%.4f' % leg.price if leg.price else '—' }}
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {% if order.fills %}
+    <form method="POST" action="{{ url_for('orders.save_prices', order_id=order.id) }}" id="prices-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% if oldest_pending_fill %}
+        <input type="hidden" name="fill_id" value="{{ oldest_pending_fill.id }}">
+        {% endif %}
+        <div style="margin-top: 8px;">
+            <button type="submit" class="btn btn-primary">Save Prices</button>
+            {% if oldest_pending_fill and order.fills|length > 1 %}
+            {%- set ns = namespace(fill_num=1) %}
+            {%- for fd in all_fills_display %}
+              {%- if fd.fill.id == oldest_pending_fill.id %}{% set ns.fill_num = loop.index %}{% endif %}
+            {%- endfor %}
+            <span class="form-help" style="margin-left: 8px;">
+                Saving prices for Fill #{{ ns.fill_num }}
+                ({{ oldest_pending_fill.fill_quantity }} contracts).
+            </span>
+            {% else %}
+            <span class="form-help" style="margin-left: 8px;">Validated against package premium.</span>
+            {% endif %}
+        </div>
+    </form>
+    {% endif %}
+
+    {% else %}
+    {# ── Generic order: full editable grid with Save Legs ── #}
+    <form method="POST" action="{{ url_for('orders.save_legs', order_id=order.id) }}" id="legs-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <table class="legs-table editable-legs-table" id="legs-table">
+            <thead>
+                <tr>
+                    <th>B/S</th><th>Volume</th><th>Market</th><th>Contract</th>
+                    <th>Expiry</th><th>Strike</th><th>C/P</th><th>Price</th><th></th>
+                </tr>
+            </thead>
+            <tbody id="legs-tbody">
+                {% if display_legs %}
+                {% for leg in display_legs %}
+                <tr class="leg-row">
+                    <td>
+                        <select name="leg_side_{{ leg.leg_index }}" class="leg-select">
+                            <option value="B" {% if leg.side == 'B' %}selected{% endif %}>B</option>
+                            <option value="S" {% if leg.side == 'S' %}selected{% endif %}>S</option>
+                        </select>
+                    </td>
+                    <td><input type="number" name="leg_volume_{{ leg.leg_index }}" value="{{ leg.volume }}" class="leg-num-input"></td>
+                    <td>
+                        {% if lookups.market %}
+                        <select name="leg_market_{{ leg.leg_index }}" class="leg-select">
+                            {% for lv in lookups.market %}<option value="{{ lv.value }}" {% if leg.market == lv.value %}selected{% endif %}>{{ lv.value }}</option>{% endfor %}
+                        </select>
+                        {% else %}
+                        <input type="text" name="leg_market_{{ leg.leg_index }}" value="{{ leg.market }}" class="leg-text-input text-upper">
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if lookups.contract %}
+                        <select name="leg_contract_{{ leg.leg_index }}" class="leg-select">
+                            <option value=""></option>{% for lv in lookups.contract %}<option value="{{ lv.value }}" {% if leg.contract_type == lv.value %}selected{% endif %}>{{ lv.value }}</option>{% endfor %}
+                        </select>
+                        {% else %}
+                        <input type="text" name="leg_contract_{{ leg.leg_index }}" value="{{ leg.contract_type }}" class="leg-text-input text-upper">
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if lookups.expiry %}
+                        <select name="leg_expiry_{{ leg.leg_index }}" class="leg-select">
+                            <option value=""></option>{% for lv in lookups.expiry %}<option value="{{ lv.value }}" {% if leg.expiry == lv.value %}selected{% endif %}>{{ lv.value }}</option>{% endfor %}
+                        </select>
+                        {% else %}
+                        <input type="text" name="leg_expiry_{{ leg.leg_index }}" value="{{ leg.expiry }}" class="leg-text-input text-upper">
+                        {% endif %}
+                    </td>
+                    <td><input type="text" name="leg_strike_{{ leg.leg_index }}" value="{{ '%.4f' % leg.strike if leg.strike else '' }}" class="leg-text-input" placeholder="0.0000"></td>
+                    <td>
+                        <select name="leg_opttype_{{ leg.leg_index }}" class="leg-select">
+                            <option value="">—</option>
+                            <option value="C" {% if leg.option_type == 'C' %}selected{% endif %}>C</option>
+                            <option value="P" {% if leg.option_type == 'P' %}selected{% endif %}>P</option>
+                        </select>
+                    </td>
+                    <td>
+                        <input type="text" name="price_{{ leg.leg_index }}"
+                               value="{{ '%.4f' % leg.price if leg.price else '' }}"
+                               class="price-input" placeholder="0.0000"
+                               form="prices-form"
+                               inputmode="decimal" autocomplete="off">
+                    </td>
+                    <td><button type="button" class="btn-remove" onclick="this.closest('tr').remove()">×</button></td>
+                </tr>
+                {% endfor %}
+                {% else %}
+                {% for i in range(6) %}
+                <tr class="leg-row">
+                    <td><select name="leg_side_{{ i }}" class="leg-select"><option value="B">B</option><option value="S">S</option></select></td>
+                    <td><input type="number" name="leg_volume_{{ i }}" value="" class="leg-num-input"></td>
+                    <td>
+                        {% if lookups.market %}
+                        <select name="leg_market_{{ i }}" class="leg-select">{% for lv in lookups.market %}<option value="{{ lv.value }}">{{ lv.value }}</option>{% endfor %}</select>
+                        {% else %}
+                        <input type="text" name="leg_market_{{ i }}" value="CME" class="leg-text-input text-upper">
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if lookups.contract %}
+                        <select name="leg_contract_{{ i }}" class="leg-select"><option value=""></option>{% for lv in lookups.contract %}<option value="{{ lv.value }}">{{ lv.value }}</option>{% endfor %}</select>
+                        {% else %}
+                        <input type="text" name="leg_contract_{{ i }}" value="" class="leg-text-input text-upper" placeholder="SR3">
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if lookups.expiry %}
+                        <select name="leg_expiry_{{ i }}" class="leg-select"><option value=""></option>{% for lv in lookups.expiry %}<option value="{{ lv.value }}">{{ lv.value }}</option>{% endfor %}</select>
+                        {% else %}
+                        <input type="text" name="leg_expiry_{{ i }}" value="" class="leg-text-input text-upper" placeholder="MAR26">
+                        {% endif %}
+                    </td>
+                    <td><input type="text" name="leg_strike_{{ i }}" value="" class="leg-text-input" placeholder="0.0000"></td>
+                    <td><select name="leg_opttype_{{ i }}" class="leg-select"><option value="">—</option><option value="C">C</option><option value="P">P</option></select></td>
+                    <td><input type="text" name="price_{{ i }}" class="price-input" placeholder="0.0000" form="prices-form"></td>
+                    <td><button type="button" class="btn-remove" onclick="this.closest('tr').remove()">×</button></td>
+                </tr>
+                {% endfor %}
+                {% endif %}
+            </tbody>
+        </table>
+        <div style="margin-top: 8px; display: flex; gap: 8px; align-items: center;">
+            <button type="submit" class="btn btn-primary">Save Legs</button>
+            <button type="button" class="btn" onclick="addLegRow()">+ Add Row</button>
+        </div>
+    </form>
+
+    {% if order.fills %}
+    <form method="POST" action="{{ url_for('orders.save_prices', order_id=order.id) }}" id="prices-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% if oldest_pending_fill %}
+        <input type="hidden" name="fill_id" value="{{ oldest_pending_fill.id }}">
+        {% endif %}
+        <div style="margin-top: 8px;">
+            <button type="submit" class="btn btn-primary">Save Prices</button>
+            {% if oldest_pending_fill and order.fills|length > 1 %}
+            {%- set ns = namespace(fill_num=1) %}
+            {%- for fd in all_fills_display %}
+              {%- if fd.fill.id == oldest_pending_fill.id %}{% set ns.fill_num = loop.index %}{% endif %}
+            {%- endfor %}
+            <span class="form-help" style="margin-left: 8px;">
+                Saving prices for Fill #{{ ns.fill_num }}
+                ({{ oldest_pending_fill.fill_quantity }} contracts).
+            </span>
+            {% else %}
+            <span class="form-help" style="margin-left: 8px;">Validated against package premium.</span>
+            {% endif %}
+        </div>
+    </form>
+    {% endif %}
+    {% endif %}
+</section>
+
+{% if order.fills %}
+<section>
+    <h2>Counterparties</h2>
+
+    {# ── Allocated fills — read-only with Edit toggle ── #}
+    {% for fd in all_fills_display %}
+    {% if fd.fill.allocation_status == 'allocated' and fd.counterparties %}
+    {% set fill = fd.fill %}
+    {% set fidx = loop.index %}
+    <div style="margin-bottom: 16px;">
+        <p class="form-help" style="margin-bottom: 6px;">
+            Fill #{{ fidx }} — {{ fill.fill_quantity }} contracts
+            <span class="status-badge status-allocated" style="margin-left: 6px;">ALLOCATED</span>
+            <button type="button" class="btn btn-sm" style="margin-left: 10px;"
+                    onclick="toggleAmend({{ fill.id }}, this)">Edit</button>
+        </p>
+
+        {# Read-only view #}
+        <div id="amend-view-{{ fill.id }}">
+            {# Prices row #}
+            {% if fd.has_prices %}
+            <table class="legs-table" style="margin-bottom: 8px;">
+                <thead><tr><th>Leg</th><th>Strike</th><th>C/P</th><th>Price</th></tr></thead>
+                <tbody>
+                {% for lp in fill.leg_prices %}
+                {% set leg = order.legs | selectattr("leg_index","equalto",lp.leg_index) | first %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ "%.4f" % leg.strike if leg and leg.strike else "FUT" }}</td>
+                    <td>{{ leg.option_type if leg and leg.option_type else "" }}</td>
+                    <td>{{ "%.4f" % lp.price }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% endif %}
+            {# Counterparties #}
+            <table class="legs-table cp-entry-table">
+                <thead>
+                    <tr><th>Qty</th><th>Filling Broker</th><th>Counterparty/House</th><th>Bracket</th><th>Notes</th></tr>
+                </thead>
+                <tbody>
+                    {% for cp in fd.counterparties %}
+                    <tr>
+                        <td>{{ cp.quantity }}</td>
+                        <td>{{ cp.broker }}</td>
+                        <td>{{ cp.symbol }}</td>
+                        <td>{{ cp.bracket }}</td>
+                        <td>{{ cp.notes or '' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {# Combined amendment form — hidden until Edit clicked #}
+        <div id="amend-form-{{ fill.id }}" style="display:none; margin-top: 8px;">
+        <form method="POST"
+              action="{{ url_for('orders.amend_fill', order_id=order.id, fill_id=fill.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            {# House / Account / BK #}
+            <div class="summary-grid" style="margin-bottom: 12px;">
+                <div class="form-group">
+                    <label>House</label>
+                    {% if lookups.house %}
+                    <select name="house" class="text-upper">
+                        <option value="">-- Select --</option>
+                        {% for lv in lookups.house %}<option value="{{ lv.value }}" {% if order.house == lv.value %}selected{% endif %}>{{ lv.value }}</option>{% endfor %}
+                    </select>
+                    {% else %}
+                    <input type="text" name="house" value="{{ order.house or '' }}" class="text-upper">
+                    {% endif %}
+                </div>
+                <div class="form-group">
+                    <label>Account</label>
+                    {% if lookups.account %}
+                    <select name="account" class="text-upper">
+                        <option value="">-- Select --</option>
+                        {% for lv in lookups.account %}<option value="{{ lv.value }}" {% if order.account == lv.value %}selected{% endif %}>{{ lv.value }}</option>{% endfor %}
+                    </select>
+                    {% else %}
+                    <input type="text" name="account" value="{{ order.account or '' }}" class="text-upper">
+                    {% endif %}
+                </div>
+                {% if order.has_futures_legs %}
+                <div class="form-group">
+                    <label>BK Broker</label>
+                    <input type="text" name="bk_broker" value="{{ order.bk_broker or '' }}" class="text-upper">
+                </div>
+                {% endif %}
+            </div>
+
+            {# Prices #}
+            {% if fd.has_prices %}
+            <p class="form-help" style="margin-bottom: 6px; font-weight: 600;">Prices</p>
+            <table class="legs-table" style="margin-bottom: 12px;">
+                <thead><tr><th>Leg</th><th>Strike</th><th>C/P</th><th>Price</th></tr></thead>
+                <tbody>
+                {% for leg in order.legs %}
+                {% if leg.option_type is not none or leg.strike is not none %}
+                {% set existing_price = fill.leg_prices | selectattr("leg_index","equalto",leg.leg_index) | map(attribute="price") | first | default("") %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ "%.4f" % leg.strike if leg.strike else "FUT" }}</td>
+                    <td>{{ leg.option_type or "" }}</td>
+                    <td><input type="text" name="price_{{ leg.leg_index }}"
+                               value="{{ "%.4f" % existing_price if existing_price != "" else "" }}"
+                               class="price-input" style="width:80px;"
+                               inputmode="decimal" autocomplete="off"></td>
+                </tr>
+                {% endif %}
+                {% endfor %}
+                </tbody>
+            </table>
+            {% endif %}
+
+            {# Counterparties #}
+            <p class="form-help" style="margin-bottom: 6px; font-weight: 600;">Counterparties</p>
+            <table class="legs-table cp-entry-table">
+                <thead>
+                    <tr><th>Qty</th><th>Filling Broker</th><th>Counterparty/House</th><th>Bracket</th><th>Notes</th></tr>
+                </thead>
+                <tbody>
+                    {% for i in range(10) %}
+                    {% set cp = fill.counterparties[i] if i < fill.counterparties|length else none %}
+                    <tr>
+                        <td><input type="number" name="cp_qty_{{ i }}" value="{{ cp.quantity if cp else '' }}" min="0" class="cp-qty-input"></td>
+                        <td>
+                            {% if lookups.filling_broker %}
+                            <select name="cp_broker_{{ i }}" class="text-upper"><option value=""></option>{% for lv in lookups.filling_broker %}<option value="{{ lv.value }}" {% if cp and cp.broker == lv.value %}selected{% endif %}>{{ lv.value }}</option>{% endfor %}</select>
+                            {% else %}
+                            <input type="text" name="cp_broker_{{ i }}" value="{{ cp.broker if cp else '' }}" class="text-upper">
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if lookups.counterparty %}
+                            <select name="cp_symbol_{{ i }}" class="text-upper"><option value=""></option>{% for lv in lookups.counterparty %}<option value="{{ lv.value }}" {% if cp and cp.symbol == lv.value %}selected{% endif %}>{{ lv.value }}</option>{% endfor %}</select>
+                            {% else %}
+                            <input type="text" name="cp_symbol_{{ i }}" value="{{ cp.symbol if cp else '' }}" class="text-upper">
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if lookups.bracket %}
+                            <select name="cp_bracket_{{ i }}" class="text-upper cp-bracket-input"><option value=""></option>{% for lv in lookups.bracket %}<option value="{{ lv.value }}" {% if cp and cp.bracket == lv.value %}selected{% endif %}>{{ lv.value }}</option>{% endfor %}</select>
+                            {% else %}
+                            <input type="text" name="cp_bracket_{{ i }}" value="{{ cp.bracket if cp else '' }}" maxlength="2" class="text-upper cp-bracket-input">
+                            {% endif %}
+                        </td>
+                        <td><input type="text" name="cp_notes_{{ i }}" value="{{ cp.notes if cp else '' }}" placeholder="Optional"></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <div style="margin-top: 8px; display: flex; gap: 8px;">
+                <button type="submit" class="btn btn-primary">Save Amendment</button>
+                <button type="button" class="btn" onclick="toggleAmend({{ fill.id }}, null, true)">Cancel</button>
+            </div>
+        </form>
+        </div>
+    </div>
+    {% endif %}
+    {% endfor %}
+
+    {# ── Entry form for every pending fill, in order ── #}
+    {# House/account only shown once on the first pending form #}
+    {% set ns = namespace(first_pending=true) %}
+    {% for fd in all_fills_display %}
+    {% if fd.fill.allocation_status != 'allocated' %}
+    {% set fill = fd.fill %}
+    {% set fill_num = loop.index %}
+    {% set fill_has_prices = fd.has_prices %}
+    {% if not fill_has_prices %}
+    <p class="form-help" style="color: var(--red); margin-bottom: 12px;">
+        Fill #{{ fill_num }} ({{ fill.fill_quantity }} contracts): save leg prices before entering counterparties.
+    </p>
+    {% endif %}
+    <form method="POST" action="{{ url_for('orders.save_counterparties', order_id=order.id) }}"
+          id="cp-form-{{ fill.id }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="fill_id" value="{{ fill.id }}">
+        {% if ns.first_pending %}
+        <div class="summary-grid" style="margin-bottom: 16px;">
+            <div class="form-group">
+                <label for="house">House</label>
+                {% if lookups.house %}
+                <select id="house" name="house" class="text-upper">
+                    <option value="">-- Select --</option>
+                    {% for lv in lookups.house %}
+                    <option value="{{ lv.value }}" {% if order.house == lv.value %}selected{% endif %}>{{ lv.value }}</option>
+                    {% endfor %}
+                </select>
+                {% else %}
+                <input type="text" id="house" name="house" value="{{ order.house or '' }}" placeholder="House" class="text-upper">
+                {% endif %}
+            </div>
+            <div class="form-group">
+                <label for="account">Account</label>
+                {% if lookups.account %}
+                <select id="account" name="account" class="text-upper">
+                    <option value="">-- Select --</option>
+                    {% for lv in lookups.account %}
+                    <option value="{{ lv.value }}" {% if order.account == lv.value %}selected{% endif %}>{{ lv.value }}</option>
+                    {% endfor %}
+                </select>
+                {% else %}
+                <input type="text" id="account" name="account" value="{{ order.account or '' }}" placeholder="Account ID" class="text-upper">
+                {% endif %}
+            </div>
+            {% if order.has_futures_legs %}
+            <div class="form-group">
+                <label for="bk_broker">BK Broker</label>
+                <input type="text" id="bk_broker" name="bk_broker" value="{{ order.bk_broker or '' }}" placeholder="Optional" class="text-upper">
+            </div>
+            {% endif %}
+        </div>
+        {% set ns.first_pending = false %}
+        {% endif %}
+        {% if fill_has_prices %}
+        <p class="form-help" style="margin-bottom: 8px;">
+            Fill #{{ fill_num }} — Allocate {{ fill.fill_quantity }} contracts. Quantities must sum to {{ fill.fill_quantity }}.
+        </p>
+        <table class="legs-table cp-entry-table">
+            <thead>
+                <tr><th>Qty</th><th>Filling Broker</th><th>Counterparty/House</th><th>Bracket</th><th>Notes</th></tr>
+            </thead>
+            <tbody>
+                {% for i in range(10) %}
+                {% set cp = fill.counterparties[i] if i < fill.counterparties|length else none %}
+                <tr>
+                    <td><input type="number" name="cp_qty_{{ i }}" value="{{ cp.quantity if cp else (fill.fill_quantity if i == 0 and not fill.counterparties else '') }}" min="0" class="cp-qty-input"></td>
+                    <td>
+                        {% if lookups.filling_broker %}
+                        <select name="cp_broker_{{ i }}" class="text-upper"><option value=""></option>{% for lv in lookups.filling_broker %}<option value="{{ lv.value }}" {% if cp and cp.broker == lv.value %}selected{% endif %}>{{ lv.value }}</option>{% endfor %}</select>
+                        {% else %}
+                        <input type="text" name="cp_broker_{{ i }}" value="{{ cp.broker if cp else '' }}" placeholder="Filling Broker" class="text-upper">
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if lookups.counterparty %}
+                        <select name="cp_symbol_{{ i }}" class="text-upper"><option value=""></option>{% for lv in lookups.counterparty %}<option value="{{ lv.value }}" {% if cp and cp.symbol == lv.value %}selected{% endif %}>{{ lv.value }}</option>{% endfor %}</select>
+                        {% else %}
+                        <input type="text" name="cp_symbol_{{ i }}" value="{{ cp.symbol if cp else '' }}" placeholder="Counterparty/House" class="text-upper">
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if lookups.bracket %}
+                        <select name="cp_bracket_{{ i }}" class="text-upper cp-bracket-input"><option value=""></option>{% for lv in lookups.bracket %}<option value="{{ lv.value }}" {% if cp and cp.bracket == lv.value %}selected{% endif %}>{{ lv.value }}</option>{% endfor %}</select>
+                        {% else %}
+                        <input type="text" name="cp_bracket_{{ i }}" value="{{ cp.bracket if cp else '' }}" placeholder="A" maxlength="2" class="text-upper cp-bracket-input">
+                        {% endif %}
+                    </td>
+                    <td><input type="text" name="cp_notes_{{ i }}" value="{{ cp.notes if cp else '' }}" placeholder="Optional"></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div style="margin-top: 8px;">
+            <button type="button" class="btn btn-primary"
+                    onclick="submitCounterparties('cp-form-{{ fill.id }}')">Save Counterparties</button>
+            <span class="status-badge status-pending_allocation" style="margin-left: 8px;">PENDING</span>
+        </div>
+        {% endif %}
+    </form>
+    {% if not loop.last %}<hr style="margin: 16px 0; border-color: #ddd;">{% endif %}
+    {% endif %}
+    {% endfor %}
+</section>
+{% endif %}
+
+<section class="actions-section">
+    <h2>Actions</h2>
+    <div class="action-buttons">
+        {% if order.status == 'open' %}
+        <a href="{{ url_for('orders.modify', order_id=order.id) }}" class="btn">Modify Order</a>
+        {% endif %}
+        {% if order.status == 'partial_fill' %}
+        <a href="{{ url_for('orders.modify_balance', order_id=order.id) }}" class="btn">Modify Balance</a>
+        {% endif %}
+        {% if order.status in ('open', 'partial_fill') %}
+        <form method="POST" action="{{ url_for('orders.cancel', order_id=order.id) }}" style="display:inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-danger" onclick="return confirm('Cancel this order?')">Cancel Order</button>
+        </form>
+        {% endif %}
+        {% if order.status in ('filled', 'partial_fill', 'partial_cancelled') %}
+        <a href="{{ url_for('cards.generate', order_id=order.id) }}" class="btn">Print Cards</a>
+        <a href="{{ url_for('tickets.generate', order_id=order.id) }}" class="btn">Print Ticket</a>
+        <form method="POST" action="{{ url_for('exchange.submit_to_exchange', order_id=order.id) }}" style="display:inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-primary" onclick="return confirm('Submit to exchange?')">Send to Exchange</button>
+        </form>
+        {% endif %}
+    </div>
+</section>
+
+<a href="{{ url_for('orders.index') }}" class="btn btn-back">← Back to Orders</a>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var rowCounter = {{ display_legs | length if display_legs else (6 if order.is_generic else 0) }};
+
+// ── Amendment toggle ──
+function toggleAmend(fillId, btn, cancel) {
+    var view = document.getElementById('amend-view-' + fillId);
+    var form = document.getElementById('amend-form-' + fillId);
+    if (!view || !form) return;
+    if (cancel) {
+        view.style.display = '';
+        form.style.display = 'none';
+        // restore Edit button text if btn reference was lost — find it
+        var btns = document.querySelectorAll('[onclick*="toggleAmend(' + fillId + ',"]');
+        btns.forEach(function(b) { if (b.textContent.trim() === 'Cancel') {} else { b.textContent = 'Edit'; } });
+        return;
     }
-    return render_template("orders/index.html", orders=orders, today=today, lookups=lookups)
-
-
-@orders_bp.route("/create", methods=["POST"])
-@login_required
-def create():
-    raw_input = request.form.get("trade_string", "").strip()
-    is_generic = request.form.get("is_generic") == "1"
-    quarter_tick_confirmed = request.form.get("quarter_tick_confirmed") == "1"
-    entry_house = request.form.get("house", "").strip()
-    entry_account = request.form.get("account", "").strip()
-
-    if not raw_input:
-        flash("Please enter a trade string.", "warning")
-        return redirect(url_for("orders.index"))
-
-    try:
-        # Extract price/direction/volume from trade string
-        # (works for both generic and parsed modes)
-        direction, volume, premium = _extract_price_info(raw_input)
-
-        # Check for 0.25 tick increment
-        premium_ticks = premium * 100  # Convert to ticks
-        is_quarter_tick = (premium_ticks % 0.5) != 0 and (premium_ticks % 0.25) == 0
-
-        if is_quarter_tick and not quarter_tick_confirmed and not is_generic:
-            # Return to form with popup trigger
-            flash("QUARTER_TICK_CHECK", "quarter_tick")
-            return redirect(url_for("orders.index"))
-
-        ticket_num = _get_next_ticket_number(current_user.tenant_id)
-
-        if is_generic:
-            # Generic mode: store trade string, blank legs
-            order = Order(
-                tenant_id=current_user.tenant_id,
-                ticket_number=ticket_num,
-                ticket_display=f"{ticket_num:04d}",
-                trade_date=date.today(),
-                raw_input=raw_input,
-                direction=direction,
-                total_quantity=volume,
-                package_premium=premium,
-                strategy="generic",
-                is_generic=True,
-                status=OrderStatus.OPEN,
-                created_by_id=current_user.id,
-                house=entry_house or None,
-                account=entry_account or None,
-            )
-            db.session.add(order)
-            db.session.flush()
-            audit_service.log_order_created(order, current_user.tenant_id)
-            db.session.commit()
-            flash(f"Generic order #{order.ticket_display} created. Enter legs manually.", "success")
-            return redirect(url_for("orders.detail", order_id=order.id))
-        else:
-            # Parsed mode
-            trade_parts = parse_trade_input(raw_input)
-            if not trade_parts:
-                flash("No valid trade legs found.", "danger")
-                return redirect(url_for("orders.index"))
-
-            all_legs = []
-            primary_strategy = trade_parts[0].strategy
-            # direction comes from the price format token (/ = buy, @ = sell),
-            # NOT from trade_parts[0].direction_side — that can be flipped by a
-            # direction hint like (SFRU6) and must not affect the order-level field.
-            # _extract_price_info is already called above for the tick check.
-            direction, total_volume, package_premium = _extract_price_info(raw_input)
-
-            for part in trade_parts:
-                legs = build_legs(part)
-                all_legs.extend(legs)
-
-            order = Order(
-                tenant_id=current_user.tenant_id,
-                ticket_number=ticket_num,
-                ticket_display=f"{ticket_num:04d}",
-                trade_date=date.today(),
-                raw_input=raw_input,
-                direction=direction,
-                total_quantity=total_volume,
-                package_premium=package_premium,
-                strategy=primary_strategy,
-                is_generic=False,
-                status=OrderStatus.OPEN,
-                created_by_id=current_user.id,
-                house=entry_house or None,
-                account=entry_account or None,
-            )
-            db.session.add(order)
-            db.session.flush()
-
-            for idx, leg_data in enumerate(all_legs):
-                leg = OrderLeg(
-                    order_id=order.id,
-                    leg_index=idx,
-                    side=leg_data["side"],
-                    volume=leg_data["volume"],
-                    market=leg_data["market"],
-                    contract_type=leg_data["contract_type"],
-                    expiry=leg_data["expiry"],
-                    strike=leg_data.get("strike"),
-                    option_type=leg_data.get("option_type"),
-                    price=leg_data.get("price"),
-                    mo_card_code=leg_data.get("mo_card_code"),
-                    package_premium=leg_data.get("package_premium"),
-                    suppress_premium=leg_data.get("suppress_premium", False),
-                )
-                db.session.add(leg)
-
-            audit_service.log_order_created(order, current_user.tenant_id)
-            db.session.commit()
-            flash(f"Order #{order.ticket_display} created — {len(all_legs)} leg(s).", "success")
-            return redirect(url_for("orders.detail", order_id=order.id))
-
-    except ParseError as e:
-        flash(f"Parse error: {e}", "danger")
-    except Exception as e:
-        db.session.rollback()
-        flash(f"Error creating order: {e}", "danger")
-
-    return redirect(url_for("orders.index"))
-
-
-@orders_bp.route("/<int:order_id>")
-@login_required
-def detail(order_id):
-    order = _get_order_or_404(order_id)
-    latest_fill = order.fills[-1] if order.fills else None
-    from app.models.lookup import get_lookup_values, LookupType
-    lookups = {
-        lt: get_lookup_values(current_user.tenant_id, lt)
-        for lt in LookupType.ALL
+    var isEditing = form.style.display !== 'none';
+    if (isEditing) {
+        view.style.display = '';
+        form.style.display = 'none';
+        if (btn) btn.textContent = 'Edit';
+    } else {
+        view.style.display = 'none';
+        form.style.display = '';
+        if (btn) btn.textContent = 'Cancel';
     }
+}
 
-    # Build display_legs — always use leg.volume as the editable value.
-    # The Save Legs form must always submit the full order size so that
-    # clicking Save Legs never permanently corrupts stored leg volumes.
-    # A read-only filled qty hint is shown separately in the summary header.
-    display_legs = []
-    for leg in order.legs:
-        d = {
-            "leg_index": leg.leg_index,
-            "side": leg.side,
-            "volume": leg.volume,
-            "display_volume": leg.volume,   # always full size — never ratio-adjusted
-            "market": leg.market,
-            "contract_type": leg.contract_type,
-            "expiry": leg.expiry,
-            "strike": leg.strike,
-            "option_type": leg.option_type,
-            "price": leg.price,
+function addLegRow() {
+    var tbody = document.getElementById('legs-tbody');
+    var idx = rowCounter;
+    var hasFills = {{ 'true' if order.fills else 'false' }};
+    var tr = document.createElement('tr');
+    tr.className = 'leg-row';
+    tr.innerHTML =
+        '<td><select name="leg_side_' + idx + '" class="leg-select"><option value="B">B</option><option value="S">S</option></select></td>' +
+        '<td><input type="number" name="leg_volume_' + idx + '" value="" class="leg-num-input"></td>' +
+        '<td><input type="text" name="leg_market_' + idx + '" value="CME" class="leg-text-input text-upper"></td>' +
+        '<td><input type="text" name="leg_contract_' + idx + '" value="" class="leg-text-input text-upper" placeholder="SR3"></td>' +
+        '<td><input type="text" name="leg_expiry_' + idx + '" value="" class="leg-text-input text-upper" placeholder="MAR26"></td>' +
+        '<td><input type="text" name="leg_strike_' + idx + '" value="" class="leg-text-input" placeholder="0.0000"></td>' +
+        '<td><select name="leg_opttype_' + idx + '" class="leg-select"><option value="">—</option><option value="C">C</option><option value="P">P</option></select></td>' +
+        '<td><input type="text" name="price_' + idx + '" class="price-input" placeholder="0.0000" form="prices-form"></td>' +
+        '<td><button type="button" class="btn-remove" onclick="this.closest(\'tr\').remove()">×</button></td>';
+    tbody.appendChild(tr);
+    rowCounter++;
+}
+
+// ── B/S toggle for parsed order legs ──
+document.addEventListener('click', function(e) {
+    var btn = e.target.closest('.btn-side-toggle');
+    if (!btn) return;
+    var orderId = btn.dataset.orderId;
+    var legIndex = btn.dataset.legIndex;
+    var currentSide = btn.dataset.currentSide;
+    var newSide = currentSide === 'B' ? 'S' : 'B';
+    var csrfToken = document.querySelector('meta[name="csrf-token"]') ?
+        document.querySelector('meta[name="csrf-token"]').content :
+        (document.querySelector('input[name="csrf_token"]') ?
+         document.querySelector('input[name="csrf_token"]').value : '');
+
+    btn.disabled = true;
+    fetch('/orders/' + orderId + '/legs/' + legIndex + '/side', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken,
+        },
+        body: JSON.stringify({ side: newSide }),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.ok) {
+            btn.textContent = data.side;
+            btn.dataset.currentSide = data.side;
+            btn.className = 'btn-side-toggle btn-side-' + data.side;
+        } else {
+            alert('Could not update leg: ' + (data.error || 'unknown error'));
         }
-        display_legs.append(d)
+        btn.disabled = false;
+    })
+    .catch(function() {
+        alert('Network error updating leg side.');
+        btn.disabled = false;
+    });
+});
 
-    # Check if prices are entered on the latest fill (for blocking CP save)
-    has_prices = bool(latest_fill and latest_fill.leg_prices)
-
-    # Collect all fills with their counterparties for display — not just the latest.
-    # Each entry: {fill, counterparties, has_prices}
-    all_fills_display = []
-    for fill in order.fills:
-        all_fills_display.append({
-            "fill": fill,
-            "counterparties": fill.counterparties,
-            "has_prices": bool(fill.leg_prices),
-        })
-
-    # Oldest pending fill — prices should be entered in chronological order.
-    # The prices form targets this fill so earlier partial fills get allocated first.
-    oldest_pending_fill = next(
-        (f for f in order.fills if f.allocation_status != "allocated"),
-        latest_fill,
-    )
-
-    return render_template(
-        "orders/detail.html",
-        order=order,
-        latest_fill=latest_fill,
-        oldest_pending_fill=oldest_pending_fill,
-        all_fills_display=all_fills_display,
-        lookups=lookups,
-        display_legs=display_legs,
-        has_prices=has_prices,
-    )
-
-
-# =========================================================================
-# Inline Actions
-# =========================================================================
-
-@orders_bp.route("/<int:order_id>/record-fill", methods=["POST"])
-@login_required
-def record_fill(order_id):
-    order = _get_order_or_404(order_id)
-    if order.status not in (OrderStatus.OPEN, OrderStatus.PARTIAL_FILL):
-        flash(f"Cannot fill an order in '{order.status}' status.", "warning")
-        return redirect(url_for("orders.detail", order_id=order.id))
-    try:
-        fill_qty = int(request.form.get("fill_quantity", 0))
-        if fill_qty <= 0:
-            flash("Fill quantity must be positive.", "warning")
-            return redirect(url_for("orders.detail", order_id=order.id))
-        if fill_qty > order.remaining_quantity:
-            flash(f"Fill qty ({fill_qty}) exceeds remaining ({order.remaining_quantity}).", "warning")
-            return redirect(url_for("orders.detail", order_id=order.id))
-        fill = Fill(
-            tenant_id=current_user.tenant_id,
-            order_id=order.id,
-            fill_quantity=fill_qty,
-            allocation_status=AllocationStatus.PENDING,
-            created_by_id=current_user.id,
-        )
-        db.session.add(fill)
-        old_status = order.status
-        order.filled_quantity += fill_qty
-        if order.remaining_quantity == 0:
-            order.transition_to(OrderStatus.FILLED)
-        elif order.status == OrderStatus.OPEN:
-            order.transition_to(OrderStatus.PARTIAL_FILL)
-        db.session.flush()
-        audit_service.log_fill_created(fill, current_user.tenant_id)
-        if order.status != old_status:
-            audit_service.log_order_status_change(
-                order, current_user.tenant_id, old_status, order.status,
-            )
-        db.session.commit()
-        flash(f"Fill recorded: {fill_qty} contracts. Remaining: {order.remaining_quantity}.", "success")
-    except Exception as e:
-        db.session.rollback()
-        flash(f"Error recording fill: {e}", "danger")
-    return redirect(url_for("orders.detail", order_id=order.id))
-
-
-@orders_bp.route("/<int:order_id>/save-legs", methods=["POST"])
-@login_required
-def save_legs(order_id):
-    """
-    Save editable leg data from the detail page.
-    Only valid for generic orders — parsed orders use toggle_leg_side
-    for B/S corrections and Modify Order for structural changes.
-    """
-    order = _get_order_or_404(order_id)
-    if not order.is_generic:
-        flash("Leg editing is only available for generic orders. Use Modify Order to change a parsed trade.", "warning")
-        return redirect(url_for("orders.detail", order_id=order.id))
-    try:
-        # Capture existing prices before deleting legs (CVD futures price etc.)
-        existing_prices = {leg.leg_index: leg.price for leg in order.legs if leg.price is not None}
-
-        # Delete existing legs
-        for leg in order.legs:
-            db.session.delete(leg)
-        db.session.flush()
-
-        # Read legs from form
-        leg_index = 0
-        for i in range(30):  # Support up to 30 rows
-            side = request.form.get(f"leg_side_{i}", "").strip()
-            vol_str = request.form.get(f"leg_volume_{i}", "").strip()
-            market = request.form.get(f"leg_market_{i}", "").strip() or "CME"
-            contract = request.form.get(f"leg_contract_{i}", "").strip()
-            expiry = request.form.get(f"leg_expiry_{i}", "").strip()
-            strike_str = request.form.get(f"leg_strike_{i}", "").strip()
-            opt_type = request.form.get(f"leg_opttype_{i}", "").strip()
-
-            # A valid leg needs volume AND at least contract or strike
-            if not vol_str:
-                continue
-            volume = int(vol_str)
-            if volume <= 0:
-                continue
-            if not contract and not strike_str and not expiry:
-                continue
-
-            strike = float(strike_str) if strike_str else None
-            preserved_price = existing_prices.get(i)
-
-            leg = OrderLeg(
-                order_id=order.id,
-                leg_index=leg_index,
-                side=side.upper() if side else "B",
-                volume=volume,
-                market=market.upper(),
-                contract_type=contract.upper() if contract else "SR3",
-                expiry=expiry.upper() if expiry else "",
-                strike=strike,
-                option_type=opt_type.upper() if opt_type else None,
-                price=preserved_price,
-                mo_card_code=expiry.upper() if expiry else "",
-                package_premium=order.package_premium,
-                suppress_premium=False,
-            )
-            db.session.add(leg)
-            leg_index += 1
-
-        # Do NOT overwrite total_quantity from leg volumes.
-        # total_quantity is set at order creation from the trade string price format
-        # (e.g. 4.25/1000 → 1000) and represents the overall order size.
-        # A generic order can have multiple buy legs at different prices to represent
-        # an average fill, so the first-leg volume is not a reliable proxy.
-
-        db.session.commit()
-        flash(f"Legs saved — {leg_index} leg(s).", "success")
-    except Exception as e:
-        db.session.rollback()
-        flash(f"Error saving legs: {e}", "danger")
-    return redirect(url_for("orders.detail", order_id=order.id))
-
-
-@orders_bp.route("/<int:order_id>/legs/<int:leg_index>/side", methods=["POST"])
-@login_required
-def toggle_leg_side(order_id, leg_index):
-    """
-    Toggle the B/S direction of a single parsed-order leg.
-    Accepts JSON: {"side": "B"} or {"side": "S"}.
-    Returns JSON: {"ok": true, "side": "B"}.
-    This is the only structural edit allowed on parsed order legs.
-    """
-    order = _get_order_or_404(order_id)
-    if order.is_generic:
-        return jsonify({"ok": False, "error": "Use Save Legs for generic orders."}), 400
-
-    data = request.get_json(silent=True) or {}
-    new_side = (data.get("side") or "").upper().strip()
-    if new_side not in ("B", "S"):
-        return jsonify({"ok": False, "error": "side must be B or S"}), 400
-
-    leg = OrderLeg.query.filter_by(
-        order_id=order.id, leg_index=leg_index
-    ).first_or_404()
-
-    old_side = leg.side
-    if old_side == new_side:
-        return jsonify({"ok": True, "side": new_side})
-
-    try:
-        leg.side = new_side
-        audit_service.log_action(
-            action="leg_side_toggled",
-            entity_type="order",
-            entity_id=order.id,
-            tenant_id=current_user.tenant_id,
-            user_id=current_user.id,
-            before_value={"leg_index": leg_index, "side": old_side},
-            after_value={"leg_index": leg_index, "side": new_side},
-        )
-        db.session.commit()
-        return jsonify({"ok": True, "side": new_side})
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-
-@orders_bp.route("/<int:order_id>/save-prices", methods=["POST"])
-@login_required
-def save_prices(order_id):
-    order = _get_order_or_404(order_id)
-    if not order.fills:
-        flash("Please record a fill before entering prices.", "warning")
-        return redirect(url_for("orders.detail", order_id=order.id))
-    # Use fill_id from form if provided so prices can be saved for any pending fill.
-    fill_id_str = request.form.get("fill_id", "").strip()
-    if fill_id_str:
-        fill = Fill.query.filter_by(
-            id=int(fill_id_str), order_id=order.id
-        ).first_or_404()
-    else:
-        fill = order.fills[-1]
-    try:
-        leg_prices = []
-        for leg in order.legs:
-            price_str = request.form.get(f"price_{leg.leg_index}", "").strip()
-            if price_str:
-                leg_price = FillLegPrice(
-                    fill_id=fill.id,
-                    leg_index=leg.leg_index,
-                    price=float(price_str),
-                )
-                leg_prices.append(leg_price)
-
-        # For generic orders, validate using qty*price net calculation
-        if order.is_generic:
-            _validate_generic_prices(order, leg_prices)
-        else:
-            validate_fill_prices(order, fill, leg_prices)
-
-        FillLegPrice.query.filter_by(fill_id=fill.id).delete()
-        for lp in leg_prices:
-            db.session.add(lp)
-
-        price_map = {lp.leg_index: lp.price for lp in leg_prices}
-        for leg in order.legs:
-            if leg.leg_index in price_map:
-                leg.price = price_map[leg.leg_index]
-
-        db.session.commit()
-        flash("Prices saved and validated.", "success")
-    except ValidationError as e:
-        db.session.rollback()
-        flash(f"Price validation failed: {'; '.join(e.errors)}", "danger")
-    except Exception as e:
-        db.session.rollback()
-        flash(f"Error saving prices: {e}", "danger")
-    return redirect(url_for("orders.detail", order_id=order.id))
-
-
-@orders_bp.route("/<int:order_id>/save-counterparties", methods=["POST"])
-@login_required
-def save_counterparties(order_id):
-    order = _get_order_or_404(order_id)
-    if not order.fills:
-        flash("Please record a fill before entering counterparties.", "warning")
-        return redirect(url_for("orders.detail", order_id=order.id))
-
-    # Use fill_id from the form if provided — allows allocating any pending fill,
-    # not just the latest. Falls back to latest fill for backwards compatibility.
-    fill_id_str = request.form.get("fill_id", "").strip()
-    if fill_id_str:
-        fill = Fill.query.filter_by(
-            id=int(fill_id_str), order_id=order.id
-        ).first_or_404()
-    else:
-        fill = order.fills[-1]
-
-    # Block if prices not entered for this specific fill
-    if not fill.leg_prices or len(fill.leg_prices) == 0:
-        flash("Please save leg prices before entering counterparties.", "warning")
-        return redirect(url_for("orders.detail", order_id=order.id))
-    try:
-        house = request.form.get("house", "").strip()
-        account = request.form.get("account", "").strip()
-        bk_broker = request.form.get("bk_broker", "").strip()
-        if house:
-            order.house = house
-        if account:
-            order.account = account
-        order.bk_broker = bk_broker if bk_broker else order.bk_broker
-
-        counterparties = []
-        for i in range(20):
-            qty_str = request.form.get(f"cp_qty_{i}", "").strip()
-            broker = request.form.get(f"cp_broker_{i}", "").strip()
-            symbol = request.form.get(f"cp_symbol_{i}", "").strip()
-            bracket = request.form.get(f"cp_bracket_{i}", "").strip()
-            notes = request.form.get(f"cp_notes_{i}", "").strip()
-            if not any([qty_str, broker, symbol, bracket]):
-                continue
-            cp = FillCounterparty(
-                fill_id=fill.id,
-                quantity=int(qty_str) if qty_str else 0,
-                broker=broker,
-                symbol=symbol,
-                bracket=bracket,
-                notes=notes or None,
-            )
-            counterparties.append(cp)
-
-        if not counterparties:
-            flash("No counterparties entered.", "info")
-            db.session.commit()
-            return redirect(url_for("orders.detail", order_id=order.id))
-
-        validate_counterparty_completeness(counterparties)
-        validate_counterparty_quantities(fill, counterparties)
-
-        FillCounterparty.query.filter_by(fill_id=fill.id).delete()
-        for cp in counterparties:
-            db.session.add(cp)
-        fill.allocation_status = AllocationStatus.ALLOCATED
-        db.session.commit()
-        flash("Counterparties saved. Allocation complete.", "success")
-    except ValidationError as e:
-        db.session.rollback()
-        flash(f"Validation failed: {'; '.join(e.errors)}", "danger")
-    except Exception as e:
-        db.session.rollback()
-        flash(f"Error saving counterparties: {e}", "danger")
-    return redirect(url_for("orders.detail", order_id=order.id))
-
-
-@orders_bp.route("/<int:order_id>/fills/<int:fill_id>/amend", methods=["POST"])
-@login_required
-def amend_fill(order_id, fill_id):
-    """
-    Combined amendment: update prices AND counterparties for an allocated fill
-    in a single transaction.  Either section may be omitted — if no price fields
-    are submitted the price records are left untouched; same for counterparties.
-    Logs both changes to the audit trail and stamps the order AMENDED.
-    """
-    order = _get_order_or_404(order_id)
-    fill = Fill.query.filter_by(id=fill_id, order_id=order.id).first_or_404()
-
-    if fill.allocation_status != AllocationStatus.ALLOCATED:
-        flash("Only allocated fills can be amended.", "warning")
-        return redirect(url_for("orders.detail", order_id=order.id))
-
-    try:
-        # ── Prices ──
-        price_strs = {
-            leg.leg_index: request.form.get(f"price_{leg.leg_index}", "").strip()
-            for leg in order.legs
+function submitCounterparties(formId) {
+    var form = document.getElementById(formId || 'cp-form');
+    if (!form) return;
+    {% if order.has_futures_legs %}
+    var bkField = document.getElementById('bk_broker');
+    if (bkField && !bkField.value.trim()) {
+        if (!confirm('This trade has futures legs but no BK Broker is set.\n\nContinue without BK Broker?')) {
+            bkField.focus();
+            return;
         }
-        has_prices = any(v for v in price_strs.values())
-
-        if has_prices:
-            before_prices = {lp.leg_index: lp.price for lp in fill.leg_prices}
-            leg_prices = []
-            for leg in order.legs:
-                pstr = price_strs.get(leg.leg_index, "")
-                if pstr:
-                    leg_prices.append(FillLegPrice(
-                        fill_id=fill.id,
-                        leg_index=leg.leg_index,
-                        price=float(pstr),
-                    ))
-            if order.is_generic:
-                _validate_generic_prices(order, leg_prices)
-            else:
-                validate_fill_prices(order, fill, leg_prices)
-
-            FillLegPrice.query.filter_by(fill_id=fill.id).delete()
-            for lp in leg_prices:
-                db.session.add(lp)
-
-            price_map = {lp.leg_index: lp.price for lp in leg_prices}
-            for leg in order.legs:
-                if leg.leg_index in price_map:
-                    leg.price = price_map[leg.leg_index]
-
-            after_prices = {lp.leg_index: lp.price for lp in leg_prices}
-            audit_service.log_fill_price_amended(
-                fill, current_user.tenant_id, before_prices, after_prices,
-            )
-
-        # ── House / Account / BK Broker ──
-        house = request.form.get("house", "").strip()
-        account = request.form.get("account", "").strip()
-        bk_broker = request.form.get("bk_broker", "").strip()
-        if house:
-            order.house = house
-        if account:
-            order.account = account
-        if bk_broker:
-            order.bk_broker = bk_broker
-
-        # ── Counterparties ──
-        before_cp = [
-            {"qty": cp.quantity, "broker": cp.broker,
-             "symbol": cp.symbol, "bracket": cp.bracket, "notes": cp.notes}
-            for cp in fill.counterparties
-        ]
-        counterparties = []
-        for i in range(20):
-            qty_str = request.form.get(f"cp_qty_{i}", "").strip()
-            broker  = request.form.get(f"cp_broker_{i}", "").strip()
-            symbol  = request.form.get(f"cp_symbol_{i}", "").strip()
-            bracket = request.form.get(f"cp_bracket_{i}", "").strip()
-            notes   = request.form.get(f"cp_notes_{i}", "").strip()
-            if not any([qty_str, broker, symbol, bracket]):
-                continue
-            counterparties.append(FillCounterparty(
-                fill_id=fill.id,
-                quantity=int(qty_str) if qty_str else 0,
-                broker=broker, symbol=symbol, bracket=bracket,
-                notes=notes or None,
-            ))
-
-        if counterparties:
-            validate_counterparty_completeness(counterparties)
-            validate_counterparty_quantities(fill, counterparties)
-            FillCounterparty.query.filter_by(fill_id=fill.id).delete()
-            for cp in counterparties:
-                db.session.add(cp)
-            after_cp = [
-                {"qty": cp.quantity, "broker": cp.broker,
-                 "symbol": cp.symbol, "bracket": cp.bracket, "notes": cp.notes}
-                for cp in counterparties
-            ]
-            from app.models.audit import AuditAction
-            audit_service.log_action(
-                action=AuditAction.COUNTERPARTY_MODIFIED,
-                entity_type="fill", entity_id=fill.id,
-                tenant_id=current_user.tenant_id,
-                user_id=current_user.id,
-                before_value={"counterparties": before_cp},
-                after_value={"counterparties": after_cp},
-                notes=f"Fill #{fill.id} amended on order #{order.ticket_display}.",
-            )
-
-        # ── Stamp AMENDED on terminal orders ──
-        amendable = {OrderStatus.FILLED, OrderStatus.PARTIAL_CANCELLED}
-        if order.status in amendable:
-            old_status = order.status
-            order.transition_to(OrderStatus.AMENDED)
-            audit_service.log_order_status_change(
-                order, current_user.tenant_id, old_status, order.status,
-                notes="Order amended.",
-            )
-
-        db.session.commit()
-        flash("Amendment saved.", "success")
-    except ValidationError as e:
-        db.session.rollback()
-        flash(f"Validation failed: {'; '.join(e.errors)}", "danger")
-    except Exception as e:
-        db.session.rollback()
-        flash(f"Error saving amendment: {e}", "danger")
-    return redirect(url_for("orders.detail", order_id=order.id))
-
-
-@orders_bp.route("/<int:order_id>/fills/<int:fill_id>/amend-counterparties", methods=["POST"])
-@login_required
-def amend_fill_counterparties(order_id, fill_id):
-    """
-    Amend the counterparty allocation for an already-allocated fill.
-    Replaces existing FillCounterparty records and re-validates quantities.
-    Logs to audit trail as COUNTERPARTY_MODIFIED.
-    Available on any allocated fill regardless of order status.
-    """
-    order = _get_order_or_404(order_id)
-    fill = Fill.query.filter_by(id=fill_id, order_id=order.id).first_or_404()
-
-    if fill.allocation_status != AllocationStatus.ALLOCATED:
-        flash("Only allocated fills can be amended.", "warning")
-        return redirect(url_for("orders.detail", order_id=order.id))
-
-    try:
-        # Capture before-state for audit
-        before = [
-            {"qty": cp.quantity, "broker": cp.broker,
-             "symbol": cp.symbol, "bracket": cp.bracket, "notes": cp.notes}
-            for cp in fill.counterparties
-        ]
-
-        house = request.form.get("house", "").strip()
-        account = request.form.get("account", "").strip()
-        bk_broker = request.form.get("bk_broker", "").strip()
-        if house:
-            order.house = house
-        if account:
-            order.account = account
-        if bk_broker:
-            order.bk_broker = bk_broker
-
-        counterparties = []
-        for i in range(20):
-            qty_str = request.form.get(f"cp_qty_{i}", "").strip()
-            broker = request.form.get(f"cp_broker_{i}", "").strip()
-            symbol = request.form.get(f"cp_symbol_{i}", "").strip()
-            bracket = request.form.get(f"cp_bracket_{i}", "").strip()
-            notes = request.form.get(f"cp_notes_{i}", "").strip()
-            if not any([qty_str, broker, symbol, bracket]):
-                continue
-            cp = FillCounterparty(
-                fill_id=fill.id,
-                quantity=int(qty_str) if qty_str else 0,
-                broker=broker,
-                symbol=symbol,
-                bracket=bracket,
-                notes=notes or None,
-            )
-            counterparties.append(cp)
-
-        if not counterparties:
-            flash("No counterparties entered.", "warning")
-            return redirect(url_for("orders.detail", order_id=order.id))
-
-        validate_counterparty_completeness(counterparties)
-        validate_counterparty_quantities(fill, counterparties)
-
-        FillCounterparty.query.filter_by(fill_id=fill.id).delete()
-        for cp in counterparties:
-            db.session.add(cp)
-
-        after = [
-            {"qty": cp.quantity, "broker": cp.broker,
-             "symbol": cp.symbol, "bracket": cp.bracket, "notes": cp.notes}
-            for cp in counterparties
-        ]
-
-        from app.models.audit import AuditAction
-        audit_service.log_action(
-            action=AuditAction.COUNTERPARTY_MODIFIED,
-            entity_type="fill",
-            entity_id=fill.id,
-            tenant_id=current_user.tenant_id,
-            user_id=current_user.id,
-            before_value={"counterparties": before},
-            after_value={"counterparties": after},
-            notes=f"Counterparties amended for fill #{fill.id} on order #{order.ticket_display}.",
-        )
-        db.session.commit()
-        flash("Counterparties amended.", "success")
-    except ValidationError as e:
-        db.session.rollback()
-        flash(f"Validation failed: {'; '.join(e.errors)}", "danger")
-    except Exception as e:
-        db.session.rollback()
-        flash(f"Error amending counterparties: {e}", "danger")
-    return redirect(url_for("orders.detail", order_id=order.id))
-
-
-@orders_bp.route("/<int:order_id>/fills/<int:fill_id>/amend-prices", methods=["POST"])
-@login_required
-def amend_fill_prices(order_id, fill_id):
-    """
-    Amend the leg prices for an already-priced fill.
-    Re-runs price reconciliation validation (hard block).
-    Stamps order as AMENDED if currently in a terminal filled state.
-    Logs to audit trail as FILL_PRICE_AMENDED.
-    """
-    order = _get_order_or_404(order_id)
-    fill = Fill.query.filter_by(id=fill_id, order_id=order.id).first_or_404()
-
-    try:
-        # Capture before-state
-        before_prices = {lp.leg_index: lp.price for lp in fill.leg_prices}
-
-        leg_prices = []
-        for leg in order.legs:
-            price_str = request.form.get(f"price_{leg.leg_index}", "").strip()
-            if price_str:
-                leg_price = FillLegPrice(
-                    fill_id=fill.id,
-                    leg_index=leg.leg_index,
-                    price=float(price_str),
-                )
-                leg_prices.append(leg_price)
-
-        if order.is_generic:
-            _validate_generic_prices(order, leg_prices)
-        else:
-            validate_fill_prices(order, fill, leg_prices)
-
-        FillLegPrice.query.filter_by(fill_id=fill.id).delete()
-        for lp in leg_prices:
-            db.session.add(lp)
-
-        # Update OrderLeg.price display field
-        price_map = {lp.leg_index: lp.price for lp in leg_prices}
-        for leg in order.legs:
-            if leg.leg_index in price_map:
-                leg.price = price_map[leg.leg_index]
-
-        after_prices = {lp.leg_index: lp.price for lp in leg_prices}
-
-        audit_service.log_fill_price_amended(
-            fill, current_user.tenant_id, before_prices, after_prices,
-        )
-
-        # Transition to AMENDED if order is in a terminal filled state
-        amendable = {OrderStatus.FILLED, OrderStatus.PARTIAL_CANCELLED}
-        if order.status in amendable:
-            old_status = order.status
-            order.transition_to(OrderStatus.AMENDED)
-            audit_service.log_order_status_change(
-                order, current_user.tenant_id, old_status, order.status,
-                notes="Order amended after price correction.",
-            )
-
-        db.session.commit()
-        flash("Prices amended and validated.", "success")
-    except ValidationError as e:
-        db.session.rollback()
-        flash(f"Price validation failed: {'; '.join(e.errors)}", "danger")
-    except Exception as e:
-        db.session.rollback()
-        flash(f"Error amending prices: {e}", "danger")
-    return redirect(url_for("orders.detail", order_id=order.id))
-
-
-@orders_bp.route("/<int:order_id>/cancel", methods=["POST"])
-@login_required
-def cancel(order_id):
-    order = _get_order_or_404(order_id)
-    old_status = order.status
-    try:
-        if order.status == OrderStatus.OPEN:
-            order.transition_to(OrderStatus.CANCELLED)
-        elif order.status == OrderStatus.PARTIAL_FILL:
-            order.transition_to(OrderStatus.PARTIAL_CANCELLED)
-        else:
-            flash(f"Cannot cancel an order in '{order.status}' status.", "warning")
-            return redirect(url_for("orders.detail", order_id=order.id))
-        audit_service.log_order_status_change(
-            order, current_user.tenant_id, old_status, order.status,
-            notes="Order cancelled by user.",
-        )
-        db.session.commit()
-        flash(f"Order #{order.ticket_display} cancelled.", "info")
-    except ValueError as e:
-        flash(str(e), "danger")
-    return redirect(url_for("orders.detail", order_id=order.id))
-
-
-@orders_bp.route("/<int:order_id>/modify", methods=["GET", "POST"])
-@login_required
-def modify(order_id):
-    order = _get_order_or_404(order_id)
-    if order.status != OrderStatus.OPEN:
-        flash("Only unfilled (OPEN) orders can be modified.", "warning")
-        return redirect(url_for("orders.detail", order_id=order.id))
-    if request.method == "GET":
-        return render_template("orders/modify.html", order=order)
-    new_input = request.form.get("trade_string", "").strip()
-    if not new_input:
-        flash("Please enter a trade string.", "warning")
-        return redirect(url_for("orders.modify", order_id=order.id))
-    try:
-        before = {"raw_input": order.raw_input, "strategy": order.strategy}
-        trade_parts = parse_trade_input(new_input)
-        all_legs = []
-        for part in trade_parts:
-            all_legs.extend(build_legs(part))
-        for leg in order.legs:
-            db.session.delete(leg)
-        order.raw_input = new_input
-        order.direction = trade_parts[0].direction_side
-        order.total_quantity = trade_parts[0].volume
-        order.package_premium = trade_parts[0].premium
-        order.strategy = trade_parts[0].strategy
-        for idx, leg_data in enumerate(all_legs):
-            leg = OrderLeg(
-                order_id=order.id, leg_index=idx,
-                side=leg_data["side"], volume=leg_data["volume"],
-                market=leg_data["market"], contract_type=leg_data["contract_type"],
-                expiry=leg_data["expiry"], strike=leg_data.get("strike"),
-                option_type=leg_data.get("option_type"), price=leg_data.get("price"),
-                mo_card_code=leg_data.get("mo_card_code"),
-                package_premium=leg_data.get("package_premium"),
-                suppress_premium=leg_data.get("suppress_premium", False),
-            )
-            db.session.add(leg)
-        after = {"raw_input": order.raw_input, "strategy": order.strategy}
-        # Record modification timestamp
-        if not order.modification_timestamps:
-            order.modification_timestamps = []
-        mods = list(order.modification_timestamps)
-        mods.append(datetime.now(timezone.utc).isoformat())
-        order.modification_timestamps = mods
-        audit_service.log_order_modified(order, current_user.tenant_id, before, after)
-        db.session.commit()
-        flash(f"Order #{order.ticket_display} modified.", "success")
-    except ParseError as e:
-        flash(f"Parse error: {e}", "danger")
-    except Exception as e:
-        db.session.rollback()
-        flash(f"Error modifying order: {e}", "danger")
-    return redirect(url_for("orders.detail", order_id=order.id))
-
-
-@orders_bp.route("/<int:order_id>/modify-balance", methods=["GET", "POST"])
-@login_required
-def modify_balance(order_id):
-    """
-    Modify the working balance of a partially-filled order.
-
-    Workflow:
-    1. Validates the order is in PARTIAL_FILL status.
-    2. GET: Shows a form pre-populated with the current trade string and
-       remaining quantity so the user can revise the balance.
-    3. POST: Closes the partial fill (PARTIAL_CANCELLED → FILLED, total
-       shrinks to filled qty) then opens a new OPEN order for the revised
-       balance, copying house/account from the original.
-
-    The original order retains all fills and counterparties. The new order
-    gets the next sequential ticket number and starts clean (no fills).
-    """
-    order = _get_order_or_404(order_id)
-
-    if order.status != OrderStatus.PARTIAL_FILL:
-        flash("Only partially-filled orders can have their balance modified.", "warning")
-        return redirect(url_for("orders.detail", order_id=order.id))
-
-    if request.method == "GET":
-        return render_template(
-            "orders/modify_balance.html",
-            order=order,
-        )
-
-    new_input = request.form.get("trade_string", "").strip()
-    if not new_input:
-        flash("Please enter a trade string for the balance.", "warning")
-        return redirect(url_for("orders.modify_balance", order_id=order.id))
-
-    try:
-        # Parse the new trade string first — fail early before touching the DB
-        trade_parts = parse_trade_input(new_input)
-        all_legs = []
-        for part in trade_parts:
-            all_legs.extend(build_legs(part))
-
-        new_direction = trade_parts[0].direction_side
-        new_volume = trade_parts[0].volume
-        new_premium = trade_parts[0].premium
-        new_strategy = trade_parts[0].strategy
-
-        # ── Close the partial fill on the original order ──
-        old_status = order.status  # PARTIAL_FILL
-        order.transition_to(OrderStatus.PARTIAL_CANCELLED)
-        # transition_to(PARTIAL_CANCELLED) shrinks total_qty to filled_qty
-        # and sets status to FILLED internally.
-
-        audit_service.log_order_status_change(
-            order, current_user.tenant_id, old_status, order.status,
-            notes=f"Balance modified — new ticket will be opened for {new_volume} contracts.",
-        )
-
-        # ── Open new order for the balance ──
-        ticket_num = _get_next_ticket_number(current_user.tenant_id)
-        new_order = Order(
-            tenant_id=current_user.tenant_id,
-            ticket_number=ticket_num,
-            ticket_display=f"{ticket_num:04d}",
-            trade_date=date.today(),
-            raw_input=new_input,
-            direction=new_direction,
-            total_quantity=new_volume,
-            package_premium=new_premium,
-            strategy=new_strategy,
-            is_generic=False,
-            status=OrderStatus.OPEN,
-            created_by_id=current_user.id,
-            house=order.house,
-            account=order.account,
-        )
-        db.session.add(new_order)
-        db.session.flush()
-
-        for idx, leg_data in enumerate(all_legs):
-            leg = OrderLeg(
-                order_id=new_order.id,
-                leg_index=idx,
-                side=leg_data["side"],
-                volume=leg_data["volume"],
-                market=leg_data["market"],
-                contract_type=leg_data["contract_type"],
-                expiry=leg_data["expiry"],
-                strike=leg_data.get("strike"),
-                option_type=leg_data.get("option_type"),
-                price=leg_data.get("price"),
-                mo_card_code=leg_data.get("mo_card_code"),
-                package_premium=leg_data.get("package_premium"),
-                suppress_premium=leg_data.get("suppress_premium", False),
-            )
-            db.session.add(leg)
-
-        audit_service.log_order_created(new_order, current_user.tenant_id)
-        db.session.commit()
-
-        flash(
-            f"Order #{order.ticket_display} closed at {order.total_quantity} contracts. "
-            f"New order #{new_order.ticket_display} opened for {new_volume} contracts.",
-            "success",
-        )
-        return redirect(url_for("orders.detail", order_id=new_order.id))
-
-    except ParseError as e:
-        flash(f"Parse error: {e}", "danger")
-    except Exception as e:
-        db.session.rollback()
-        flash(f"Error modifying balance: {e}", "danger")
-
-    return redirect(url_for("orders.modify_balance", order_id=order.id))
-
-
-# =========================================================================
-# Helpers
-# =========================================================================
-
-def _get_order_or_404(order_id):
-    return Order.query.filter_by(
-        id=order_id, tenant_id=current_user.tenant_id,
-    ).first_or_404()
-
-
-def _get_next_ticket_number(tenant_id):
-    """
-    Return the next ticket number for the tenant.
-    Counter is persistent across days — increments by 1 each order,
-    wraps from 9999 back to 1. Never resets daily.
-    Ticket display is always zero-padded to 4 digits (0001–9999).
-    """
-    tenant = db.session.get(Tenant, tenant_id)
-    next_num = (tenant.current_ticket_number or 0) + 1
-    if next_num > 9999:
-        next_num = 1
-    tenant.current_ticket_number = next_num
-    db.session.flush()
-    return next_num
-
-
-def _extract_price_info(raw_input: str) -> tuple:
-    """
-    Extract direction, volume, and premium from a trade string.
-    Works for both parsed and generic modes.
-    Returns (direction, volume, premium).
-    """
-    # Strip trailing parenthetical, then normalise spaces around @ and /
-    # so '5000 @ 2.25' and '4/500' both tokenise correctly.
-    cleaned = re.sub(r'\s+\([^)]+\)\s*$', '', raw_input.strip())
-    cleaned = re.sub(r'\s*@\s*', '@', cleaned)
-    cleaned = re.sub(r'\s*/\s*', '/', cleaned)
-    tokens = cleaned.split()
-
-    direction = ""
-    volume = 0
-    premium = 0.0
-
-    for token in tokens:
-        token = token.strip()
-        if "/" in token and "@" not in token:
-            parts = token.split("/")
-            if len(parts) == 2:
-                try:
-                    premium = round(float(parts[0]) * 0.01, 4)
-                    volume = int(float(parts[1]))
-                    direction = "B"
-                except ValueError:
-                    pass
-        elif "@" in token:
-            parts = token.split("@")
-            if len(parts) == 2:
-                try:
-                    volume = int(float(parts[0]))
-                    premium = round(float(parts[1]) * 0.01, 4)
-                    direction = "S"
-                except ValueError:
-                    pass
-
-    if not direction:
-        direction = "B"
-    if volume == 0:
-        volume = 1  # Fallback for generic mode
-
-    return direction, volume, premium
-
-
-def _validate_generic_prices(order, leg_prices):
-    """
-    Validate generic trade prices using qty * price net calculation.
-    For each leg: sign = +1 if sell, -1 if buy.
-    Net = sum(sign * volume * price) for all legs.
-    |Net / order.total_quantity| should equal package premium.
-
-    We divide by order.total_quantity (not the first leg's volume) because
-    the package premium is always expressed per total-order lot. A trader
-    may split one side into multiple partial legs at different prices to
-    represent an average (e.g. two 500-lot buy legs on a 1000-lot order),
-    and those partial legs must reconcile to the same package premium as if
-    entered as a single 1000-lot leg.
-    """
-    if not order.package_premium:
-        return  # No premium to validate against
-
-    if not order.total_quantity or order.total_quantity == 0:
-        return
-
-    price_map = {lp.leg_index: lp.price for lp in leg_prices}
-    net = 0.0
-
-    for leg in order.legs:
-        if leg.leg_index not in price_map:
-            continue
-        if leg.option_type is None and leg.strike is None:
-            continue  # Skip futures legs
-        sign = 1.0 if leg.side == "S" else -1.0
-        net += sign * leg.volume * price_map[leg.leg_index]
-
-    net_per_unit = abs(net) / order.total_quantity
-    if abs(net_per_unit - order.package_premium) > 0.000001:
-        raise ValidationError([
-            f"Price reconciliation failed. "
-            f"Expected: {order.package_premium:.4f}, "
-            f"Calculated: {net_per_unit:.4f}, "
-            f"Discrepancy: {abs(net_per_unit - order.package_premium):.4f}."
-        ])
+    }
+    {% endif %}
+    form.submit();
+}
+</script>
+{% endblock %}
