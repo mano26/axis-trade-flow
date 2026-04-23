@@ -1,16 +1,11 @@
-# =============================================================================
 # Railway Deployment Configuration
-# =============================================================================
-# Railway reads this file to configure the build and deploy process.
-# Documentation: https://docs.railway.app/reference/config-as-code
-# =============================================================================
 
 [build]
 builder = "NIXPACKS"
 
 [deploy]
-startCommand = "flask db upgrade; gunicorn wsgi:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120 --log-level debug --access-logfile - --error-logfile -"
+startCommand = "FLASK_APP=wsgi.py flask db upgrade; gunicorn wsgi:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120 --log-level info --access-logfile - --error-logfile -"
 healthcheckPath = "/health"
-healthcheckTimeout = 120
+healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
-restartPolicyMaxRetries = 5
+restartPolicyMaxRetries = 3
