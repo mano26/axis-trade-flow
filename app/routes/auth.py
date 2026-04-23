@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # =============================================================================
 # Authentication Routes
 # =============================================================================
@@ -58,7 +59,7 @@ def login():
 @auth_bp.route("/guide")
 @login_required
 def guide():
-    """User guide — trade entry syntax, workflow, and reference."""
+    """User guide - trade entry syntax, workflow, and reference."""
     return render_template("guide.html")
 
 
