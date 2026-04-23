@@ -844,6 +844,40 @@ def cancel(order_id):
     return redirect(url_for("orders.detail", order_id=order.id))
 
 
+@orders_bp.route("/bulk-delete", methods=["POST"])
+@login_required
+def bulk_delete():
+    # Bulk soft-delete. Super admin only.
+    if not current_user.is_super():
+        flash("Only super admins can delete orders.", "danger")
+        return redirect(url_for("reports.order_log"))
+    from datetime import datetime, timezone as _tz
+    order_ids = request.form.getlist("order_ids")
+    if not order_ids:
+        flash("No orders selected.", "warning")
+        return redirect(url_for("reports.order_log"))
+    deleted = 0
+    now = datetime.now(_tz.utc)
+    for oid in order_ids:
+        order = Order.query.filter_by(
+            id=int(oid), tenant_id=current_user.tenant_id
+        ).first()
+        if order and order.deleted_at is None:
+            order.deleted_at = now
+            audit_service.log_action(
+                action="order_deleted",
+                entity_type="order",
+                entity_id=order.id,
+                tenant_id=current_user.tenant_id,
+                user_id=current_user.id,
+                notes=f"Order #{order.ticket_display} bulk-deleted by super admin.",
+            )
+            deleted += 1
+    db.session.commit()
+    flash(f"{deleted} order(s) deleted.", "info")
+    return redirect(url_for("reports.order_log"))
+
+
 @orders_bp.route("/<int:order_id>/delete", methods=["POST"])
 @login_required
 def delete(order_id):

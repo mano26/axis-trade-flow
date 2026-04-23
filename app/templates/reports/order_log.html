@@ -9,17 +9,21 @@
 <!-- Filters -->
 <section class="order-summary" style="margin-bottom: 20px;">
     <form method="GET" action="{{ url_for('reports.order_log') }}">
-        <div class="inline-form-row" style="flex-wrap: wrap; gap: 8px;">
+        <div class="inline-form-row" style="flex-wrap: wrap; gap: 8px; align-items: center;">
             <label>From:</label>
             <input type="date" name="date_from" value="{{ date_from.isoformat() }}" class="filter-input">
             <label>To:</label>
             <input type="date" name="date_to" value="{{ date_to.isoformat() }}" class="filter-input">
+            <label>Ticket:</label>
+            <input type="text" name="ticket" value="{{ ticket_filter }}" placeholder="#" class="filter-input" style="width: 60px;">
             <label>Strategy:</label>
             <input type="text" name="strategy" value="{{ strategy_filter }}" placeholder="All" class="filter-input text-upper" style="width: 80px;">
             <label>House:</label>
             <input type="text" name="house" value="{{ house_filter }}" placeholder="All" class="filter-input text-upper" style="width: 80px;">
+            <label>Account:</label>
+            <input type="text" name="account" value="{{ account_filter }}" placeholder="All" class="filter-input text-upper" style="width: 80px;">
             <label>Search:</label>
-            <input type="text" name="search" value="{{ search_filter }}" placeholder="Trade string..." class="filter-input text-upper" style="width: 160px;">
+            <input type="text" name="search" value="{{ search_filter }}" placeholder="SFRK6, strike..." class="filter-input text-upper" style="width: 140px;">
             <button type="submit" class="btn btn-primary">Filter</button>
             <a href="{{ url_for('reports.order_log') }}" class="btn">Reset</a>
         </div>
@@ -28,10 +32,28 @@
 
 <!-- Results -->
 {% if orders %}
+<form method="POST" action="{{ url_for('orders.bulk_delete') }}" id="bulk-delete-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <section>
+    {% if current_user.is_super() %}
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+        <button type="button" class="btn"
+                style="background:#cc2222;color:#fff;border-color:#cc2222;"
+                onclick="confirmBulkDelete()">
+            Delete Selected
+        </button>
+        <span id="selected-count" style="font-size:12px;color:#888;"></span>
+    </div>
+    {% endif %}
     <table class="legs-table">
         <thead>
             <tr>
+                {% if current_user.is_super() %}
+                <th style="width:32px;">
+                    <input type="checkbox" id="select-all" title="Select all"
+                           onchange="toggleAll(this)" style="cursor:pointer;">
+                </th>
+                {% endif %}
                 <th>Ticket</th>
                 <th>Date</th>
                 <th>Time In</th>
@@ -47,11 +69,17 @@
         </thead>
         <tbody>
             {% for order in orders %}
-            <tr class="clickable-row" onclick="window.location='{{ url_for('orders.detail', order_id=order.id) }}'">
+            <tr class="clickable-row" onclick="rowClick(event, '{{ url_for('orders.detail', order_id=order.id) }}')">
+                {% if current_user.is_super() %}
+                <td onclick="event.stopPropagation()">
+                    <input type="checkbox" name="order_ids" value="{{ order.id }}"
+                           class="order-cb" onchange="updateCount()" style="cursor:pointer;">
+                </td>
+                {% endif %}
                 <td class="ticket-num">#{{ order.ticket_display }}</td>
                 <td>{{ order.trade_date.strftime('%m/%d/%Y') }}</td>
-                <td>{{ order.time_in.strftime('%H:%M:%S') if order.time_in else '' }}</td>
-                <td>{{ order.time_out.strftime('%H:%M:%S') if order.time_out else '' }}</td>
+                <td>{{ order.time_in | chicago_time if order.time_in else '' }}</td>
+                <td>{{ order.time_out | chicago_time if order.time_out else '' }}</td>
                 <td class="direction-{{ order.direction }}">{{ order.direction }}</td>
                 <td>{{ order.strategy | upper }}{% if order.is_generic %} (GEN){% endif %}</td>
                 <td class="trade-string">{{ order.raw_input }}</td>
@@ -59,7 +87,7 @@
                 <td>{{ order.account or '' }}</td>
                 <td><span class="status-badge status-{{ order.status }}">{{ order.status | replace('_', ' ') | upper }}</span></td>
                 <td onclick="event.stopPropagation()" style="white-space:nowrap;">
-                    {% if order.status in ('filled', 'partial_fill', 'partial_cancelled') %}
+                    {% if order.status in ('filled', 'partial_fill', 'partial_cancelled', 'amended') %}
                     <a href="{{ url_for('cards.generate', order_id=order.id) }}" class="btn btn-sm">Cards</a>
                     <a href="{{ url_for('tickets.generate', order_id=order.id) }}" class="btn btn-sm">Ticket</a>
                     {% endif %}
@@ -70,9 +98,55 @@
     </table>
     <p class="form-help" style="margin-top: 8px;">{{ orders | length }} order(s) found. Click a row to view details.</p>
 </section>
+</form>
 {% else %}
 <p class="empty-state">No orders found for the selected filters.</p>
 {% endif %}
 
-<a href="{{ url_for('orders.index') }}" class="btn btn-back">← Back to Orders</a>
+<a href="{{ url_for('orders.index') }}" class="btn btn-back">Back to Orders</a>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function rowClick(e, url) {
+    if (e.target.type === 'checkbox') return;
+    window.location = url;
+}
+
+function toggleAll(cb) {
+    document.querySelectorAll('.order-cb').forEach(function(c) { c.checked = cb.checked; });
+    updateCount();
+}
+
+function updateCount() {
+    var checked = document.querySelectorAll('.order-cb:checked').length;
+    var total = document.querySelectorAll('.order-cb').length;
+    var el = document.getElementById('selected-count');
+    if (el) el.textContent = checked > 0 ? checked + ' of ' + total + ' selected' : '';
+    var sa = document.getElementById('select-all');
+    if (sa) sa.indeterminate = checked > 0 && checked < total;
+    if (sa) sa.checked = checked === total && total > 0;
+}
+
+function confirmBulkDelete() {
+    var checked = document.querySelectorAll('.order-cb:checked');
+    if (checked.length === 0) {
+        alert('No orders selected.');
+        return;
+    }
+    var msg = 'WARNING\n\n' +
+              'You are about to permanently remove ' + checked.length + ' order(s) from view.\n\n' +
+              'This action cannot be undone. Deletion of exchange-executed trades ' +
+              'may violate record-keeping requirements under exchange rules and ' +
+              'applicable regulations.\n\n' +
+              'Proceed only for test or erroneous entries.\n\n' +
+              'Type DELETE to confirm:';
+    var input = prompt(msg);
+    if (input !== null && input.trim().toUpperCase() === 'DELETE') {
+        document.getElementById('bulk-delete-form').submit();
+    } else if (input !== null) {
+        alert('Deletion cancelled. You must type DELETE exactly to confirm.');
+    }
+}
+</script>
 {% endblock %}
