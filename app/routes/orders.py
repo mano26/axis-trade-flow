@@ -829,6 +829,17 @@ def cancel(order_id):
         if order.status == OrderStatus.OPEN:
             order.transition_to(OrderStatus.CANCELLED)
         elif order.status == OrderStatus.PARTIAL_FILL:
+            # Scale leg volumes to the filled quantity before transitioning.
+            # transition_to(PARTIAL_CANCELLED) sets order.total_quantity = filled_quantity,
+            # but leg.volume records are not touched automatically. Without this, the
+            # ticket and cards would still show the original order size rather than
+            # what was actually traded.
+            filled = order.filled_quantity
+            original = order.total_quantity
+            if filled > 0 and original > 0 and filled != original:
+                scale = filled / original
+                for leg in order.legs:
+                    leg.volume = round(leg.volume * scale)
             order.transition_to(OrderStatus.PARTIAL_CANCELLED)
         else:
             flash(f"Cannot cancel an order in '{order.status}' status.", "warning")
@@ -1006,6 +1017,14 @@ def modify_balance(order_id):
 
         # ── Close the partial fill on the original order ──
         old_status = order.status  # PARTIAL_FILL
+        # Scale leg volumes to filled quantity before transitioning, so
+        # the original order's ticket and cards show the correct amount.
+        filled = order.filled_quantity
+        original = order.total_quantity
+        if filled > 0 and original > 0 and filled != original:
+            scale = filled / original
+            for leg in order.legs:
+                leg.volume = round(leg.volume * scale)
         order.transition_to(OrderStatus.PARTIAL_CANCELLED)
         # transition_to(PARTIAL_CANCELLED) shrinks total_qty to filled_qty
         # and sets status to FILLED internally.
