@@ -406,6 +406,14 @@ class OrderLeg(db.Model):
         doc="If True, this leg is part of a VS or bracket trade and its "
             "premium is displayed at the package level, not per-leg."
     )
+    cvd_raw_volume = db.Column(
+        db.Float,
+        nullable=True,
+        doc="For CVD futures legs: the unrounded computed volume "
+            "(order_qty * delta%). E.g. 11.25 for 125 lots x 9%delta. "
+            "Stored so the CP form can show the fractional value and let "
+            "the trader choose floor or ceil. NULL for non-CVD legs."
+    )
 
     # --- Relationships ---
     order = db.relationship("Order", back_populates="legs")

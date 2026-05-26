@@ -391,7 +391,8 @@ def build_single_option(trade: TradeInput) -> list[dict]:
 
 
 def build_cvd_overlay(trade: TradeInput) -> list[dict]:
-    fut_vol = round(trade.volume * trade.delta_percent / 100)
+    fut_vol_raw = trade.volume * trade.delta_percent / 100
+    fut_vol = round(fut_vol_raw)
     px = trade.cvd_price
 
     if trade.strategy == "single":
@@ -414,9 +415,11 @@ def build_cvd_overlay(trade: TradeInput) -> list[dict]:
     if trade.delta_override == "S":
         side_fut = "S"
 
-    return [
-        _build_leg(side_fut, fut_vol, trade, is_future=True, price=px),
-    ]
+    leg = _build_leg(side_fut, fut_vol, trade, is_future=True, price=px)
+    # Store the unrounded volume so the counterparty form can show it
+    # and let the trader decide floor vs ceil when fractional.
+    leg["cvd_raw_volume"] = fut_vol_raw if fut_vol_raw != fut_vol else None
+    return [leg]
 
 
 # =========================================================================

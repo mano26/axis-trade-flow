@@ -413,15 +413,31 @@
 
             {# Counterparties #}
             <p class="form-help" style="margin-bottom: 6px; font-weight: 600;">Counterparties</p>
+            {% if order.has_futures_legs %}
+            {% set fut_leg = order.legs | selectattr("option_type", "equalto", none) | selectattr("strike", "equalto", none) | first | default(none) %}
+            {% set delta_pct = (fut_leg.volume / order.total_quantity) if fut_leg and order.total_quantity else 0 %}
+            <p class="form-help" style="color: #c66a00; margin-bottom: 6px; font-size: 12px;">
+                &#9888; CVD trade &mdash; delta {{ "%.1f"|format(delta_pct * 100) }}%. Futures Qty column is trader-adjustable.
+            </p>
+            {% endif %}
             <table class="legs-table cp-entry-table">
                 <thead>
-                    <tr><th>Qty</th><th>Filling Broker</th><th>Counterparty/House</th><th>Bracket</th><th>Notes</th></tr>
+                    <tr><th>Qty</th><th>Filling Broker</th><th>Counterparty/House</th><th>Bracket</th><th>Notes</th>{% if order.has_futures_legs %}<th>Futures Qty</th>{% endif %}</tr>
                 </thead>
                 <tbody>
                     {% for i in range(10) %}
                     {% set cp = fill.counterparties[i] if i < fill.counterparties|length else none %}
+                    {% if order.has_futures_legs %}
+                    {% set calc_raw_a = ((cp.quantity if cp else 0) | float) * delta_pct %}
+                    {% set existing_fut_a = cp.futures_quantity if cp and cp.futures_quantity is not none else none %}
+                    {% endif %}
                     <tr>
-                        <td><input type="number" name="cp_qty_{{ i }}" value="{{ cp.quantity if cp else '' }}" min="0" class="cp-qty-input"></td>
+                        <td><input type="number" name="cp_qty_{{ i }}" value="{{ cp.quantity if cp else '' }}" min="0" class="cp-qty-input"
+                            {% if order.has_futures_legs %}
+                            data-delta="{{ delta_pct }}" data-row="a{{ i }}"
+                            oninput="updateFutQty(this)"
+                            {% endif %}
+                        ></td>
                         <td>
                             {% if lookups.filling_broker %}
                             <select name="cp_broker_{{ i }}" class="text-upper"><option value=""></option>{% for lv in lookups.filling_broker %}<option value="{{ lv.value }}" {% if cp and cp.broker == lv.value %}selected{% endif %}>{{ lv.value }}</option>{% endfor %}</select>
@@ -444,6 +460,17 @@
                             {% endif %}
                         </td>
                         <td><input type="text" name="cp_notes_{{ i }}" value="{{ cp.notes if cp else '' }}" placeholder="Optional"></td>
+                        {% if order.has_futures_legs %}
+                        <td>
+                            {% if calc_raw_a > 0 and calc_raw_a != (calc_raw_a | int) %}
+                            <span style="font-size:11px;color:#888;display:block;">calc: {{ "%.2f"|format(calc_raw_a) }}</span>
+                            {% endif %}
+                            <input type="number" name="cp_fut_qty_{{ i }}"
+                                   id="cp_fut_qty_a{{ i }}"
+                                   value="{{ existing_fut_a if existing_fut_a is not none else ((calc_raw_a | int) if calc_raw_a > 0 else '') }}"
+                                   min="0" style="width:70px;">
+                        </td>
+                        {% endif %}
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -516,15 +543,37 @@
         <p class="form-help" style="margin-bottom: 8px;">
             Fill #{{ fill_num }} — Allocate {{ fill.fill_quantity }} contracts. Quantities must sum to {{ fill.fill_quantity }}.
         </p>
+        {% if order.has_futures_legs %}
+        {# Pre-compute per-counterparty fractional futures for the warning display #}
+        {# delta_pct = futures_leg.volume / order.total_quantity * 100 #}
+        {% set fut_leg = order.legs | selectattr("option_type", "equalto", none) | selectattr("strike", "equalto", none) | first | default(none) %}
+        {% set delta_pct = (fut_leg.volume / order.total_quantity) if fut_leg and order.total_quantity else 0 %}
+        <p class="form-help" style="color: #c66a00; margin-bottom: 6px; font-size: 12px;">
+            &#9888; CVD trade &mdash; delta {{ "%.1f"|format(delta_pct * 100) }}%.
+            Enter the futures quantity for each counterparty (may differ from calculated due to rounding).
+        </p>
+        {% endif %}
         <table class="legs-table cp-entry-table">
             <thead>
-                <tr><th>Qty</th><th>Filling Broker</th><th>Counterparty/House</th><th>Bracket</th><th>Notes</th></tr>
+                <tr><th>Qty</th><th>Filling Broker</th><th>Counterparty/House</th><th>Bracket</th><th>Notes</th>{% if order.has_futures_legs %}<th>Futures Qty</th>{% endif %}</tr>
             </thead>
             <tbody>
                 {% for i in range(10) %}
                 {% set cp = fill.counterparties[i] if i < fill.counterparties|length else none %}
+                {% if order.has_futures_legs %}
+                {# Calculated futures qty for this row: cp_qty * delta_pct, rounded #}
+                {% set calc_raw = ((cp.quantity if cp else (fill.fill_quantity if i == 0 and not fill.counterparties else 0)) | float) * delta_pct %}
+                {% set calc_floor = calc_raw | int %}
+                {% set calc_ceil = (calc_raw + 0.9999) | int %}
+                {% set existing_fut = cp.futures_quantity if cp and cp.futures_quantity is not none else none %}
+                {% endif %}
                 <tr>
-                    <td><input type="number" name="cp_qty_{{ i }}" value="{{ cp.quantity if cp else (fill.fill_quantity if i == 0 and not fill.counterparties else '') }}" min="0" class="cp-qty-input"></td>
+                    <td><input type="number" name="cp_qty_{{ i }}" value="{{ cp.quantity if cp else (fill.fill_quantity if i == 0 and not fill.counterparties else '') }}" min="0" class="cp-qty-input"
+                        {% if order.has_futures_legs %}
+                        data-delta="{{ delta_pct }}" data-row="{{ i }}"
+                        oninput="updateFutQty(this)"
+                        {% endif %}
+                    ></td>
                     <td>
                         {% if lookups.filling_broker %}
                         <select name="cp_broker_{{ i }}" class="text-upper"><option value=""></option>{% for lv in lookups.filling_broker %}<option value="{{ lv.value }}" {% if cp and cp.broker == lv.value %}selected{% endif %}>{{ lv.value }}</option>{% endfor %}</select>
@@ -547,6 +596,20 @@
                         {% endif %}
                     </td>
                     <td><input type="text" name="cp_notes_{{ i }}" value="{{ cp.notes if cp else '' }}" placeholder="Optional"></td>
+                    {% if order.has_futures_legs %}
+                    <td>
+                        {% if calc_raw > 0 and calc_raw != calc_floor %}
+                        <span style="font-size:11px;color:#888;display:block;">
+                            calc: {{ "%.2f"|format(calc_raw) }}
+                        </span>
+                        {% endif %}
+                        <input type="number" name="cp_fut_qty_{{ i }}"
+                               id="cp_fut_qty_{{ i }}"
+                               value="{{ existing_fut if existing_fut is not none else (calc_floor if calc_raw > 0 else '') }}"
+                               min="0" style="width:70px;"
+                               placeholder="{{ calc_floor if calc_raw > 0 else '' }}">
+                    </td>
+                    {% endif %}
                 </tr>
                 {% endfor %}
             </tbody>
@@ -640,6 +703,24 @@ function addLegRow() {
         '<td><button type="button" class="btn-remove" onclick="this.closest(\'tr\').remove()">×</button></td>';
     tbody.appendChild(tr);
     rowCounter++;
+}
+
+// ── Futures qty auto-calculation for CVD counterparty rows ──
+function updateFutQty(qtyInput) {
+    var delta = parseFloat(qtyInput.dataset.delta) || 0;
+    var row = qtyInput.dataset.row;
+    var qty = parseInt(qtyInput.value) || 0;
+    var raw = qty * delta;
+    var futField = document.getElementById('cp_fut_qty_' + row);
+    if (!futField) return;
+    if (raw > 0) {
+        var floor = Math.floor(raw);
+        futField.value = floor;
+        futField.title = 'Calculated: ' + raw.toFixed(2) + ' (floor=' + floor + ', ceil=' + Math.ceil(raw) + ')';
+    } else {
+        futField.value = '';
+        futField.title = '';
+    }
 }
 
 // ── B/S toggle for parsed order legs ──

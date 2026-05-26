@@ -155,6 +155,7 @@ def create():
                     mo_card_code=leg_data.get("mo_card_code"),
                     package_premium=leg_data.get("package_premium"),
                     suppress_premium=leg_data.get("suppress_premium", False),
+                    cvd_raw_volume=leg_data.get("cvd_raw_volume", None),
                 )
                 db.session.add(leg)
 
@@ -496,6 +497,8 @@ def save_counterparties(order_id):
             notes = request.form.get(f"cp_notes_{i}", "").strip()
             if not any([qty_str, broker, symbol, bracket]):
                 continue
+            fut_qty_str = request.form.get(f"cp_fut_qty_{i}", "").strip()
+            fut_qty = int(fut_qty_str) if fut_qty_str else None
             cp = FillCounterparty(
                 fill_id=fill.id,
                 quantity=int(qty_str) if qty_str else 0,
@@ -503,6 +506,7 @@ def save_counterparties(order_id):
                 symbol=symbol,
                 bracket=bracket,
                 notes=notes or None,
+                futures_quantity=fut_qty,
             )
             counterparties.append(cp)
 
@@ -609,11 +613,14 @@ def amend_fill(order_id, fill_id):
             notes   = request.form.get(f"cp_notes_{i}", "").strip()
             if not any([qty_str, broker, symbol, bracket]):
                 continue
+            fut_qty_str = request.form.get(f"cp_fut_qty_{i}", "").strip()
+            fut_qty = int(fut_qty_str) if fut_qty_str else None
             counterparties.append(FillCounterparty(
                 fill_id=fill.id,
                 quantity=int(qty_str) if qty_str else 0,
                 broker=broker, symbol=symbol, bracket=bracket,
                 notes=notes or None,
+                futures_quantity=fut_qty,
             ))
 
         if counterparties:
@@ -702,6 +709,8 @@ def amend_fill_counterparties(order_id, fill_id):
             notes = request.form.get(f"cp_notes_{i}", "").strip()
             if not any([qty_str, broker, symbol, bracket]):
                 continue
+            fut_qty_str = request.form.get(f"cp_fut_qty_{i}", "").strip()
+            fut_qty = int(fut_qty_str) if fut_qty_str else None
             cp = FillCounterparty(
                 fill_id=fill.id,
                 quantity=int(qty_str) if qty_str else 0,
@@ -709,6 +718,7 @@ def amend_fill_counterparties(order_id, fill_id):
                 symbol=symbol,
                 bracket=bracket,
                 notes=notes or None,
+                futures_quantity=fut_qty,
             )
             counterparties.append(cp)
 
@@ -949,6 +959,7 @@ def modify(order_id):
                 mo_card_code=leg_data.get("mo_card_code"),
                 package_premium=leg_data.get("package_premium"),
                 suppress_premium=leg_data.get("suppress_premium", False),
+                    cvd_raw_volume=leg_data.get("cvd_raw_volume", None),
             )
             db.session.add(leg)
         after = {"raw_input": order.raw_input, "strategy": order.strategy}
@@ -1070,6 +1081,7 @@ def modify_balance(order_id):
                 mo_card_code=leg_data.get("mo_card_code"),
                 package_premium=leg_data.get("package_premium"),
                 suppress_premium=leg_data.get("suppress_premium", False),
+                    cvd_raw_volume=leg_data.get("cvd_raw_volume", None),
             )
             db.session.add(leg)
 

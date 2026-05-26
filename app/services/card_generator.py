@@ -77,6 +77,7 @@ def generate_cards_html(order: Order) -> str:
                     g["cps"].append({
                         "qty": cp.quantity,
                         "symbol": cp.symbol or "",
+                        "futures_qty": cp.futures_quantity,  # None if not set
                     })
 
     is_multi_leg = len(legs) > 1
@@ -216,9 +217,13 @@ def _build_card(
         h += f"<div class='slot' style='border-color:{ink}'>"
         if slot < len(cps):
             cp = cps[slot]
-            # Scale cp qty by this leg's ratio (leg.volume / order.total_quantity).
-            # Uniform for options and futures — no special delta_ratio path needed.
-            dq = round(cp["qty"] * leg["leg_ratio"])
+            # For options: scale cp qty by leg_ratio (leg.volume / order.total_quantity).
+            # For futures on CVD trades: use cp["futures_qty"] if the trader
+            # explicitly chose a rounded value; otherwise fall back to leg_ratio.
+            if leg["is_fut"] and cp.get("futures_qty") is not None:
+                dq = cp["futures_qty"]
+            else:
+                dq = round(cp["qty"] * leg["leg_ratio"])
 
             # Split symbol on /
             sym = cp["symbol"]

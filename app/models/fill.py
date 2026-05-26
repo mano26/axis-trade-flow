@@ -224,6 +224,14 @@ class FillCounterparty(db.Model):
         nullable=True,
         doc="Optional free-text notes for this counterparty allocation."
     )
+    futures_quantity = db.Column(
+        db.Integer,
+        nullable=True,
+        doc="Trader-chosen integer futures quantity for CVD trades where "
+            "cp.quantity * delta% is non-integer. When set, the card generator "
+            "uses this value instead of recomputing from leg_ratio. "
+            "NULL means no CVD or no override needed (delta was already whole)."
+    )
 
     # --- Timestamps ---
     created_at = db.Column(
