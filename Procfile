@@ -1,1 +1,1 @@
-web: flask db upgrade && gunicorn wsgi:application
+web: gunicorn wsgi:application
