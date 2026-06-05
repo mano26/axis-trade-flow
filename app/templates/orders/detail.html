@@ -333,14 +333,14 @@
             {# Counterparties #}
             <table class="legs-table cp-entry-table">
                 <thead>
-                    <tr><th>Qty</th><th>Filling Broker</th><th>Counterparty/House</th><th>Bracket</th><th>Notes</th></tr>
+                    <tr><th>Qty</th><th>Filling Broker</th><th>Counterparty</th><th>House</th><th>Bracket</th><th>Notes</th></tr>
                 </thead>
                 <tbody>
                     {% for cp in fd.counterparties %}
                     <tr>
                         <td>{{ cp.quantity }}</td>
                         <td>{{ cp.broker }}</td>
-                        <td>{{ cp.symbol }}</td>
+                        <td>{{ cp.symbol }}{% if cp.cp_house %} / {{ cp.cp_house }}{% endif %}</td>
                         <td>{{ cp.bracket }}</td>
                         <td>{{ cp.notes or '' }}</td>
                     </tr>
@@ -422,7 +422,7 @@
             {% endif %}
             <table class="legs-table cp-entry-table">
                 <thead>
-                    <tr><th>Qty</th><th>Filling Broker</th><th>Counterparty/House</th><th>Bracket</th><th>Notes</th>{% if order.has_futures_legs %}<th>Futures Qty</th>{% endif %}</tr>
+                    <tr><th>Qty</th><th>Filling Broker</th><th>Counterparty</th><th>House</th><th>Bracket</th><th>Notes</th>{% if order.has_futures_legs %}<th>Futures Qty</th>{% endif %}</tr>
                 </thead>
                 <tbody>
                     {% for i in range(10) %}
@@ -446,11 +446,35 @@
                             {% endif %}
                         </td>
                         <td>
-                            {% if lookups.counterparty %}
-                            <select name="cp_symbol_{{ i }}" class="text-upper"><option value=""></option>{% for lv in lookups.counterparty %}<option value="{{ lv.value }}" {% if cp and cp.symbol == lv.value %}selected{% endif %}>{{ lv.value }}</option>{% endfor %}</select>
-                            {% else %}
-                            <input type="text" name="cp_symbol_{{ i }}" value="{{ cp.symbol if cp else '' }}" class="text-upper">
-                            {% endif %}
+                            {% if cp %}
+                              {% if cp.cp_house %}{% set a_sym = cp.symbol or '' %}
+                              {% elif cp.symbol and '/' in cp.symbol %}{% set a_sym = cp.symbol.split('/')[0].strip() %}
+                              {% else %}{% set a_sym = cp.symbol or '' %}{% endif %}
+                            {% else %}{% set a_sym = '' %}{% endif %}
+                            <input type="text"
+                                   id="a_sym_{{ fill.id }}_{{ i }}"
+                                   name="cp_symbol_{{ i }}"
+                                   value="{{ a_sym }}"
+                                   placeholder="MANO"
+                                   list="cp-symbols-datalist"
+                                   class="text-upper"
+                                   data-house-target="a_house_{{ fill.id }}_{{ i }}"
+                                   oninput="autoFillHouseGeneric(this)"
+                                   onchange="autoFillHouseGeneric(this)">
+                        </td>
+                        <td>
+                            {% if cp %}
+                              {% if cp.cp_house %}{% set a_house = cp.cp_house %}
+                              {% elif cp.symbol and '/' in cp.symbol %}{% set a_house = cp.symbol.split('/')[1].strip() %}
+                              {% else %}{% set a_house = '' %}{% endif %}
+                            {% else %}{% set a_house = '' %}{% endif %}
+                            <input type="text"
+                                   id="a_house_{{ fill.id }}_{{ i }}"
+                                   name="cp_house_{{ i }}"
+                                   value="{{ a_house }}"
+                                   placeholder="684"
+                                   class="text-upper"
+                                   style="width:60px;">
                         </td>
                         <td>
                             {% if lookups.bracket %}
@@ -555,7 +579,7 @@
         {% endif %}
         <table class="legs-table cp-entry-table">
             <thead>
-                <tr><th>Qty</th><th>Filling Broker</th><th>Counterparty/House</th><th>Bracket</th><th>Notes</th>{% if order.has_futures_legs %}<th>Futures Qty</th>{% endif %}</tr>
+                <tr><th>Qty</th><th>Filling Broker</th><th>Counterparty</th><th>House</th><th>Bracket</th><th>Notes</th>{% if order.has_futures_legs %}<th>Futures Qty</th>{% endif %}</tr>
             </thead>
             <tbody>
                 {% for i in range(10) %}
@@ -582,11 +606,35 @@
                         {% endif %}
                     </td>
                     <td>
-                        {% if lookups.counterparty %}
-                        <select name="cp_symbol_{{ i }}" class="text-upper"><option value=""></option>{% for lv in lookups.counterparty %}<option value="{{ lv.value }}" {% if cp and cp.symbol == lv.value %}selected{% endif %}>{{ lv.value }}</option>{% endfor %}</select>
-                        {% else %}
-                        <input type="text" name="cp_symbol_{{ i }}" value="{{ cp.symbol if cp else '' }}" placeholder="Counterparty/House" class="text-upper">
-                        {% endif %}
+                        {% if cp %}
+                          {% if cp.cp_house %}{% set p_sym = cp.symbol or '' %}
+                          {% elif cp.symbol and '/' in cp.symbol %}{% set p_sym = cp.symbol.split('/')[0].strip() %}
+                          {% else %}{% set p_sym = cp.symbol or '' %}{% endif %}
+                        {% else %}{% set p_sym = '' %}{% endif %}
+                        <input type="text"
+                               id="p_sym_{{ fill.id }}_{{ i }}"
+                               name="cp_symbol_{{ i }}"
+                               value="{{ p_sym }}"
+                               placeholder="MANO"
+                               list="cp-symbols-datalist"
+                               class="text-upper"
+                               data-house-target="p_house_{{ fill.id }}_{{ i }}"
+                               oninput="autoFillHouseGeneric(this)"
+                               onchange="autoFillHouseGeneric(this)">
+                    </td>
+                    <td>
+                        {% if cp %}
+                          {% if cp.cp_house %}{% set p_house = cp.cp_house %}
+                          {% elif cp.symbol and '/' in cp.symbol %}{% set p_house = cp.symbol.split('/')[1].strip() %}
+                          {% else %}{% set p_house = '' %}{% endif %}
+                        {% else %}{% set p_house = '' %}{% endif %}
+                        <input type="text"
+                               id="p_house_{{ fill.id }}_{{ i }}"
+                               name="cp_house_{{ i }}"
+                               value="{{ p_house }}"
+                               placeholder="684"
+                               class="text-upper"
+                               style="width:60px;">
                     </td>
                     <td>
                         {% if lookups.bracket %}
@@ -658,6 +706,36 @@
 
 {% block scripts %}
 <script>
+// CP house auto-fill: map of uppercase symbol -> house number
+// Built from counterparty lookup values (format "SYM/HOUSE").
+var CP_HOUSE_MAP = {
+    {% for lv in lookups.counterparty if '/' in lv.value %}
+    "{{ lv.value.split('/')[0].strip().upper() }}": "{{ lv.value.split('/')[1].strip() }}",
+    {% endfor %}
+};
+
+function autoFillHouseGeneric(symInput) {
+    var targetId = symInput.dataset.houseTarget;
+    var houseInput = document.getElementById(targetId);
+    if (!houseInput) return;
+    var sym = symInput.value.trim().toUpperCase();
+    if (!sym) { houseInput.value = ''; return; }
+    if (sym in CP_HOUSE_MAP && CP_HOUSE_MAP[sym] && !houseInput.value.trim()) {
+        houseInput.value = CP_HOUSE_MAP[sym];
+    }
+}
+</script>
+
+{# Datalist for counterparty symbol autocomplete #}
+{% if lookups.counterparty %}
+<datalist id="cp-symbols-datalist">
+    {% for lv in lookups.counterparty %}
+    {% set parts = lv.value.split('/') %}
+    <option value="{{ parts[0].strip().upper() }}">{{ lv.value }}</option>
+    {% endfor %}
+</datalist>
+{% endif %}
+
 var rowCounter = {{ display_legs | length if display_legs else (6 if order.is_generic else 0) }};
 
 // ── Amendment toggle ──

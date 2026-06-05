@@ -493,6 +493,7 @@ def save_counterparties(order_id):
             qty_str = request.form.get(f"cp_qty_{i}", "").strip()
             broker = request.form.get(f"cp_broker_{i}", "").strip()
             symbol = request.form.get(f"cp_symbol_{i}", "").strip()
+            cp_house = request.form.get(f"cp_house_{i}", "").strip()
             bracket = request.form.get(f"cp_bracket_{i}", "").strip()
             notes = request.form.get(f"cp_notes_{i}", "").strip()
             if not any([qty_str, broker, symbol, bracket]):
@@ -504,14 +505,12 @@ def save_counterparties(order_id):
                 quantity=int(qty_str) if qty_str else 0,
                 broker=broker,
                 symbol=symbol,
+                cp_house=cp_house or None,
                 bracket=bracket,
                 notes=notes or None,
                 futures_quantity=fut_qty,
             )
             counterparties.append(cp)
-
-        if not counterparties:
-            flash("No counterparties entered.", "info")
             db.session.commit()
             return redirect(url_for("orders.detail", order_id=order.id))
 
@@ -609,6 +608,7 @@ def amend_fill(order_id, fill_id):
             qty_str = request.form.get(f"cp_qty_{i}", "").strip()
             broker  = request.form.get(f"cp_broker_{i}", "").strip()
             symbol  = request.form.get(f"cp_symbol_{i}", "").strip()
+            cp_house = request.form.get(f"cp_house_{i}", "").strip()
             bracket = request.form.get(f"cp_bracket_{i}", "").strip()
             notes   = request.form.get(f"cp_notes_{i}", "").strip()
             if not any([qty_str, broker, symbol, bracket]):
@@ -618,7 +618,9 @@ def amend_fill(order_id, fill_id):
             counterparties.append(FillCounterparty(
                 fill_id=fill.id,
                 quantity=int(qty_str) if qty_str else 0,
-                broker=broker, symbol=symbol, bracket=bracket,
+                broker=broker, symbol=symbol,
+                cp_house=cp_house or None,
+                bracket=bracket,
                 notes=notes or None,
                 futures_quantity=fut_qty,
             ))
@@ -705,6 +707,7 @@ def amend_fill_counterparties(order_id, fill_id):
             qty_str = request.form.get(f"cp_qty_{i}", "").strip()
             broker = request.form.get(f"cp_broker_{i}", "").strip()
             symbol = request.form.get(f"cp_symbol_{i}", "").strip()
+            cp_house = request.form.get(f"cp_house_{i}", "").strip()
             bracket = request.form.get(f"cp_bracket_{i}", "").strip()
             notes = request.form.get(f"cp_notes_{i}", "").strip()
             if not any([qty_str, broker, symbol, bracket]):
@@ -716,14 +719,12 @@ def amend_fill_counterparties(order_id, fill_id):
                 quantity=int(qty_str) if qty_str else 0,
                 broker=broker,
                 symbol=symbol,
+                cp_house=cp_house or None,
                 bracket=bracket,
                 notes=notes or None,
                 futures_quantity=fut_qty,
             )
             counterparties.append(cp)
-
-        if not counterparties:
-            flash("No counterparties entered.", "warning")
             return redirect(url_for("orders.detail", order_id=order.id))
 
         validate_counterparty_completeness(counterparties)
