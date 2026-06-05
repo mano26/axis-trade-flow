@@ -705,6 +705,16 @@
 {% endblock %}
 
 {% block scripts %}
+{# Datalist for counterparty symbol autocomplete #}
+{% if lookups.counterparty %}
+<datalist id="cp-symbols-datalist">
+    {% for lv in lookups.counterparty %}
+    {% set parts = lv.value.split('/') %}
+    <option value="{{ parts[0].strip().upper() }}">{{ lv.value }}</option>
+    {% endfor %}
+</datalist>
+{% endif %}
+
 <script>
 // CP house auto-fill: map of uppercase symbol -> house number
 // Built from counterparty lookup values (format "SYM/HOUSE").
@@ -724,17 +734,6 @@ function autoFillHouseGeneric(symInput) {
         houseInput.value = CP_HOUSE_MAP[sym];
     }
 }
-</script>
-
-{# Datalist for counterparty symbol autocomplete #}
-{% if lookups.counterparty %}
-<datalist id="cp-symbols-datalist">
-    {% for lv in lookups.counterparty %}
-    {% set parts = lv.value.split('/') %}
-    <option value="{{ parts[0].strip().upper() }}">{{ lv.value }}</option>
-    {% endfor %}
-</datalist>
-{% endif %}
 
 var rowCounter = {{ display_legs | length if display_legs else (6 if order.is_generic else 0) }};
 
