@@ -368,7 +368,7 @@ def parse_single_leg(tokens: list[str]) -> TradeInput:
         if u == "^":
             trade.is_straddle = True
             trade.strategy = "straddle"
-            trade.option_types = ["P", "C"]
+            trade.option_types = ["C", "P"]
             i += 1
             continue
 
@@ -376,7 +376,7 @@ def parse_single_leg(tokens: list[str]) -> TradeInput:
         if u == "^^":
             trade.is_strangle = True
             trade.strategy = "strangle"
-            trade.option_types = ["P", "C"]
+            trade.option_types = ["C", "P"]
             i += 1
             continue
 
@@ -736,6 +736,30 @@ def parse_trade_input(input_line: str) -> list[TradeInput]:
                         cal.direction_side = parsed_side
                     else:
                         cal.direction_side = "S" if parsed_side == "B" else "B"
+                    result.append(cal)
+                return result
+
+            if leg1.strategy in ("straddle", "strangle"):
+                # Calendar straddle/strangle spread: N contracts, opposite directions.
+                # Each contract is paired with its positional strike; if fewer
+                # strikes than contracts the last strike is reused.
+                # e.g. 0QU6 96.0625 3QU6 96.125 ^ SPRD 2000@9.5
+                #      -> sell 0QU6 96.0625 ^  /  buy 3QU6 96.125 ^
+                n = len(real_codes)
+                strikes_list = (
+                    leg1.strikes[:n]
+                    if len(leg1.strikes) >= n
+                    else leg1.strikes + [leg1.strikes[-1]] * (n - len(leg1.strikes))
+                )
+                result = []
+                for idx, code in enumerate(real_codes):
+                    cal = copy.deepcopy(leg1)
+                    cal.contract_codes = [code]
+                    add_pack_helper_if_short_dated(cal, code)
+                    cal.strikes = [strikes_list[idx]]
+                    cal.direction_side = (
+                        parsed_side if idx == 0 else ("S" if parsed_side == "B" else "B")
+                    )
                     result.append(cal)
                 return result
 

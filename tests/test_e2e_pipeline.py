@@ -119,8 +119,8 @@ class TestStraddleE2E:
     def test_straddle_two_legs_same_strike(self):
         _, legs = parse_and_build("SFRH6 95.75 ^ 3/100")
         assert len(legs) == 2
-        assert legs[0]["option_type"] == "P"
-        assert legs[1]["option_type"] == "C"
+        assert legs[0]["option_type"] == "C"
+        assert legs[1]["option_type"] == "P"
         assert legs[0]["strike"] == 95.75
         assert legs[1]["strike"] == 95.75
         assert legs[0]["side"] == "B"

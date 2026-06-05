@@ -66,8 +66,8 @@ class TestBuildStraddle:
         )
         legs = build_straddle(trade)
         assert len(legs) == 2
-        assert legs[0]["option_type"] == "P"
-        assert legs[1]["option_type"] == "C"
+        assert legs[0]["option_type"] == "C"
+        assert legs[1]["option_type"] == "P"
         assert legs[0]["strike"] == 95.75
         assert legs[1]["strike"] == 95.75
 

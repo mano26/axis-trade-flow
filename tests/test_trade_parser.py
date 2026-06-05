@@ -104,7 +104,7 @@ class TestStraddleStrangleParsing:
         t = result[0]
         assert t.strategy == "straddle"
         assert t.is_straddle is True
-        assert t.option_types == ["P", "C"]
+        assert t.option_types == ["C", "P"]
 
     def test_strangle(self):
         result = parse_trade_input("SFRH6 95.50 95.75 ^^ 2/300")
@@ -112,6 +112,47 @@ class TestStraddleStrangleParsing:
         t = result[0]
         assert t.strategy == "strangle"
         assert t.is_strangle is True
+
+    def test_straddle_option_types_calls_first(self):
+        result = parse_trade_input("SFRH6 95.75 ^ 3/100")
+        t = result[0]
+        assert t.option_types == ["C", "P"]
+
+    def test_calendar_straddle_spread_two_segments(self):
+        """0QU6 96.0625 3QU6 96.125 ^ SPRD 2000@9.5 -> sell 0QU6 ^, buy 3QU6 ^."""
+        result = parse_trade_input("0QU6 96.0625 3QU6 96.125 ^ SPRD 2000@9.5")
+        assert len(result) == 2
+        seg0, seg1 = result
+        # Both straddles
+        assert seg0.strategy == "straddle"
+        assert seg1.strategy == "straddle"
+        # Opposite directions (sell first, buy second for qty@price credit)
+        assert seg0.direction_side == "S"
+        assert seg1.direction_side == "B"
+        # Each contract gets its own strike
+        assert seg0.strikes == [96.0625]
+        assert seg1.strikes == [96.125]
+        # Contract codes correct
+        assert "0QU6" in seg0.contract_codes
+        assert "3QU6" in seg1.contract_codes
+
+    def test_calendar_straddle_shared_strike(self):
+        """Single strike shared across both contracts."""
+        result = parse_trade_input("SFRM6 SFRU6 96.50 ^ 5/200")
+        assert len(result) == 2
+        assert result[0].strikes == [96.50]
+        assert result[1].strikes == [96.50]
+        assert result[0].direction_side == "B"
+        assert result[1].direction_side == "S"
+
+    def test_calendar_strangle_spread(self):
+        """Two-contract strangle calendar spread."""
+        result = parse_trade_input("SFRM6 95.75 96.00 SFRU6 95.50 96.25 ^^ 3/500")
+        assert len(result) == 2
+        assert result[0].strategy == "strangle"
+        assert result[1].strategy == "strangle"
+        assert result[0].direction_side == "B"
+        assert result[1].direction_side == "S"
 
 
 class TestButterflyParsing:

@@ -224,8 +224,8 @@ def _build_leg(
 def build_straddle(trade: TradeInput) -> list[dict]:
     k = trade.strikes[0]
     return [
-        _build_leg("", trade.volume, trade, strike=k, option_type="P"),
         _build_leg("", trade.volume, trade, strike=k, option_type="C"),
+        _build_leg("", trade.volume, trade, strike=k, option_type="P"),
     ]
 
 
@@ -233,8 +233,8 @@ def build_strangle(trade: TradeInput) -> list[dict]:
     lo = min(trade.strikes[0], trade.strikes[1])
     hi = max(trade.strikes[0], trade.strikes[1])
     return [
-        _build_leg("", trade.volume, trade, strike=lo, option_type="P"),
         _build_leg("", trade.volume, trade, strike=hi, option_type="C"),
+        _build_leg("", trade.volume, trade, strike=lo, option_type="P"),
     ]
 
 
