@@ -232,6 +232,14 @@ class FillCounterparty(db.Model):
             "uses this value instead of recomputing from leg_ratio. "
             "NULL means no CVD or no override needed (delta was already whole)."
     )
+    cp_house = db.Column(
+        db.String(50),
+        nullable=True,
+        doc="House/clearing code for this counterparty on this specific trade. "
+            "When set, the card generator uses this as the bottom CP cell "
+            "instead of splitting symbol on '/'. NULL for historical records "
+            "(card generator falls back to the old symbol '/' split)."
+    )
 
     # --- Timestamps ---
     created_at = db.Column(

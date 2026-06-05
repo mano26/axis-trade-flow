@@ -77,6 +77,7 @@ def generate_cards_html(order: Order) -> str:
                     g["cps"].append({
                         "qty": cp.quantity,
                         "symbol": cp.symbol or "",
+                        "cp_house": cp.cp_house or "",
                         "futures_qty": cp.futures_quantity,  # None if not set
                     })
 
@@ -225,12 +226,17 @@ def _build_card(
             else:
                 dq = round(cp["qty"] * leg["leg_ratio"])
 
-            # Split symbol on /
-            sym = cp["symbol"]
-            if "/" in sym:
-                s_top, s_bot = sym.split("/", 1)
+            # Determine top/bottom of CP cell.
+            # New records have cp_house set separately; old records used "SYM/HOUSE"
+            # combined in symbol — fall back to "/" split for backward compat.
+            house = cp.get("cp_house") or ""
+            sym_raw = cp.get("symbol") or ""
+            if house:
+                s_top, s_bot = sym_raw, house
+            elif "/" in sym_raw:
+                s_top, s_bot = sym_raw.split("/", 1)
             else:
-                s_top, s_bot = sym, "&nbsp;"
+                s_top, s_bot = sym_raw, "&nbsp;"
 
             h += f"<div class='cell w-qty' style='color:{ink};border-color:{ink}'>{dq}</div>"
             h += f"<div class='cell w-mo' style='color:{ink};border-color:{ink}'>{leg['mo_code']}</div>"
@@ -280,6 +286,7 @@ def build_card_data_snapshot(order: Order) -> dict:
                 "quantity": cp.quantity,
                 "broker": cp.broker,
                 "symbol": cp.symbol,
+                "cp_house": cp.cp_house or "",
                 "bracket": cp.bracket,
                 "notes": cp.notes,
             })

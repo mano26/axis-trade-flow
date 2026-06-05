@@ -902,25 +902,73 @@ def bulk_delete():
 @orders_bp.route("/<int:order_id>/delete", methods=["POST"])
 @login_required
 def delete(order_id):
-    # Soft-delete an order. Super admin only, any status.
-    # Sets deleted_at; order disappears from all views but stays for audit.
+    # Hard-delete an order. Super admin only, any status.
+    # Physically removes the row (and cascaded fills/legs) so the ticket
+    # number is freed from the unique constraint and can be reused.
+    # Audit log entry is written BEFORE deletion so the record is preserved.
     if not current_user.is_super():
         flash("Only super admins can delete orders.", "danger")
         return redirect(url_for("orders.detail", order_id=order_id))
+
     order = _get_order_or_404(order_id)
-    from datetime import datetime, timezone as _tz
-    order.deleted_at = datetime.now(_tz.utc)
+    ticket_num = order.ticket_number
+    ticket_display = order.ticket_display
+
+    # Write audit entry before the row disappears
     audit_service.log_action(
-        action="order_deleted",
+        action="order_hard_deleted",
         entity_type="order",
         entity_id=order.id,
         tenant_id=current_user.tenant_id,
         user_id=current_user.id,
-        notes=f"Order #{order.ticket_display} soft-deleted by super admin.",
+        notes=(
+            f"Order #{ticket_display} hard-deleted by super admin "
+            f"(trade: {order.raw_input}). Ticket number released for reuse."
+        ),
     )
+
+    # Hard delete — cascades to legs, fills, counterparties
+    db.session.delete(order)
+
+    # Walk the counter back so the freed number is the next candidate.
+    # _get_next_ticket_number's gap-fill loop handles any collision with
+    # other still-active orders on the same day.
+    tenant = db.session.get(Tenant, current_user.tenant_id)
+    if ticket_num <= tenant.current_ticket_number:
+        tenant.current_ticket_number = ticket_num - 1
+
     db.session.commit()
-    flash(f"Order #{order.ticket_display} deleted.", "info")
+    flash(f"Order #{ticket_display} deleted. Ticket #{ticket_display} will be reused.", "info")
     return redirect(url_for("orders.index"))
+
+
+@orders_bp.route("/set-ticket-start", methods=["POST"])
+@login_required
+def set_ticket_start():
+    """
+    Set the next ticket number for the tenant.
+    Useful at the start of the day to pick up from a specific number.
+    Super admin only. Sets current_ticket_number = requested - 1 so the
+    next _get_next_ticket_number() call returns the requested number
+    (skipping any already-taken values via the gap-fill loop).
+    """
+    if not current_user.is_super():
+        flash("Only super admins can set the ticket counter.", "danger")
+        return redirect(url_for("reports.order_log"))
+
+    try:
+        start_num = int(request.form.get("ticket_start", "").strip())
+        if not 1 <= start_num <= 9999:
+            raise ValueError
+    except (ValueError, AttributeError):
+        flash("Ticket start number must be between 1 and 9999.", "warning")
+        return redirect(url_for("reports.order_log"))
+
+    tenant = db.session.get(Tenant, current_user.tenant_id)
+    tenant.current_ticket_number = start_num - 1
+    db.session.commit()
+    flash(f"Next ticket number set to {start_num:04d}.", "success")
+    return redirect(url_for("reports.order_log"))
 
 
 @orders_bp.route("/<int:order_id>/modify", methods=["GET", "POST"])
@@ -1117,17 +1165,41 @@ def _get_order_or_404(order_id):
 def _get_next_ticket_number(tenant_id):
     """
     Return the next ticket number for the tenant.
-    Counter is persistent across days — increments by 1 each order,
-    wraps from 9999 back to 1. Never resets daily.
-    Ticket display is always zero-padded to 4 digits (0001–9999).
+
+    Queries today's active ticket numbers and skips any already taken,
+    filling gaps left by hard-deleted orders. Counter wraps 9999 -> 1.
+    Ticket display is always zero-padded to 4 digits (0001-9999).
     """
+    from datetime import date as _date
+    today = _date.today()
+
+    # Collect all ticket numbers already assigned today
+    used = {
+        row[0] for row in db.session.execute(
+            db.select(Order.ticket_number)
+            .where(Order.tenant_id == tenant_id)
+            .where(Order.trade_date == today)
+        ).all()
+    }
+
     tenant = db.session.get(Tenant, tenant_id)
-    next_num = (tenant.current_ticket_number or 0) + 1
-    if next_num > 9999:
-        next_num = 1
-    tenant.current_ticket_number = next_num
+    candidate = (tenant.current_ticket_number or 0) + 1
+    if candidate > 9999:
+        candidate = 1
+
+    # Skip any numbers already in use today (fills gaps from hard-deleted orders)
+    iterations = 0
+    while candidate in used:
+        candidate += 1
+        if candidate > 9999:
+            candidate = 1
+        iterations += 1
+        if iterations > 9999:
+            break  # Safety: should never happen in practice
+
+    tenant.current_ticket_number = candidate
     db.session.flush()
-    return next_num
+    return candidate
 
 
 def _extract_price_info(raw_input: str) -> tuple:

@@ -25,6 +25,47 @@
     </div>
 </section>
 
+{# Build JS map: uppercase symbol -> house (from "SYM/HOUSE" lookup values) #}
+<script>
+const CP_HOUSE_MAP = {
+    {% for lv in cp_lookups %}
+    {% set parts = lv.value.split('/') %}
+    {% if parts|length > 1 %}
+    "{{ parts[0].strip().upper() }}": "{{ parts[1].strip() }}",
+    {% endif %}
+    {% endfor %}
+};
+
+function autoFillHouse(rowIndex) {
+    const symInput = document.getElementById('cp_symbol_' + rowIndex);
+    const houseInput = document.getElementById('cp_house_' + rowIndex);
+    if (!symInput || !houseInput) return;
+    const sym = symInput.value.trim().toUpperCase();
+    // Only auto-fill if house is currently empty
+    if (sym in CP_HOUSE_MAP && CP_HOUSE_MAP[sym] && !houseInput.value.trim()) {
+        houseInput.value = CP_HOUSE_MAP[sym];
+    }
+}
+
+function clearHouseIfSymbolCleared(rowIndex) {
+    const symInput = document.getElementById('cp_symbol_' + rowIndex);
+    const houseInput = document.getElementById('cp_house_' + rowIndex);
+    if (!symInput || !houseInput) return;
+    const sym = symInput.value.trim().toUpperCase();
+    // If symbol changed to something not in the map, leave house alone (manual)
+    // If symbol is empty, clear house too
+    if (!sym) houseInput.value = '';
+}
+</script>
+
+{# Datalist for counterparty autocomplete #}
+<datalist id="cp-symbols-datalist">
+    {% for lv in cp_lookups %}
+    {% set parts = lv.value.split('/') %}
+    <option value="{{ parts[0].strip().upper() }}">{{ lv.value }}</option>
+    {% endfor %}
+</datalist>
+
 <section>
     <h2>House &amp; Account</h2>
     <form method="POST" action="{{ url_for('fills.enter_counterparties', fill_id=fill.id) }}">
@@ -35,7 +76,7 @@
                 <label for="house">House</label>
                 <input type="text" id="house" name="house"
                        value="{{ order.house or '' }}"
-                       placeholder="e.g., GFI"
+                       placeholder="e.g., 684"
                        class="text-upper">
             </div>
             <div class="form-group">
@@ -51,6 +92,7 @@
         <p class="form-help" style="margin-bottom: 12px;">
             Split the fill quantity ({{ fill.fill_quantity }}) across counterparties.
             All quantities must sum to {{ fill.fill_quantity }}.
+            Selecting a known trader auto-fills their house number.
         </p>
 
         <table class="legs-table cp-entry-table">
@@ -58,7 +100,8 @@
                 <tr>
                     <th>Qty</th>
                     <th>Broker</th>
-                    <th>Opposite/House</th>
+                    <th>Counterparty</th>
+                    <th>House</th>
                     <th>Bracket</th>
                     <th>Notes</th>
                 </tr>
@@ -66,6 +109,24 @@
             <tbody>
                 {% for i in range(10) %}
                 {% set cp = fill.counterparties[i] if i < fill.counterparties|length else none %}
+
+                {# Resolve initial symbol and house values for re-entry #}
+                {% if cp %}
+                    {% if cp.cp_house %}
+                        {% set init_sym   = cp.symbol or '' %}
+                        {% set init_house = cp.cp_house %}
+                    {% elif cp.symbol and '/' in cp.symbol %}
+                        {% set init_sym   = cp.symbol.split('/')[0].strip() %}
+                        {% set init_house = cp.symbol.split('/')[1].strip() %}
+                    {% else %}
+                        {% set init_sym   = cp.symbol or '' %}
+                        {% set init_house = '' %}
+                    {% endif %}
+                {% else %}
+                    {% set init_sym   = '' %}
+                    {% set init_house = '' %}
+                {% endif %}
+
                 <tr>
                     <td>
                         <input type="number" name="cp_qty_{{ i }}"
@@ -78,9 +139,24 @@
                                placeholder="GFI" class="text-upper">
                     </td>
                     <td>
-                        <input type="text" name="cp_symbol_{{ i }}"
-                               value="{{ cp.symbol if cp else '' }}"
-                               placeholder="CITADEL/CIT" class="text-upper">
+                        <input type="text"
+                               id="cp_symbol_{{ i }}"
+                               name="cp_symbol_{{ i }}"
+                               value="{{ init_sym }}"
+                               placeholder="MANO"
+                               list="cp-symbols-datalist"
+                               class="text-upper"
+                               oninput="autoFillHouse({{ i }})"
+                               onchange="autoFillHouse({{ i }}); clearHouseIfSymbolCleared({{ i }})">
+                    </td>
+                    <td>
+                        <input type="text"
+                               id="cp_house_{{ i }}"
+                               name="cp_house_{{ i }}"
+                               value="{{ init_house }}"
+                               placeholder="684"
+                               class="text-upper"
+                               style="width: 60px;">
                     </td>
                     <td>
                         <input type="text" name="cp_bracket_{{ i }}"

@@ -183,8 +183,11 @@ def enter_counterparties(fill_id: int):
     order = fill.order
 
     if request.method == "GET":
+        from app.models.lookup import get_lookup_values, LookupType
+        cp_lookups = get_lookup_values(current_user.tenant_id, LookupType.COUNTERPARTY)
         return render_template(
             "orders/counterparty_entry.html", fill=fill, order=order,
+            cp_lookups=cp_lookups,
         )
 
     # POST: Save counterparties
@@ -203,6 +206,7 @@ def enter_counterparties(fill_id: int):
             qty_str = request.form.get(f"cp_qty_{i}", "").strip()
             broker = request.form.get(f"cp_broker_{i}", "").strip()
             symbol = request.form.get(f"cp_symbol_{i}", "").strip()
+            cp_house = request.form.get(f"cp_house_{i}", "").strip()
             bracket = request.form.get(f"cp_bracket_{i}", "").strip()
             notes = request.form.get(f"cp_notes_{i}", "").strip()
 
@@ -215,6 +219,7 @@ def enter_counterparties(fill_id: int):
                 quantity=int(qty_str) if qty_str else 0,
                 broker=broker,
                 symbol=symbol,
+                cp_house=cp_house or None,
                 bracket=bracket,
                 notes=notes or None,
             )
