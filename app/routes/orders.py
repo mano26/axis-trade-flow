@@ -462,7 +462,21 @@ def save_prices(order_id):
 
         # For generic orders, validate using qty*price net calculation
         if order.is_generic:
-            _validate_generic_prices(order, leg_prices)
+            price_override = request.form.get("price_override_confirmed") == "1"
+            discrepancy = _validate_generic_prices(order, leg_prices, override=price_override)
+            if price_override and discrepancy > 0.000001:
+                audit_service.log_action(
+                    action="price_reconciliation_overridden",
+                    entity_type="fill",
+                    entity_id=fill.id,
+                    tenant_id=current_user.tenant_id,
+                    user_id=current_user.id,
+                    notes=(
+                        f"Order #{order.ticket_display}: trader confirmed odd-lot "
+                        f"pricing override. Discrepancy: {discrepancy:.4f} "
+                        f"(expected {order.package_premium:.4f})."
+                    ),
+                )
         else:
             validate_fill_prices(order, fill, leg_prices)
 
@@ -596,7 +610,21 @@ def amend_fill(order_id, fill_id):
                         price=float(pstr),
                     ))
             if order.is_generic:
-                _validate_generic_prices(order, leg_prices)
+                price_override = request.form.get("price_override_confirmed") == "1"
+                discrepancy = _validate_generic_prices(order, leg_prices, override=price_override)
+                if price_override and discrepancy > 0.000001:
+                    audit_service.log_action(
+                        action="price_reconciliation_overridden",
+                        entity_type="fill",
+                        entity_id=fill.id,
+                        tenant_id=current_user.tenant_id,
+                        user_id=current_user.id,
+                        notes=(
+                            f"Order #{order.ticket_display}: trader confirmed odd-lot "
+                            f"pricing override during amendment. Discrepancy: "
+                            f"{discrepancy:.4f} (expected {order.package_premium:.4f})."
+                        ),
+                    )
             else:
                 validate_fill_prices(order, fill, leg_prices)
 
@@ -817,7 +845,21 @@ def amend_fill_prices(order_id, fill_id):
                 leg_prices.append(leg_price)
 
         if order.is_generic:
-            _validate_generic_prices(order, leg_prices)
+            price_override = request.form.get("price_override_confirmed") == "1"
+            discrepancy = _validate_generic_prices(order, leg_prices, override=price_override)
+            if price_override and discrepancy > 0.000001:
+                audit_service.log_action(
+                    action="price_reconciliation_overridden",
+                    entity_type="fill",
+                    entity_id=fill.id,
+                    tenant_id=current_user.tenant_id,
+                    user_id=current_user.id,
+                    notes=(
+                        f"Order #{order.ticket_display}: trader confirmed odd-lot "
+                        f"pricing override during price amendment. Discrepancy: "
+                        f"{discrepancy:.4f} (expected {order.package_premium:.4f})."
+                    ),
+                )
         else:
             validate_fill_prices(order, fill, leg_prices)
 
@@ -1247,7 +1289,7 @@ def _extract_price_info(raw_input: str) -> tuple:
     return direction, volume, premium
 
 
-def _validate_generic_prices(order, leg_prices):
+def _validate_generic_prices(order, leg_prices, override=False):
     """
     Validate generic trade prices using qty * price net calculation.
     For each leg: sign = +1 if sell, -1 if buy.
@@ -1260,12 +1302,23 @@ def _validate_generic_prices(order, leg_prices):
     represent an average (e.g. two 500-lot buy legs on a 1000-lot order),
     and those partial legs must reconcile to the same package premium as if
     entered as a single 1000-lot leg.
+
+    Generic orders sometimes intentionally use leg volumes that don't divide
+    evenly into the package's original ratio (e.g. an odd-lot put spread
+    traded at 5500 against a 1833-lot call instead of an exact 3x = 5499).
+    That kind of deliberate imbalance shifts the realized net premium by a
+    small amount even though the trade is correct. When `override=True`,
+    a discrepancy is not raised as an error — the caller (route) is
+    responsible for requiring an explicit trader confirmation first and for
+    logging the discrepancy amount to the audit trail.
+
+    Returns the discrepancy (0.0 if prices reconcile exactly).
     """
     if not order.package_premium:
-        return  # No premium to validate against
+        return 0.0  # No premium to validate against
 
     if not order.total_quantity or order.total_quantity == 0:
-        return
+        return 0.0
 
     price_map = {lp.leg_index: lp.price for lp in leg_prices}
     net = 0.0
@@ -1279,10 +1332,17 @@ def _validate_generic_prices(order, leg_prices):
         net += sign * leg.volume * price_map[leg.leg_index]
 
     net_per_unit = abs(net) / order.total_quantity
-    if abs(net_per_unit - order.package_premium) > 0.000001:
+    discrepancy = abs(net_per_unit - order.package_premium)
+    if discrepancy > 0.000001:
+        if override:
+            return discrepancy
         raise ValidationError([
             f"Price reconciliation failed. "
             f"Expected: {order.package_premium:.4f}, "
             f"Calculated: {net_per_unit:.4f}, "
-            f"Discrepancy: {abs(net_per_unit - order.package_premium):.4f}."
+            f"Discrepancy: {discrepancy:.4f}. "
+            f"If this is intentional (e.g. an odd-lot leg that doesn't divide "
+            f"evenly into the package ratio), check 'Confirm odd-lot pricing' "
+            f"below and save again."
         ])
+    return discrepancy

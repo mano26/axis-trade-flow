@@ -275,6 +275,12 @@
         <input type="hidden" name="fill_id" value="{{ oldest_pending_fill.id }}">
         {% endif %}
         <div style="margin-top: 8px;">
+            <label class="checkbox-label" style="font-size:12px; margin-right:12px;">
+                <input type="checkbox" name="price_override_confirmed" value="1">
+                <span>Confirm odd-lot pricing (legs don't divide evenly into the package ratio)</span>
+            </label>
+        </div>
+        <div style="margin-top: 8px;">
             <button type="submit" class="btn btn-primary">Save Prices</button>
             {% if oldest_pending_fill and order.fills|length > 1 %}
             {%- set ns = namespace(fill_num=1) %}
@@ -409,6 +415,12 @@
                 {% endfor %}
                 </tbody>
             </table>
+            {% if order.is_generic %}
+            <label class="checkbox-label" style="font-size:12px; margin-bottom:12px; display:inline-block;">
+                <input type="checkbox" name="price_override_confirmed" value="1">
+                <span>Confirm odd-lot pricing (legs don't divide evenly into the package ratio)</span>
+            </label>
+            {% endif %}
             {% endif %}
 
             {# Counterparties #}

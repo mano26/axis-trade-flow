@@ -9,6 +9,7 @@
 
 import pytest
 from app.services.trade_parser import parse_trade_input, ParseError
+from app.services.strategy_handlers import build_legs
 
 
 class TestBasicParsing:
@@ -295,6 +296,45 @@ class TestRatioSpreads:
         t = result[0]
         assert t.ratios == [1, 2]
         assert t.strategy == "straddle"
+
+
+class TestSegmentVolumeMultiplier:
+    """Test '(NX)' segment-level volume multiplier in VS/WITH trades."""
+
+    def test_ps_3x_vs_single_call(self):
+        """PS (3X) VS single call: PS legs get 3x base volume, call stays at base."""
+        result = parse_trade_input(
+            "SFRZ6 96.1875 95.8125 PS (3X) VS SFRZ6 96.4375 C "
+            "CVD 96.105 D 126 1833 @ 35.25"
+        )
+        assert len(result) == 2
+        ps_seg, call_seg = result
+        assert ps_seg.strategy == "ps"
+        assert ps_seg.volume_multiplier == 3
+        assert ps_seg.volume == 1833 * 3
+        assert call_seg.volume_multiplier == 1
+        assert call_seg.volume == 1833
+
+    def test_multiplier_legs_scaled(self):
+        """Built legs reflect the multiplied volume."""
+        result = parse_trade_input(
+            "SFRZ6 96.1875 95.8125 PS (3X) VS SFRZ6 96.4375 C 1833@35.25"
+        )
+        ps_seg = result[0]
+        legs = build_legs(ps_seg)
+        assert all(leg["volume"] == 5499 for leg in legs)
+
+    def test_no_multiplier_defaults_to_one(self):
+        result = parse_trade_input("SFRH6 96.00 96.25 CS 4/500")
+        assert result[0].volume_multiplier == 1
+        assert result[0].volume == 500
+
+    def test_multiplier_no_separator(self):
+        """(NX) also works on a plain single-segment trade (no VS/WITH)."""
+        result = parse_trade_input("SFRH6 96.00 96.25 CS (2X) 4/500")
+        t = result[0]
+        assert t.volume_multiplier == 2
+        assert t.volume == 1000
 
 
 class TestTrailingParenthetical:

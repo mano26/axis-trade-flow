@@ -83,6 +83,13 @@ class TradeInput:
     # Empty list means no custom ratio (use strategy defaults).
     ratios: list[int] = field(default_factory=list)
 
+    # Segment-level uniform volume multiplier from a "(NX)" token, e.g.
+    # "PS (3X) VS ... " scales every leg of this segment by N relative to
+    # the base parsed volume. Distinct from `ratios`, which scales legs
+    # *within* a spread differently relative to each other; this scales
+    # the whole segment by the same factor. Defaults to 1 (no effect).
+    volume_multiplier: int = 1
+
     # --- Misc ---
     leg_count: int = 0
     is_stupid: bool = False    # same direction on 2-segment trade
@@ -242,6 +249,17 @@ def set_strategy(trade: TradeInput, token: str, i: int, tokens: list[str]) -> in
     if u == "(PUTS)":
         trade.is_put_centric = True
         return 0
+
+    # --- Segment volume multiplier, e.g. "(3X)" ---
+    # Scales every leg of this segment by N relative to the base parsed
+    # volume. Used for ratio trades like "PS (3X) VS ... CALL" where the
+    # spread side trades 3x the size of the single-leg side.
+    mult_match = re.match(r"^\((\d+)X\)$", u)
+    if mult_match:
+        n = int(mult_match.group(1))
+        if n > 0:
+            trade.volume_multiplier = n
+            return 0
 
     # --- CON / CONDOR with C/P qualifier ---
     if u in ("CON", "CONDOR") and i + 1 < len(tokens):
@@ -588,7 +606,7 @@ def parse_bracket_wrapper(input_line: str) -> list[TradeInput]:
             validate_strikes(t)
             t.direction_side = pkg_side
             t.suppress_premium = True
-            t.volume = pkg_vol
+            t.volume = pkg_vol * t.volume_multiplier
             t.premium = round(pkg_prem * 0.01, 4)
             result.append(t)
     return result
@@ -694,7 +712,7 @@ def parse_trade_input(input_line: str) -> list[TradeInput]:
     # =====================================================================
     if not has_separator:
         leg1 = parse_single_leg(parts)
-        leg1.volume = parsed_volume
+        leg1.volume = parsed_volume * leg1.volume_multiplier
         leg1.premium = parsed_premium
         leg1.direction_side = parsed_side
 
@@ -822,7 +840,7 @@ def parse_trade_input(input_line: str) -> list[TradeInput]:
     result = []
     for seg_idx, seg_tokens in enumerate(segment_token_lists):
         seg = parse_single_leg(seg_tokens)
-        seg.volume = parsed_volume
+        seg.volume = parsed_volume * seg.volume_multiplier
         seg.premium = parsed_premium
         seg.suppress_premium = True
 
