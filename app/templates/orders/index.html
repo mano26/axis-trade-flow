@@ -5,6 +5,14 @@
 <div class="page-header">
     <h1>Trade Entry</h1>
     <span class="page-date">{{ today.strftime('%m/%d/%Y') }}</span>
+    {% if current_user.is_super() %}
+    <span style="margin-left: 16px; display:inline-flex; align-items:center; gap:6px;">
+        <label for="ticket_override" style="font-size:12px; font-weight:600;">Ticket #:</label>
+        <input type="text" id="ticket_override" form="order-form" name="ticket_override"
+               placeholder="auto" maxlength="4" style="width:60px; font-size:12px; padding:3px 6px;"
+               title="Leave blank to auto-increment. Enter a number to force this order's ticket number (applies once).">
+    </span>
+    {% endif %}
 </div>
 
 <section class="trade-entry-section">

@@ -43,21 +43,6 @@
             Delete Selected
         </button>
         <span id="selected-count" style="font-size:12px;color:#888;"></span>
-
-        {# Set next ticket number #}
-        <form method="POST" action="{{ url_for('orders.set_ticket_start') }}"
-              style="display:flex; align-items:center; gap:6px; margin-left:auto;"
-              onsubmit="return confirm('Set next ticket number to ' + document.getElementById('ticket_start_input').value.padStart(4,'0') + '?');">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <label for="ticket_start_input" style="font-size:12px;font-weight:600;white-space:nowrap;">
-                Next Ticket #
-            </label>
-            <input type="number" id="ticket_start_input" name="ticket_start"
-                   min="1" max="9999" placeholder="e.g. 15"
-                   style="width:70px; font-size:13px; padding:4px 6px;">
-            <button type="submit" class="btn btn-sm"
-                    style="font-size:12px;">Set</button>
-        </form>
     </div>
     {% endif %}
     <table class="legs-table">

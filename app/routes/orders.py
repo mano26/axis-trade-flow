@@ -62,6 +62,31 @@ def create():
         flash("Please enter a trade string.", "warning")
         return redirect(url_for("orders.index"))
 
+    # Optional manual ticket number override (super admin only). When set,
+    # this order takes that exact number instead of auto-increment — used
+    # to set the day's starting ticket # directly from the entry form.
+    # Applies once; subsequent orders resume normal auto-increment from there.
+    ticket_override_str = request.form.get("ticket_override", "").strip()
+    forced_ticket_num = None
+    if ticket_override_str and current_user.is_super():
+        try:
+            forced_ticket_num = int(ticket_override_str)
+            if not 1 <= forced_ticket_num <= 9999:
+                raise ValueError
+        except ValueError:
+            flash("Ticket # must be between 1 and 9999.", "warning")
+            return redirect(url_for("orders.index"))
+
+        existing = db.session.execute(
+            db.select(Order.id)
+            .where(Order.tenant_id == current_user.tenant_id)
+            .where(Order.trade_date == date.today())
+            .where(Order.ticket_number == forced_ticket_num)
+        ).first()
+        if existing:
+            flash(f"Ticket #{forced_ticket_num:04d} is already in use today.", "warning")
+            return redirect(url_for("orders.index"))
+
     try:
         # Extract price/direction/volume from trade string
         # (works for both generic and parsed modes)
@@ -76,7 +101,12 @@ def create():
             flash("QUARTER_TICK_CHECK", "quarter_tick")
             return redirect(url_for("orders.index"))
 
-        ticket_num = _get_next_ticket_number(current_user.tenant_id)
+        if forced_ticket_num is not None:
+            ticket_num = forced_ticket_num
+            tenant = db.session.get(Tenant, current_user.tenant_id)
+            tenant.current_ticket_number = forced_ticket_num
+        else:
+            ticket_num = _get_next_ticket_number(current_user.tenant_id)
 
         if is_generic:
             # Generic mode: store trade string, blank legs
@@ -511,8 +541,6 @@ def save_counterparties(order_id):
                 futures_quantity=fut_qty,
             )
             counterparties.append(cp)
-            db.session.commit()
-            return redirect(url_for("orders.detail", order_id=order.id))
 
         validate_counterparty_completeness(counterparties)
         validate_counterparty_quantities(fill, counterparties)
@@ -725,7 +753,6 @@ def amend_fill_counterparties(order_id, fill_id):
                 futures_quantity=fut_qty,
             )
             counterparties.append(cp)
-            return redirect(url_for("orders.detail", order_id=order.id))
 
         validate_counterparty_completeness(counterparties)
         validate_counterparty_quantities(fill, counterparties)
@@ -941,35 +968,6 @@ def delete(order_id):
     db.session.commit()
     flash(f"Order #{ticket_display} deleted. Ticket #{ticket_display} will be reused.", "info")
     return redirect(url_for("orders.index"))
-
-
-@orders_bp.route("/set-ticket-start", methods=["POST"])
-@login_required
-def set_ticket_start():
-    """
-    Set the next ticket number for the tenant.
-    Useful at the start of the day to pick up from a specific number.
-    Super admin only. Sets current_ticket_number = requested - 1 so the
-    next _get_next_ticket_number() call returns the requested number
-    (skipping any already-taken values via the gap-fill loop).
-    """
-    if not current_user.is_super():
-        flash("Only super admins can set the ticket counter.", "danger")
-        return redirect(url_for("reports.order_log"))
-
-    try:
-        start_num = int(request.form.get("ticket_start", "").strip())
-        if not 1 <= start_num <= 9999:
-            raise ValueError
-    except (ValueError, AttributeError):
-        flash("Ticket start number must be between 1 and 9999.", "warning")
-        return redirect(url_for("reports.order_log"))
-
-    tenant = db.session.get(Tenant, current_user.tenant_id)
-    tenant.current_ticket_number = start_num - 1
-    db.session.commit()
-    flash(f"Next ticket number set to {start_num:04d}.", "success")
-    return redirect(url_for("reports.order_log"))
 
 
 @orders_bp.route("/<int:order_id>/modify", methods=["GET", "POST"])
