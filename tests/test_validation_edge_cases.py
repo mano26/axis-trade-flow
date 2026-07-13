@@ -71,17 +71,20 @@ class TestPriceReconciliationValid:
     def test_single_option_buy(self):
         """Single buy leg: net = –1 * 1 * price; |net| must equal premium."""
         order = MagicMock()
+        order.total_quantity = 500
         order.legs = [_leg(0, "B", 500, pkg_prem=0.04)]
         validate_fill_prices(order, MagicMock(), [_lp(0, 0.04)])  # should not raise
 
     def test_single_option_sell(self):
         order = MagicMock()
+        order.total_quantity = 500
         order.legs = [_leg(0, "S", 500, pkg_prem=0.04)]
         validate_fill_prices(order, MagicMock(), [_lp(0, 0.04)])
 
     def test_call_spread_exact(self):
         """Buy 96.00C at 0.07, sell 96.25C at 0.03 → net = 0.04."""
         order = MagicMock()
+        order.total_quantity = 500
         order.legs = [
             _leg(0, "B", 500, 96.00, "C", 0.04),
             _leg(1, "S", 500, 96.25, "C", 0.04),
@@ -91,6 +94,7 @@ class TestPriceReconciliationValid:
     def test_butterfly_default_ratios(self):
         """1:2:1 butterfly. B 0.05, S 0.04, B 0.01 → net = 0.05 + 0.01 – 2*0.04 = –0.02 → |net|=0.02."""
         order = MagicMock()
+        order.total_quantity = 500
         order.legs = [
             _leg(0, "B", 500, 96.00, "C", 0.02),
             _leg(1, "S", 1000, 96.25, "C", 0.02),
@@ -104,6 +108,7 @@ class TestPriceReconciliationValid:
     def test_zero_premium_even_money(self):
         """Even-money spread — premium = 0, legs must net to zero."""
         order = MagicMock()
+        order.total_quantity = 500
         order.legs = [
             _leg(0, "B", 500, 96.00, "C", 0.0),
             _leg(1, "S", 500, 96.25, "C", 0.0),
@@ -112,6 +117,7 @@ class TestPriceReconciliationValid:
 
     def test_futures_legs_skipped(self):
         order = MagicMock()
+        order.total_quantity = 500
         order.legs = [
             _leg(0, "B", 500, 96.00, "C", 0.04),
             _fut_leg(1, 200),
@@ -121,6 +127,7 @@ class TestPriceReconciliationValid:
     def test_vs_trade_two_premium_groups(self):
         """VS trade: two separate package premiums, each reconciled independently."""
         order = MagicMock()
+        order.total_quantity = 500
         order.legs = [
             _leg(0, "B", 500, 96.00, "C", 0.04),
             _leg(1, "S", 500, 96.25, "C", 0.03),
@@ -131,6 +138,7 @@ class TestPriceReconciliationValid:
     def test_tolerance_boundary_just_inside(self):
         """Value within tolerance should pass."""
         order = MagicMock()
+        order.total_quantity = 500
         order.legs = [
             _leg(0, "B", 500, pkg_prem=0.04),
             _leg(1, "S", 500, pkg_prem=0.04),
@@ -150,6 +158,7 @@ class TestPriceReconciliationInvalid:
 
     def test_spread_prices_dont_reconcile(self):
         order = MagicMock()
+        order.total_quantity = 500
         order.legs = [
             _leg(0, "B", 500, 96.00, "C", 0.04),
             _leg(1, "S", 500, 96.25, "C", 0.04),
@@ -160,6 +169,7 @@ class TestPriceReconciliationInvalid:
 
     def test_missing_leg_price_reported(self):
         order = MagicMock()
+        order.total_quantity = 500
         order.legs = [
             _leg(0, "B", 500, pkg_prem=0.04),
             _leg(1, "S", 500, pkg_prem=0.04),
@@ -169,6 +179,7 @@ class TestPriceReconciliationInvalid:
 
     def test_tolerance_boundary_just_outside(self):
         order = MagicMock()
+        order.total_quantity = 500
         order.legs = [
             _leg(0, "B", 500, pkg_prem=0.04),
             _leg(1, "S", 500, pkg_prem=0.04),
@@ -184,6 +195,7 @@ class TestPriceReconciliationInvalid:
         """1:2:1 butterfly — user enters prices that net to 0 instead of pkg_prem=0.02.
         net = -1*(500/500)*0.03 + 1*(1000/500)*0.02 + -1*(500/500)*0.01 = 0.00 ≠ 0.02."""
         order = MagicMock()
+        order.total_quantity = 500
         order.legs = [
             _leg(0, "B", 500, 96.00, "C", 0.02),
             _leg(1, "S", 1000, 96.25, "C", 0.02),
@@ -195,12 +207,14 @@ class TestPriceReconciliationInvalid:
 
     def test_single_option_wrong_price(self):
         order = MagicMock()
+        order.total_quantity = 500
         order.legs = [_leg(0, "B", 500, pkg_prem=0.04)]
         with pytest.raises(ValidationError):
             validate_fill_prices(order, MagicMock(), [_lp(0, 0.05)])
 
     def test_error_message_contains_expected_and_actual(self):
         order = MagicMock()
+        order.total_quantity = 500
         order.legs = [
             _leg(0, "B", 500, pkg_prem=0.04),
             _leg(1, "S", 500, pkg_prem=0.04),

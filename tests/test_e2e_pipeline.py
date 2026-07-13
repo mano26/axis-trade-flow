@@ -44,6 +44,10 @@ def _mock_order(legs_data):
         m.package_premium = l.get("package_premium", 0.04)
         mock_legs.append(m)
     order.legs = mock_legs
+    # total_quantity is the base lot size — min leg volume for 1xN ratios
+    vols = [l.get("volume", 500) for l in legs_data
+            if l.get("option_type") is not None or l.get("strike") is not None]
+    order.total_quantity = min(vols) if vols else 500
     return order
 
 

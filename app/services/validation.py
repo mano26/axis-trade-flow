@@ -97,17 +97,25 @@ def validate_fill_prices(
         if not all_filled:
             continue
 
-        # Find base volume (minimum across legs in this group)
-        base_vol = min(leg.volume for leg in legs)
-        if base_vol == 0:
-            continue
+        # Compute net premium per base lot.
+        #
+        # We normalise by order.total_quantity (the "1 lot" unit from the
+        # price format, e.g. 1000 for "1.5/1000"). This correctly handles
+        # NxM ratio spreads such as 2X3 where the minimum leg volume
+        # (2 * 1000 = 2000) is NOT the base lot size (1000).
+        #
+        # The previous approach used min(leg.volume) as the normaliser,
+        # which gave the right answer for 1XN ratios (where the buy-side
+        # volume equals the base lot size) but was off by a factor of N
+        # for MXN ratios where M > 1.
+        total_qty = order.total_quantity if (
+            order.total_quantity and order.total_quantity > 0
+        ) else 1
 
-        # Compute net premium
         net = 0.0
         for leg in legs:
             sign = 1.0 if leg.side == "S" else -1.0
-            ratio = leg.volume / base_vol
-            net += sign * ratio * price_map[leg.leg_index]
+            net += sign * (leg.volume / total_qty) * price_map[leg.leg_index]
 
         # Compare |net| to package premium
         if abs(abs(net) - pkg_prem) > PRICE_TOLERANCE:
