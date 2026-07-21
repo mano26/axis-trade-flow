@@ -345,9 +345,24 @@
                     {% for cp in fd.counterparties %}
                     <tr>
                         <td>{{ cp.quantity }}</td>
-                        <td>{{ cp.broker }}</td>
-                        <td>{{ cp.symbol }}{% if cp.cp_house %} / {{ cp.cp_house }}{% endif %}</td>
-                        <td>{{ cp.bracket }}</td>
+                        <td>{{ cp.broker | upper if cp.broker else '' }}</td>
+                        <td>
+                            {%- if cp.cp_house -%}
+                                {{ cp.symbol | upper }}
+                            {%- elif cp.symbol and '/' in cp.symbol -%}
+                                {{ cp.symbol.split('/')[0].strip() | upper }}
+                            {%- else -%}
+                                {{ (cp.symbol or '') | upper }}
+                            {%- endif -%}
+                        </td>
+                        <td>
+                            {%- if cp.cp_house -%}
+                                {{ cp.cp_house | upper }}
+                            {%- elif cp.symbol and '/' in cp.symbol -%}
+                                {{ cp.symbol.split('/')[1].strip() | upper }}
+                            {%- else -%}{% endif %}
+                        </td>
+                        <td>{{ cp.bracket | upper if cp.bracket else '' }}</td>
                         <td>{{ cp.notes or '' }}</td>
                     </tr>
                     {% endfor %}
