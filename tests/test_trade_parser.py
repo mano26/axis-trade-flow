@@ -230,6 +230,37 @@ class TestCVDParsing:
         assert t.cvd_has_override is True
         assert t.cvd_override_side == "+"
 
+    def test_strip_cvd_single_futures_leg(self):
+        """STRIP + CVD: the futures hedge fires once for the whole strip, not per leg.
+
+        2QU6 95.625 95.50 95.375 P STRIP CVD 95.985 D 30 1000@7.5 should produce
+        3 put legs (1000 each) and exactly ONE futures leg of 300 lots, not 300 per put.
+        """
+        result = parse_trade_input(
+            "2QU6 95.625 95.50 95.375 P STRIP CVD 95.985 D 30 1000 @ 7.5"
+        )
+        assert len(result) == 3
+
+        # Only the last segment carries CVD
+        assert result[0].is_cvd is False
+        assert result[1].is_cvd is False
+        assert result[2].is_cvd is True
+        assert result[2].delta_percent == 30.0
+
+        # Build all legs and count futures
+        total_futures_vol = 0
+        put_count = 0
+        for seg in result:
+            legs = build_legs(seg)
+            for leg in legs:
+                if leg.get("option_type") is None and leg.get("strike") is None:
+                    total_futures_vol += leg["volume"]
+                elif leg.get("option_type") == "P":
+                    put_count += 1
+
+        assert put_count == 3
+        assert total_futures_vol == 300   # 30% of 1000, once only
+
 
 class TestBracketWrapperParsing:
     """Test [] bracket wrapper syntax."""

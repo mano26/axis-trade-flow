@@ -785,11 +785,22 @@ def parse_trade_input(input_line: str) -> list[TradeInput]:
         # e.g. SFRU6 96.00 96.25 C stupid 4/500 → buy 96.00 C AND buy 96.25 C.
         if leg1.is_stupid and leg1.strategy == "single" and len(leg1.strikes) > 1:
             result = []
-            for strike in leg1.strikes:
+            n = len(leg1.strikes)
+            for idx, strike in enumerate(leg1.strikes):
                 dup = copy.deepcopy(leg1)
                 dup.strikes = [strike]
                 dup.direction_side = parsed_side
                 dup.suppress_premium = True
+                # CVD applies to the strip as a WHOLE, not per option leg.
+                # Attach the futures hedge to the last segment only so it
+                # appears once at the end of the legs list.
+                if dup.is_cvd and idx < n - 1:
+                    dup.is_cvd = False
+                    dup.cvd_price = 0.0
+                    dup.delta_percent = 0.0
+                    dup.cvd_has_override = False
+                    dup.cvd_override_side = ""
+                    dup.delta_override = ""
                 result.append(dup)
             return result
 
