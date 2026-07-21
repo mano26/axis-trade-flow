@@ -83,8 +83,8 @@ def generate_ticket_html(order: Order) -> str:
         for cp in fill.counterparties:
             if cp.bracket and cp.bracket not in brackets_seen:
                 brackets_seen.append(cp.bracket)
-            if cp.broker and cp.broker not in brokers:
-                brokers.append(cp.broker)
+            if cp.broker and cp.broker.upper() not in brokers:
+                brokers.append(cp.broker.upper())
     broker_str = " / ".join(brokers)
 
     # Max rows per type per side
@@ -386,8 +386,8 @@ def build_ticket_data_snapshot(order: Order) -> dict:
         for cp in fill.counterparties:
             if cp.bracket and cp.bracket not in brackets:
                 brackets.append(cp.bracket)
-            if cp.broker and cp.broker not in brokers:
-                brokers.append(cp.broker)
+            if cp.broker and cp.broker.upper() not in brokers:
+                brokers.append(cp.broker.upper())
     return {
         "ticket_number": order.ticket_display,
         "legs": legs,

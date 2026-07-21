@@ -195,7 +195,7 @@ def _build_card(
     h = f"<div class='card' style='background:{bg};border-color:{ink};'>\n"
     h += f"<div class='card-header'><div class='card-top-row'>"
     h += f"<div class='card-type' style='color:{ink}'>{card_type}</div>"
-    h += f"<div class='card-broker' style='color:{ink}'>{broker}</div>"
+    h += f"<div class='card-broker' style='color:{ink}'>{broker.upper()}</div>"
     h += f"<div class='card-acct' style='color:{ink}'>{account}</div></div>"
     # BK Broker line - only on futures cards, below and right-aligned
     if is_fut and bk_broker:
@@ -246,8 +246,8 @@ def _build_card(
                 h += f"<div class='cell w-str' style='color:{ink};border-color:{ink}'>{leg['strike']}</div>"
             h += f"<div class='cell w-pr' style='color:{ink};border-color:{ink}'>{leg['price']}</div>"
             h += f"<div class='cp-cell w-cp' style='border-color:{ink}'>"
-            h += f"<div class='cp-top' style='border-color:{ink}'>{s_top.strip()}</div>"
-            h += f"<div class='cp-bot'>{s_bot.strip()}</div></div>"
+            h += f"<div class='cp-top' style='border-color:{ink}'>{s_top.strip().upper()}</div>"
+            h += f"<div class='cp-bot'>{s_bot.strip().upper()}</div></div>"
             h += f"<div class='cell w-bkt' style='color:{ink};border-right:none'>{bracket}</div>"
         else:
             h += f"<div class='cell w-qty' style='border-color:{ink}'>&nbsp;</div>"
