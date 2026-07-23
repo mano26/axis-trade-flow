@@ -81,6 +81,10 @@
     {# Filter bar #}
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;align-items:flex-end;">
         <div>
+            <label style="display:block;font-size:11px;font-weight:600;color:#666;margin-bottom:2px;">Status</label>
+            <input type="text" id="f-status"     placeholder="open, filled…"  style="width:100px;" oninput="applyFilters()" class="filter-input text-upper">
+        </div>
+        <div>
             <label style="display:block;font-size:11px;font-weight:600;color:#666;margin-bottom:2px;">Ticket #</label>
             <input type="text" id="f-ticket"     placeholder="e.g. 42"    style="width:70px;"  oninput="applyFilters()" class="filter-input">
         </div>
@@ -152,6 +156,7 @@
         <tr class="order-row clickable-row"
             onclick="window.location='{{ url_for('orders.detail', order_id=o.id) }}'"
             data-ticket="{{ o.ticket_display }}"
+            data-status="{{ o.status }}"
             data-house="{{ o.house or '' }}"
             data-account="{{ o.account or '' }}"
             data-brokers="{{ row.brokers }}"
@@ -177,6 +182,7 @@
         <tr class="fill-row"
             style="display:none;"
             data-ticket="{{ o.ticket_display }}"
+            data-status="{{ o.status }}"
             data-house="{{ o.house or '' }}"
             data-account="{{ o.account or '' }}"
             data-broker="{{ cp.broker }}"
@@ -216,6 +222,7 @@ function getVal(id) {
 }
 
 function applyFilters() {
+    var fStatus  = getVal('f-status');
     var fTicket  = getVal('f-ticket');
     var fHouse   = getVal('f-house');
     var fAccount = getVal('f-account');
@@ -234,16 +241,17 @@ function applyFilters() {
     var totalOpts = 0, totalFuts = 0, visibleRows = 0;
 
     if (fillMode) {
-        // Hide all order rows
         orderRows.forEach(function(r) { r.style.display = 'none'; });
 
         fillRows.forEach(function(r) {
             var d = r.dataset;
             var show =
-                (!fTicket  || d.ticket.toUpperCase().includes(fTicket))   &&
-                (!fHouse   || d.house.toUpperCase().includes(fHouse))     &&
-                (!fAccount || d.account.toUpperCase().includes(fAccount)) &&
-                (!fBroker  || d.broker.toUpperCase().includes(fBroker))   &&
+                (!fStatus  || d.status.toUpperCase().replace(/_/g,' ').includes(fStatus) ||
+                              d.status.toUpperCase().includes(fStatus))                   &&
+                (!fTicket  || d.ticket.toUpperCase().includes(fTicket))                   &&
+                (!fHouse   || d.house.toUpperCase().includes(fHouse))                     &&
+                (!fAccount || d.account.toUpperCase().includes(fAccount))                 &&
+                (!fBroker  || d.broker.toUpperCase().includes(fBroker))                   &&
                 (!fCp      || d.cp.toUpperCase().includes(fCp));
             r.style.display = show ? '' : 'none';
             if (show) {
@@ -253,14 +261,15 @@ function applyFilters() {
             }
         });
     } else {
-        // Hide all fill rows
         fillRows.forEach(function(r) { r.style.display = 'none'; });
 
         orderRows.forEach(function(r) {
             var d = r.dataset;
             var show =
-                (!fTicket  || d.ticket.toUpperCase().includes(fTicket))     &&
-                (!fHouse   || d.house.toUpperCase().includes(fHouse))       &&
+                (!fStatus  || d.status.toUpperCase().replace(/_/g,' ').includes(fStatus) ||
+                              d.status.toUpperCase().includes(fStatus))                   &&
+                (!fTicket  || d.ticket.toUpperCase().includes(fTicket))                   &&
+                (!fHouse   || d.house.toUpperCase().includes(fHouse))                     &&
                 (!fAccount || d.account.toUpperCase().includes(fAccount));
             r.style.display = show ? '' : 'none';
             if (show) {
@@ -279,7 +288,7 @@ function applyFilters() {
 }
 
 function clearFilters() {
-    ['f-ticket','f-house','f-account','f-broker','f-cp'].forEach(function(id) {
+    ['f-status','f-ticket','f-house','f-account','f-broker','f-cp'].forEach(function(id) {
         document.getElementById(id).value = '';
     });
     applyFilters();

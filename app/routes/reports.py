@@ -106,21 +106,22 @@ def eod_summary():
         if order.status not in TRADED:
             continue
 
-        opts_vol = order.filled_quantity or 0
-        total_options_vol += opts_vol
-
-        # Scale futures legs by the fill ratio so partial fills are correct
+        # Scale by fill ratio so partial fills are counted correctly
         fill_ratio = (order.filled_quantity / order.total_quantity
                       if order.total_quantity else 0)
+
         for leg in order.legs:
             if leg.option_type is None and leg.strike is None:
                 total_futures_vol += round(leg.volume * fill_ratio)
+            else:
+                total_options_vol += round(leg.volume * fill_ratio)
 
+        # Strategy counts use the package base qty (filled_quantity)
         key = order.strategy or "unknown"
         if key not in strategy_counts:
             strategy_counts[key] = {"count": 0, "volume": 0}
         strategy_counts[key]["count"]  += 1
-        strategy_counts[key]["volume"] += opts_vol
+        strategy_counts[key]["volume"] += order.filled_quantity or 0
 
     # ── Per-order breakdown rows ──────────────────────────────────────────
     # Each row carries the order-level data plus a list of fill allocations
@@ -131,10 +132,14 @@ def eod_summary():
         traded = order.status in TRADED
 
         if traded:
-            opts_vol   = order.filled_quantity or 0
             fill_ratio = (order.filled_quantity / order.total_quantity
                           if order.total_quantity else 0)
-            fut_vol    = sum(
+            opts_vol = sum(
+                round(l.volume * fill_ratio)
+                for l in order.legs
+                if not (l.option_type is None and l.strike is None)
+            )
+            fut_vol = sum(
                 round(l.volume * fill_ratio)
                 for l in order.legs
                 if l.option_type is None and l.strike is None
