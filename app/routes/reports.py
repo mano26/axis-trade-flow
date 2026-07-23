@@ -77,39 +77,124 @@ def order_log():
 @reports_bp.route("/eod-summary")
 @login_required
 def eod_summary():
+    from app.models.order import OrderStatus
+
     report_date = _parse_date(request.args.get("date"), default=date.today())
-    orders = (
+
+    # Statuses that represent actual traded volume
+    TRADED = {
+        OrderStatus.PARTIAL_FILL,
+        OrderStatus.FILLED,
+        OrderStatus.PARTIAL_CANCELLED,
+        OrderStatus.AMENDED,
+    }
+
+    all_orders = (
         Order.query
         .filter_by(tenant_id=current_user.tenant_id, trade_date=report_date)
         .filter(Order.deleted_at.is_(None))
+        .order_by(Order.ticket_number)
         .all()
     )
-    total_orders = len(orders)
-    strategy_counts = {}
-    for order in orders:
+
+    # ── Totals (traded orders only) ───────────────────────────────────────
+    total_options_vol = 0
+    total_futures_vol = 0
+    strategy_counts   = {}
+
+    for order in all_orders:
+        if order.status not in TRADED:
+            continue
+
+        opts_vol = order.filled_quantity or 0
+        total_options_vol += opts_vol
+
+        # Scale futures legs by the fill ratio so partial fills are correct
+        fill_ratio = (order.filled_quantity / order.total_quantity
+                      if order.total_quantity else 0)
+        for leg in order.legs:
+            if leg.option_type is None and leg.strike is None:
+                total_futures_vol += round(leg.volume * fill_ratio)
+
         key = order.strategy or "unknown"
         if key not in strategy_counts:
             strategy_counts[key] = {"count": 0, "volume": 0}
-        strategy_counts[key]["count"] += 1
-        strategy_counts[key]["volume"] += order.total_quantity
+        strategy_counts[key]["count"]  += 1
+        strategy_counts[key]["volume"] += opts_vol
 
-    total_options_vol = 0
-    total_futures_vol = 0
-    for order in orders:
-        for leg in order.legs:
-            if leg.option_type is None and leg.strike is None:
-                total_futures_vol += leg.volume
-            else:
-                total_options_vol += leg.volume
+    # ── Per-order breakdown rows ──────────────────────────────────────────
+    # Each row carries the order-level data plus a list of fill allocations
+    # so the template can render both the summary row and the drill-down
+    # fill rows for broker/counterparty filtering.
+    breakdown = []
+    for order in all_orders:
+        traded = order.status in TRADED
+
+        if traded:
+            opts_vol   = order.filled_quantity or 0
+            fill_ratio = (order.filled_quantity / order.total_quantity
+                          if order.total_quantity else 0)
+            fut_vol    = sum(
+                round(l.volume * fill_ratio)
+                for l in order.legs
+                if l.option_type is None and l.strike is None
+            )
+        else:
+            opts_vol = fut_vol = 0
+
+        # Collect all fill→CP allocations for drill-down rows
+        cp_rows = []
+        all_brokers = []
+        all_cps     = []
+        for fill in order.fills:
+            for cp in fill.counterparties:
+                broker = (cp.broker or "").upper()
+
+                # Resolve counterparty symbol (handle old SYM/HOUSE combined)
+                sym_raw = cp.symbol or ""
+                if cp.cp_house:
+                    cp_sym   = sym_raw.upper()
+                    cp_house = cp.cp_house.upper()
+                elif "/" in sym_raw:
+                    cp_sym   = sym_raw.split("/")[0].strip().upper()
+                    cp_house = sym_raw.split("/")[1].strip().upper()
+                else:
+                    cp_sym   = sym_raw.upper()
+                    cp_house = ""
+
+                if broker and broker not in all_brokers:
+                    all_brokers.append(broker)
+                if cp_sym and cp_sym not in all_cps:
+                    all_cps.append(cp_sym)
+
+                cp_rows.append({
+                    "fill_qty":  cp.quantity,
+                    "broker":    broker,
+                    "cp":        cp_sym,
+                    "cp_house":  cp_house,
+                    "bracket":   (cp.bracket or "").upper(),
+                })
+
+        breakdown.append({
+            "order":    order,
+            "traded":   traded,
+            "opts_vol": opts_vol,
+            "fut_vol":  fut_vol,
+            "brokers":  " ".join(all_brokers),   # space-joined for data-attr search
+            "cps":      " ".join(all_cps),
+            "cp_rows":  cp_rows,
+        })
 
     return render_template(
         "reports/eod_summary.html",
-        report_date=report_date,
-        total_orders=total_orders,
-        total_options_vol=total_options_vol,
-        total_futures_vol=total_futures_vol,
-        strategy_counts=strategy_counts,
-        orders=orders,
+        report_date       = report_date,
+        total_orders      = len(all_orders),
+        filled_count      = sum(1 for o in all_orders if o.status in TRADED),
+        total_options_vol = total_options_vol,
+        total_futures_vol = total_futures_vol,
+        total_combined    = total_options_vol + total_futures_vol,
+        strategy_counts   = strategy_counts,
+        breakdown         = breakdown,
     )
 
 

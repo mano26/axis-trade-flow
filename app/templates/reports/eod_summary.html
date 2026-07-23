@@ -7,22 +7,29 @@
     <span class="page-date">{{ report_date.strftime('%m/%d/%Y') }}</span>
 </div>
 
+{# ── Date selector ─────────────────────────────────────────────────── #}
 <section class="order-summary" style="margin-bottom: 20px;">
     <form method="GET" action="{{ url_for('reports.eod_summary') }}">
         <div class="inline-form-row">
             <label>Date:</label>
-            <input type="date" name="date" value="{{ report_date.isoformat() }}" style="padding: 6px 10px; border: 1px solid #d0d0d0; border-radius: 4px;">
+            <input type="date" name="date" value="{{ report_date.isoformat() }}"
+                   style="padding:6px 10px;border:1px solid #d0d0d0;border-radius:4px;">
             <button type="submit" class="btn btn-primary">View</button>
         </div>
     </form>
 </section>
 
+{# ── Headline totals ───────────────────────────────────────────────── #}
 <section>
     <h2>Summary</h2>
     <div class="summary-grid">
         <div class="summary-item">
             <label>Total Orders</label>
             <span>{{ total_orders }}</span>
+        </div>
+        <div class="summary-item">
+            <label>Filled Orders</label>
+            <span>{{ filled_count }}</span>
         </div>
         <div class="summary-item">
             <label>Options Volume</label>
@@ -32,13 +39,20 @@
             <label>Futures Volume</label>
             <span>{{ total_futures_vol }}</span>
         </div>
+        <div class="summary-item">
+            <label>Combined Volume</label>
+            <span>{{ total_combined }}</span>
+        </div>
     </div>
+    <p style="font-size:12px;color:#888;margin-top:4px;">
+        Volumes include filled and partial-fill orders only. Open and cancelled orders are excluded.
+    </p>
 </section>
 
 {% if strategy_counts %}
 <section>
     <h2>By Strategy</h2>
-    <table class="legs-table">
+    <table class="legs-table" style="max-width:420px;">
         <thead>
             <tr>
                 <th>Strategy</th>
@@ -59,35 +73,216 @@
 </section>
 {% endif %}
 
-{% if orders %}
+{# ── Breakdown section ─────────────────────────────────────────────── #}
+{% if breakdown %}
 <section>
-    <h2>Orders</h2>
-    <table class="legs-table">
+    <h2>Breakdown</h2>
+
+    {# Filter bar #}
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;align-items:flex-end;">
+        <div>
+            <label style="display:block;font-size:11px;font-weight:600;color:#666;margin-bottom:2px;">Ticket #</label>
+            <input type="text" id="f-ticket"     placeholder="e.g. 42"    style="width:70px;"  oninput="applyFilters()" class="filter-input">
+        </div>
+        <div>
+            <label style="display:block;font-size:11px;font-weight:600;color:#666;margin-bottom:2px;">House</label>
+            <input type="text" id="f-house"      placeholder="684"         style="width:70px;"  oninput="applyFilters()" class="filter-input text-upper">
+        </div>
+        <div>
+            <label style="display:block;font-size:11px;font-weight:600;color:#666;margin-bottom:2px;">Account</label>
+            <input type="text" id="f-account"    placeholder="TJM00684"    style="width:100px;" oninput="applyFilters()" class="filter-input text-upper">
+        </div>
+        <div>
+            <label style="display:block;font-size:11px;font-weight:600;color:#666;margin-bottom:2px;">Filling Broker</label>
+            <input type="text" id="f-broker"     placeholder="GKX"         style="width:80px;"  oninput="applyFilters()" class="filter-input text-upper">
+        </div>
+        <div>
+            <label style="display:block;font-size:11px;font-weight:600;color:#666;margin-bottom:2px;">Counterparty</label>
+            <input type="text" id="f-cp"         placeholder="MANO"        style="width:80px;"  oninput="applyFilters()" class="filter-input text-upper">
+        </div>
+        <button type="button" class="btn" onclick="clearFilters()" style="align-self:flex-end;">Clear</button>
+    </div>
+
+    {# Live totals row #}
+    <div id="live-totals" style="display:flex;gap:24px;padding:8px 12px;background:#f0f4f8;border-radius:4px;margin-bottom:8px;font-size:13px;">
+        <span><strong>Visible Options:</strong> <span id="lt-opts">{{ total_options_vol }}</span></span>
+        <span><strong>Visible Futures:</strong> <span id="lt-futs">{{ total_futures_vol }}</span></span>
+        <span><strong>Combined:</strong> <span id="lt-comb">{{ total_combined }}</span></span>
+        <span id="lt-note" style="color:#888;font-size:11px;margin-left:auto;align-self:center;"></span>
+    </div>
+
+    {# Breakdown table #}
+    <div style="overflow-x:auto;">
+    <table class="legs-table" id="breakdown-table">
         <thead>
-            <tr>
+            <tr id="order-header">
                 <th>Ticket</th>
                 <th>Time In</th>
                 <th>Time Out</th>
                 <th>B/S</th>
                 <th>Strategy</th>
                 <th>Status</th>
+                <th>House</th>
+                <th>Account</th>
+                <th>Broker(s)</th>
+                <th>Options</th>
+                <th>Futures</th>
+                <th>Trade String</th>
+            </tr>
+            <tr id="fill-header" style="display:none;">
+                <th>Ticket</th>
+                <th>Time In</th>
+                <th>Time Out</th>
+                <th>B/S</th>
+                <th>Strategy</th>
+                <th>House</th>
+                <th>Account</th>
+                <th>Filling Broker</th>
+                <th>Counterparty</th>
+                <th>CP House</th>
+                <th>Bracket</th>
+                <th>Qty</th>
             </tr>
         </thead>
         <tbody>
-            {% for order in orders %}
-            <tr class="clickable-row" onclick="window.location='{{ url_for('orders.detail', order_id=order.id) }}'">
-                <td class="ticket-num">#{{ order.ticket_display }}</td>
-                <td>{{ order.time_in.strftime('%H:%M:%S') if order.time_in else '' }}</td>
-                <td>{{ order.time_out.strftime('%H:%M:%S') if order.time_out else '' }}</td>
-                <td class="direction-{{ order.direction }}">{{ order.direction }}</td>
-                <td>{{ order.strategy | upper }}</td>
-                <td><span class="status-badge status-{{ order.status }}">{{ order.status | replace('_', ' ') | upper }}</span></td>
-            </tr>
-            {% endfor %}
+        {% for row in breakdown %}
+        {% set o = row.order %}
+
+        {# ── Order-level row ── #}
+        <tr class="order-row clickable-row"
+            onclick="window.location='{{ url_for('orders.detail', order_id=o.id) }}'"
+            data-ticket="{{ o.ticket_display }}"
+            data-house="{{ o.house or '' }}"
+            data-account="{{ o.account or '' }}"
+            data-brokers="{{ row.brokers }}"
+            data-cps="{{ row.cps }}"
+            data-opts="{{ row.opts_vol }}"
+            data-futs="{{ row.fut_vol }}">
+            <td class="ticket-num">#{{ o.ticket_display }}</td>
+            <td>{{ o.time_in | chicago_time if o.time_in else '' }}</td>
+            <td>{{ o.time_out | chicago_time if o.time_out else '' }}</td>
+            <td class="direction-{{ o.direction }}">{{ o.direction }}</td>
+            <td>{{ o.strategy | upper }}{% if o.is_generic %} <span style="color:#e65100;">(G)</span>{% endif %}</td>
+            <td><span class="status-badge status-{{ o.status }}">{{ o.status | replace('_',' ') | upper }}</span></td>
+            <td>{{ o.house or '' }}</td>
+            <td>{{ o.account or '' }}</td>
+            <td style="font-size:12px;">{{ row.brokers }}</td>
+            <td>{{ row.opts_vol if row.opts_vol else '—' }}</td>
+            <td>{{ row.fut_vol if row.fut_vol else '—' }}</td>
+            <td class="trade-string" style="font-size:11px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ o.raw_input }}</td>
+        </tr>
+
+        {# ── Fill-level rows (shown when broker/CP filter active) ── #}
+        {% for cp in row.cp_rows %}
+        <tr class="fill-row"
+            style="display:none;"
+            data-ticket="{{ o.ticket_display }}"
+            data-house="{{ o.house or '' }}"
+            data-account="{{ o.account or '' }}"
+            data-broker="{{ cp.broker }}"
+            data-cp="{{ cp.cp }}"
+            data-opts="{{ cp.fill_qty }}"
+            data-futs="0"
+            onclick="window.location='{{ url_for('orders.detail', order_id=o.id) }}'">
+            <td class="ticket-num">#{{ o.ticket_display }}</td>
+            <td>{{ o.time_in | chicago_time if o.time_in else '' }}</td>
+            <td>{{ o.time_out | chicago_time if o.time_out else '' }}</td>
+            <td class="direction-{{ o.direction }}">{{ o.direction }}</td>
+            <td>{{ o.strategy | upper }}</td>
+            <td>{{ o.house or '' }}</td>
+            <td>{{ o.account or '' }}</td>
+            <td>{{ cp.broker }}</td>
+            <td>{{ cp.cp }}</td>
+            <td>{{ cp.cp_house }}</td>
+            <td>{{ cp.bracket }}</td>
+            <td>{{ cp.fill_qty }}</td>
+        </tr>
+        {% endfor %}
+
+        {% endfor %}
         </tbody>
     </table>
+    </div>
 </section>
 {% endif %}
 
-<a href="{{ url_for('orders.index') }}" class="btn btn-back">← Back to Orders</a>
+<a href="{{ url_for('orders.index') }}" class="btn btn-back" style="margin-top:20px;">← Back to Orders</a>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function getVal(id) {
+    return document.getElementById(id).value.trim().toUpperCase();
+}
+
+function applyFilters() {
+    var fTicket  = getVal('f-ticket');
+    var fHouse   = getVal('f-house');
+    var fAccount = getVal('f-account');
+    var fBroker  = getVal('f-broker');
+    var fCp      = getVal('f-cp');
+
+    // Broker or CP filter → switch to fill-row view
+    var fillMode = !!(fBroker || fCp);
+
+    document.getElementById('order-header').style.display = fillMode ? 'none' : '';
+    document.getElementById('fill-header').style.display  = fillMode ? '' : 'none';
+
+    var orderRows = document.querySelectorAll('.order-row');
+    var fillRows  = document.querySelectorAll('.fill-row');
+
+    var totalOpts = 0, totalFuts = 0, visibleRows = 0;
+
+    if (fillMode) {
+        // Hide all order rows
+        orderRows.forEach(function(r) { r.style.display = 'none'; });
+
+        fillRows.forEach(function(r) {
+            var d = r.dataset;
+            var show =
+                (!fTicket  || d.ticket.toUpperCase().includes(fTicket))   &&
+                (!fHouse   || d.house.toUpperCase().includes(fHouse))     &&
+                (!fAccount || d.account.toUpperCase().includes(fAccount)) &&
+                (!fBroker  || d.broker.toUpperCase().includes(fBroker))   &&
+                (!fCp      || d.cp.toUpperCase().includes(fCp));
+            r.style.display = show ? '' : 'none';
+            if (show) {
+                totalOpts += parseInt(d.opts) || 0;
+                totalFuts += parseInt(d.futs) || 0;
+                visibleRows++;
+            }
+        });
+    } else {
+        // Hide all fill rows
+        fillRows.forEach(function(r) { r.style.display = 'none'; });
+
+        orderRows.forEach(function(r) {
+            var d = r.dataset;
+            var show =
+                (!fTicket  || d.ticket.toUpperCase().includes(fTicket))     &&
+                (!fHouse   || d.house.toUpperCase().includes(fHouse))       &&
+                (!fAccount || d.account.toUpperCase().includes(fAccount));
+            r.style.display = show ? '' : 'none';
+            if (show) {
+                totalOpts += parseInt(d.opts) || 0;
+                totalFuts += parseInt(d.futs) || 0;
+                visibleRows++;
+            }
+        });
+    }
+
+    document.getElementById('lt-opts').textContent = totalOpts;
+    document.getElementById('lt-futs').textContent = totalFuts;
+    document.getElementById('lt-comb').textContent = totalOpts + totalFuts;
+    document.getElementById('lt-note').textContent =
+        visibleRows + (fillMode ? ' allocation(s)' : ' order(s)') + ' visible';
+}
+
+function clearFilters() {
+    ['f-ticket','f-house','f-account','f-broker','f-cp'].forEach(function(id) {
+        document.getElementById(id).value = '';
+    });
+    applyFilters();
+}
+</script>
 {% endblock %}
