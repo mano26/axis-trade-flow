@@ -1054,6 +1054,144 @@ def cancel_duplicate(order_id):
     return redirect(url_for("orders.detail", order_id=order_id))
 
 
+@orders_bp.route("/<int:order_id>/amend-trade-string", methods=["POST"])
+@login_required
+def amend_trade_string(order_id):
+    """
+    Correct the trade string and leg reference data (contract code, expiry,
+    market) for a filled order where the wrong contract/expiry was entered.
+
+    Super admin only. Strikes, volumes, sides, option types, prices, and
+    counterparties are UNCHANGED — they are confirmed by the existing fills.
+    Only reference fields that identify the contract (expiry, contract_type,
+    market, mo_card_code) are updated on each leg.
+
+    A written reason is required and written to the audit log alongside the
+    old and new trade strings.
+    """
+    if not current_user.is_super():
+        flash("Only super admins can correct a filled order's trade string.", "danger")
+        return redirect(url_for("orders.detail", order_id=order_id))
+
+    order = _get_order_or_404(order_id)
+
+    eligible = {
+        OrderStatus.FILLED,
+        OrderStatus.PARTIAL_FILL,
+        OrderStatus.PARTIAL_CANCELLED,
+        OrderStatus.AMENDED,
+    }
+    if order.status not in eligible:
+        flash("Trade string correction is only available for filled orders.", "warning")
+        return redirect(url_for("orders.detail", order_id=order_id))
+
+    if order.is_generic:
+        flash("Generic orders do not have parsed legs to correct.", "warning")
+        return redirect(url_for("orders.detail", order_id=order_id))
+
+    new_input = request.form.get("corrected_trade_string", "").strip()
+    reason    = request.form.get("correction_reason", "").strip()
+
+    if not new_input:
+        flash("Please enter the corrected trade string.", "warning")
+        return redirect(url_for("orders.detail", order_id=order_id))
+    if not reason:
+        flash("A reason for the correction is required.", "warning")
+        return redirect(url_for("orders.detail", order_id=order_id))
+
+    try:
+        trade_parts = parse_trade_input(new_input)
+        new_all_legs = []
+        for part in trade_parts:
+            new_all_legs.extend(build_legs(part))
+
+        old_legs = sorted(order.legs, key=lambda l: l.leg_index)
+
+        # Guard: same number of legs
+        if len(new_all_legs) != len(old_legs):
+            flash(
+                f"Corrected trade string has {len(new_all_legs)} leg(s) but the "
+                f"original has {len(old_legs)}. Only the contract/expiry reference "
+                f"can change — the trade structure must be identical.",
+                "danger",
+            )
+            return redirect(url_for("orders.detail", order_id=order_id))
+
+        # Guard: same option types, strikes, and sides on each leg
+        mismatches = []
+        for i, (new_leg, old_leg) in enumerate(zip(new_all_legs, old_legs), 1):
+            if new_leg.get("option_type") != old_leg.option_type:
+                mismatches.append(
+                    f"Leg {i}: option type changed "
+                    f"({old_leg.option_type} → {new_leg.get('option_type')})"
+                )
+            if new_leg.get("strike") != old_leg.strike:
+                mismatches.append(
+                    f"Leg {i}: strike changed "
+                    f"({old_leg.strike} → {new_leg.get('strike')})"
+                )
+            if new_leg.get("side") != old_leg.side:
+                mismatches.append(
+                    f"Leg {i}: side changed "
+                    f"({old_leg.side} → {new_leg.get('side')})"
+                )
+
+        if mismatches:
+            flash(
+                "Corrected trade string changes the trade structure — only the "
+                "contract/expiry reference should differ. Issues: "
+                + "; ".join(mismatches),
+                "danger",
+            )
+            return redirect(url_for("orders.detail", order_id=order_id))
+
+        # All validation passed — update only reference fields
+        old_raw_input = order.raw_input
+
+        for new_leg_data, old_leg in zip(new_all_legs, old_legs):
+            old_leg.contract_type = new_leg_data.get("contract_type", old_leg.contract_type)
+            old_leg.expiry        = new_leg_data.get("expiry",        old_leg.expiry)
+            old_leg.market        = new_leg_data.get("market",        old_leg.market)
+            old_leg.mo_card_code  = new_leg_data.get("mo_card_code",  old_leg.mo_card_code)
+
+        order.raw_input = new_input
+
+        mods = list(order.modification_timestamps or [])
+        mods.append(datetime.now(timezone.utc).isoformat())
+        order.modification_timestamps = mods
+
+        from app.models.audit import AuditAction
+        audit_service.log_action(
+            action=AuditAction.TRADE_STRING_CORRECTED,
+            entity_type="order",
+            entity_id=order.id,
+            tenant_id=current_user.tenant_id,
+            before_value={"raw_input": old_raw_input},
+            after_value={"raw_input": new_input},
+            notes=(
+                f"Trade string corrected by super admin.\n"
+                f"REASON: {reason}\n"
+                f"OLD: {old_raw_input}\n"
+                f"NEW: {new_input}"
+            ),
+        )
+
+        db.session.commit()
+        flash(
+            f"Order #{order.ticket_display} trade string corrected. "
+            f"Reprint cards and ticket to reflect the change.",
+            "success",
+        )
+
+    except ParseError as e:
+        flash(f"Parse error in corrected trade string: {e}", "danger")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error correcting trade string: {e}", "danger")
+
+    return redirect(url_for("orders.detail", order_id=order_id))
+
+
 @orders_bp.route("/<int:order_id>/modify", methods=["GET", "POST"])
 @login_required
 def modify(order_id):

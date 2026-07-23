@@ -34,6 +34,7 @@ class AuditAction:
     ORDER_MODIFIED = "order_modified"
     ORDER_CANCELLED = "order_cancelled"
     ORDER_STATUS_CHANGE = "order_status_change"
+    TRADE_STRING_CORRECTED = "trade_string_corrected"
 
     # --- Fill Events ---
     FILL_CREATED = "fill_created"
