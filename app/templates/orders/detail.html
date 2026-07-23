@@ -347,6 +347,22 @@
                         <td>{{ cp.quantity }}</td>
                         <td>{{ cp.broker | upper if cp.broker else '' }}</td>
                         <td>
+<<<<<<< Updated upstream
+                            {%- if cp.cp_house -%}
+                                {{ cp.symbol | upper }}
+                            {%- elif cp.symbol and '/' in cp.symbol -%}
+                                {{ cp.symbol.split('/')[0].strip() | upper }}
+                            {%- else -%}
+                                {{ (cp.symbol or '') | upper }}
+                            {%- endif -%}
+                        </td>
+                        <td>
+                            {%- if cp.cp_house -%}
+                                {{ cp.cp_house | upper }}
+                            {%- elif cp.symbol and '/' in cp.symbol -%}
+                                {{ cp.symbol.split('/')[1].strip() | upper }}
+                            {%- else -%}{% endif %}
+=======
                             {%- if cp.cp_house -%}{{ cp.symbol | upper }}
                             {%- elif cp.symbol and '/' in cp.symbol -%}{{ cp.symbol.split('/')[0].strip() | upper }}
                             {%- else -%}{{ (cp.symbol or '') | upper }}{%- endif -%}
@@ -355,6 +371,7 @@
                             {%- if cp.cp_house -%}{{ cp.cp_house | upper }}
                             {%- elif cp.symbol and '/' in cp.symbol -%}{{ cp.symbol.split('/')[1].strip() | upper }}
                             {%- endif -%}
+>>>>>>> Stashed changes
                         </td>
                         <td>{{ cp.bracket | upper if cp.bracket else '' }}</td>
                         <td>{{ cp.notes or '' }}</td>
@@ -727,6 +744,25 @@
             <button type="submit" class="btn btn-primary" onclick="return confirm('Submit to exchange?')">Send to Exchange</button>
         </form>
         {% endif %}
+        {% if current_user.is_super() and order.status in ('filled', 'amended', 'partial_fill', 'partial_cancelled') %}
+        <form method="POST" action="{{ url_for('orders.cancel_duplicate', order_id=order.id) }}" style="display:inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn"
+                    style="background:#795548;color:#fff;border-color:#795548;"
+                    onclick="return confirm('Mark order #{{ order.ticket_display }} as CANCELLED DUPLICATE?\n\nThis indicates the order was entered in error or is a duplicate. The record will be retained for compliance but excluded from all volume totals.\n\nThis cannot be undone.')">
+                Mark as Duplicate
+            </button>
+        </form>
+        {% endif %}
+        {% if current_user.is_super() %}
+        <form method="POST" action="{{ url_for('orders.delete', order_id=order.id) }}" style="display:inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-danger"
+                    onclick="return confirm('Permanently DELETE order #{{ order.ticket_display }}?\n\nThis cannot be undone. The ticket number will be freed for reuse.')">
+                Delete Order
+            </button>
+        </form>
+        {% endif %}
     </div>
 </section>
 
@@ -766,7 +802,11 @@ function autoFillHouseGeneric(symInput) {
 
 // ── Dynamic CP row addition ──
 var cpRowCounts = {};  // key: 'amend-fillId' or 'pend-fillId' -> current row count
-var hasFuturesLegs = {{ 'true' if order.has_futures_legs else 'false' }};
+// Detect CVD orders and read delta from an existing rendered input,
+// rather than relying on a Jinja2 variable that's out of scope here.
+var _existingDeltaInput = document.querySelector('[data-delta]');
+var hasFuturesLegs  = !!_existingDeltaInput;
+var deltaPctGlobal  = _existingDeltaInput ? parseFloat(_existingDeltaInput.dataset.delta) : 0;
 
 function addCPRow(formType, fillId) {
     var key = formType + '-' + fillId;
@@ -780,12 +820,6 @@ function addCPRow(formType, fillId) {
     var tbody = document.getElementById('cp-tbody-' + formType + '-' + fillId);
     if (!tbody) return;
 
-    // Read delta from an existing rendered row (each fill's rows carry
-    // data-delta), instead of a page-global Jinja variable that is out of
-    // scope in this script block.
-    var deltaEl = tbody.querySelector('[data-delta]');
-    var deltaPct = deltaEl ? deltaEl.dataset.delta : 0;
-
     var prefix = (formType === 'amend') ? 'a' : 'p';
     var houseId = prefix + '_house_' + fillId + '_' + i;
     var symId   = prefix + '_sym_'   + fillId + '_' + i;
@@ -793,7 +827,7 @@ function addCPRow(formType, fillId) {
     var row = document.createElement('tr');
     var html =
         '<td><input type="number" name="cp_qty_' + i + '" min="0" class="cp-qty-input"' +
-            (hasFuturesLegs ? ' data-delta="' + deltaPct + '" data-row="' + (formType === 'amend' ? 'a' : '') + i + '" oninput="updateFutQty(this)"' : '') +
+            (hasFuturesLegs ? ' data-delta="' + deltaPctGlobal + '" data-row="' + (formType === 'amend' ? 'a' : '') + i + '" oninput="updateFutQty(this)"' : '') +
         '></td>' +
         '<td><input type="text" name="cp_broker_' + i + '" class="text-upper" placeholder="Broker"></td>' +
         '<td><input type="text" id="' + symId + '" name="cp_symbol_' + i + '"' +

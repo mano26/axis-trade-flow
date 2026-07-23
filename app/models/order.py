@@ -42,6 +42,9 @@ class OrderStatus:
     REPORTED = "reported"
     REPORT_ACCEPTED = "report_accepted"
     REPORT_FAILED = "report_failed"
+    # Compliance status: order was a duplicate entry. Super admin only.
+    # Record is retained for audit but excluded from all volume totals.
+    CANCELLED_DUPLICATE = "cancelled_duplicate"
 
     # -------------------------------------------------------------------------
     # Valid state transitions
@@ -52,13 +55,14 @@ class OrderStatus:
     TRANSITIONS = {
         OPEN: {CANCELLED, PARTIAL_FILL, FILLED},
         PARTIAL_FILL: {PARTIAL_FILL, PARTIAL_CANCELLED, FILLED, REPORTED},
-        PARTIAL_CANCELLED: {REPORTED, AMENDED},
-        FILLED: {REPORTED, AMENDED},
-        AMENDED: {REPORTED},
+        PARTIAL_CANCELLED: {REPORTED, AMENDED, "cancelled_duplicate"},
+        FILLED: {REPORTED, AMENDED, "cancelled_duplicate"},
+        AMENDED: {REPORTED, "cancelled_duplicate"},
         REPORTED: {REPORT_ACCEPTED, REPORT_FAILED},
-        REPORT_ACCEPTED: set(),     # Terminal state
-        REPORT_FAILED: {REPORTED},  # Can retry submission
-        CANCELLED: set(),           # Terminal state
+        REPORT_ACCEPTED: set(),         # Terminal state
+        REPORT_FAILED: {REPORTED},      # Can retry submission
+        CANCELLED: set(),               # Terminal state
+        "cancelled_duplicate": set(),   # Terminal state
     }
 
 

@@ -110,6 +110,7 @@ tbody tr:hover { background: rgba(0,31,96,0.03); }
 .status-report_accepted { background: var(--green-light); color: var(--green); }
 .status-report_failed { background: var(--red-light); color: var(--red); }
 .status-amended { background: #fff3e0; color: #e65100; }
+.status-cancelled_duplicate { background: #efebe9; color: #4e342e; }
 .status-pending_allocation { background: #fff8e1; color: #8a6d00; }
 .status-allocated { background: var(--green-light); color: var(--green); }
 
@@ -180,6 +181,7 @@ section h2 { font-size: 16px; font-weight: 700; margin-bottom: 12px; padding-bot
     background: white;
 }
 .cp-entry-table input:focus, .cp-entry-table select:focus { outline: none; border-color: var(--navy); }
+.cp-field-error { border-color: #cc2222 !important; background: #fff8f8 !important; }
 .cp-qty-input { width: 70px !important; text-align: center; font-family: var(--font-mono); }
 .cp-bracket-input { width: 60px !important; text-align: center; }
 .text-upper { text-transform: uppercase; }

@@ -81,7 +81,10 @@ def eod_summary():
 
     report_date = _parse_date(request.args.get("date"), default=date.today())
 
-    # Statuses that represent actual traded volume
+    # Statuses that represent actual traded volume.
+    # AMENDED = a filled order whose counterparties/prices were later corrected;
+    #           the trade still happened so it counts toward volume.
+    # CANCELLED_DUPLICATE is intentionally excluded — it's a compliance void.
     TRADED = {
         OrderStatus.PARTIAL_FILL,
         OrderStatus.FILLED,

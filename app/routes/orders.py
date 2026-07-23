@@ -1012,6 +1012,61 @@ def delete(order_id):
     return redirect(url_for("orders.index"))
 
 
+@orders_bp.route("/<int:order_id>/cancel-duplicate", methods=["POST"])
+@login_required
+def cancel_duplicate(order_id):
+    """
+    Mark a filled/amended order as CANCELLED_DUPLICATE.
+    Super admin only. Retains the record for compliance audit but excludes
+    it from all volume totals. Used when the same trade was entered twice
+    by different users and one entry needs to be voided after the fact.
+    """
+    if not current_user.is_super():
+        flash("Only super admins can cancel orders as duplicates.", "danger")
+        return redirect(url_for("orders.detail", order_id=order_id))
+
+    order = _get_order_or_404(order_id)
+
+    eligible = {
+        OrderStatus.FILLED,
+        OrderStatus.PARTIAL_FILL,
+        OrderStatus.PARTIAL_CANCELLED,
+        OrderStatus.AMENDED,
+    }
+    if order.status not in eligible:
+        flash(
+            f"Order #{order.ticket_display} cannot be marked as a duplicate "
+            f"(current status: {order.status.replace('_', ' ').upper()}).",
+            "warning",
+        )
+        return redirect(url_for("orders.detail", order_id=order_id))
+
+    prev_status = order.status
+    order.status = OrderStatus.CANCELLED_DUPLICATE
+
+    audit_service.log_action(
+        action="order_cancelled_duplicate",
+        entity_type="order",
+        entity_id=order.id,
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        notes=(
+            f"Order #{order.ticket_display} marked CANCELLED DUPLICATE by super admin. "
+            f"Previous status: {prev_status}. "
+            f"Trade: {order.raw_input}. "
+            f"Record retained for compliance audit."
+        ),
+    )
+
+    db.session.commit()
+    flash(
+        f"Order #{order.ticket_display} marked as Cancelled Duplicate. "
+        f"It will no longer appear in volume totals.",
+        "warning",
+    )
+    return redirect(url_for("orders.detail", order_id=order_id))
+
+
 @orders_bp.route("/<int:order_id>/modify", methods=["GET", "POST"])
 @login_required
 def modify(order_id):
