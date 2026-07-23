@@ -18,6 +18,12 @@ from app.models.user import User
 auth_bp = Blueprint("auth", __name__)
 
 
+@auth_bp.route("/")
+def root():
+    """Redirect bare domain root to the orders page."""
+    return redirect(url_for("orders.index"))
+
+
 @auth_bp.route("/login", methods=["GET", "POST"])
 def login():
     """
