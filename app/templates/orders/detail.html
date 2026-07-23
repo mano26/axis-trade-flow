@@ -347,7 +347,6 @@
                         <td>{{ cp.quantity }}</td>
                         <td>{{ cp.broker | upper if cp.broker else '' }}</td>
                         <td>
-<<<<<<< Updated upstream
                             {%- if cp.cp_house -%}
                                 {{ cp.symbol | upper }}
                             {%- elif cp.symbol and '/' in cp.symbol -%}
@@ -362,16 +361,6 @@
                             {%- elif cp.symbol and '/' in cp.symbol -%}
                                 {{ cp.symbol.split('/')[1].strip() | upper }}
                             {%- else -%}{% endif %}
-=======
-                            {%- if cp.cp_house -%}{{ cp.symbol | upper }}
-                            {%- elif cp.symbol and '/' in cp.symbol -%}{{ cp.symbol.split('/')[0].strip() | upper }}
-                            {%- else -%}{{ (cp.symbol or '') | upper }}{%- endif -%}
-                        </td>
-                        <td>
-                            {%- if cp.cp_house -%}{{ cp.cp_house | upper }}
-                            {%- elif cp.symbol and '/' in cp.symbol -%}{{ cp.symbol.split('/')[1].strip() | upper }}
-                            {%- endif -%}
->>>>>>> Stashed changes
                         </td>
                         <td>{{ cp.bracket | upper if cp.bracket else '' }}</td>
                         <td>{{ cp.notes or '' }}</td>
@@ -705,7 +694,7 @@
                 {% endfor %}
             </tbody>
         </table>
-        <div style="margin-top: 8px; display: flex; align-items: center; gap: 8px;">
+        <div style="margin-top: 8px; display:flex; align-items:center; gap:8px;">
             <button type="button" class="btn btn-primary"
                     onclick="submitCounterparties('cp-form-{{ fill.id }}', {{ fill.fill_quantity }})">Save Counterparties</button>
             <button type="button" class="btn"
@@ -749,7 +738,7 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn"
                     style="background:#795548;color:#fff;border-color:#795548;"
-                    onclick="return confirm('Mark order #{{ order.ticket_display }} as CANCELLED DUPLICATE?\n\nThis indicates the order was entered in error or is a duplicate. The record will be retained for compliance but excluded from all volume totals.\n\nThis cannot be undone.')">
+                    onclick="return confirm('Mark order #{{ order.ticket_display }} as CANCELLED DUPLICATE?\n\nThis indicates the order was entered in error or is a duplicate. The record is retained for compliance but excluded from all volume totals.\n\nThis cannot be undone.')">
                 Mark as Duplicate
             </button>
         </form>
@@ -801,16 +790,13 @@ function autoFillHouseGeneric(symInput) {
 }
 
 // ── Dynamic CP row addition ──
-var cpRowCounts = {};  // key: 'amend-fillId' or 'pend-fillId' -> current row count
-// Detect CVD orders and read delta from an existing rendered input,
-// rather than relying on a Jinja2 variable that's out of scope here.
+var cpRowCounts = {};
 var _existingDeltaInput = document.querySelector('[data-delta]');
 var hasFuturesLegs  = !!_existingDeltaInput;
 var deltaPctGlobal  = _existingDeltaInput ? parseFloat(_existingDeltaInput.dataset.delta) : 0;
 
 function addCPRow(formType, fillId) {
     var key = formType + '-' + fillId;
-    // Initialise count from the rendered DOM if not yet tracked
     if (!cpRowCounts[key]) {
         var tbody = document.getElementById('cp-tbody-' + formType + '-' + fillId);
         cpRowCounts[key] = tbody ? tbody.querySelectorAll('tr').length : 10;
@@ -827,7 +813,7 @@ function addCPRow(formType, fillId) {
     var row = document.createElement('tr');
     var html =
         '<td><input type="number" name="cp_qty_' + i + '" min="0" class="cp-qty-input"' +
-            (hasFuturesLegs ? ' data-delta="' + deltaPctGlobal + '" data-row="' + (formType === 'amend' ? 'a' : '') + i + '" oninput="updateFutQty(this)"' : '') +
+            (hasFuturesLegs ? ' data-delta="' + deltaPctGlobal + '" data-row="' + i + '" oninput="updateFutQty(this)"' : '') +
         '></td>' +
         '<td><input type="text" name="cp_broker_' + i + '" class="text-upper" placeholder="Broker"></td>' +
         '<td><input type="text" id="' + symId + '" name="cp_symbol_' + i + '"' +
@@ -957,83 +943,51 @@ document.addEventListener('click', function(e) {
 });
 
 function validateCPForm(form, fillQty) {
-    // Clear any previous inline errors
-    form.querySelectorAll('.cp-field-error').forEach(function(el) {
-        el.classList.remove('cp-field-error');
-    });
+    form.querySelectorAll('.cp-field-error').forEach(function(el) { el.classList.remove('cp-field-error'); });
     var existing = form.querySelector('.cp-validation-banner');
     if (existing) existing.remove();
 
     var errors = [];
     var totalQty = 0;
     var filledRows = 0;
-    var rowCount = 20; // safe upper bound; loop exits early via !qtyEl continue
 
-    for (var i = 0; i < rowCount; i++) {
+    for (var i = 0; i < 20; i++) {
         var qtyEl    = form.querySelector('[name="cp_qty_' + i + '"]');
         var brokerEl = form.querySelector('[name="cp_broker_' + i + '"]');
         var symEl    = form.querySelector('[name="cp_symbol_' + i + '"]');
-
-        if (!qtyEl) continue; // row doesn't exist
+        if (!qtyEl) continue;
 
         var qtyVal    = qtyEl.value.trim();
         var brokerVal = brokerEl ? brokerEl.value.trim() : '';
         var symVal    = symEl    ? symEl.value.trim()    : '';
 
-        // A row is considered "started" if any of the key fields has content
-        var started = qtyVal || brokerVal || symVal;
-        if (!started) continue;
-
+        if (!(qtyVal || brokerVal || symVal)) continue;
         filledRows++;
         var rowErrors = false;
-
-        if (!qtyVal || parseInt(qtyVal) <= 0) {
-            if (qtyEl) { qtyEl.classList.add('cp-field-error'); rowErrors = true; }
-        } else {
-            totalQty += parseInt(qtyVal);
-        }
-        if (!brokerVal && brokerEl) {
-            brokerEl.classList.add('cp-field-error'); rowErrors = true;
-        }
-        if (!symVal && symEl) {
-            symEl.classList.add('cp-field-error'); rowErrors = true;
-        }
-        if (rowErrors) {
-            errors.push('Row ' + (filledRows) + ': missing required field(s).');
-        }
+        if (!qtyVal || parseInt(qtyVal) <= 0) { if (qtyEl) { qtyEl.classList.add('cp-field-error'); rowErrors = true; } }
+        else { totalQty += parseInt(qtyVal); }
+        if (!brokerVal && brokerEl) { brokerEl.classList.add('cp-field-error'); rowErrors = true; }
+        if (!symVal    && symEl)    { symEl.classList.add('cp-field-error');    rowErrors = true; }
+        if (rowErrors) errors.push('Row ' + filledRows + ': missing required field(s).');
     }
 
-    if (filledRows === 0) {
-        errors.push('Enter at least one counterparty row.');
+    if (filledRows === 0) errors.push('Enter at least one counterparty row.');
+    if (filledRows > 0 && fillQty > 0 && totalQty !== fillQty)
+        errors.push('Quantities sum to ' + totalQty + ' but must equal ' + fillQty + '.');
+
+    if (errors.length > 0) {
+        var banner = document.createElement('div');
+        banner.className = 'cp-validation-banner';
+        banner.style.cssText = 'background:#fff1f0;border-left:4px solid #cc2222;padding:8px 12px;margin-bottom:8px;font-size:13px;color:#cc2222;border-radius:0 4px 4px 0;';
+        banner.innerHTML = '<strong>Please fix the following:</strong><ul style="margin:4px 0 0 16px;padding:0;">' +
+            errors.map(function(e) { return '<li>' + e + '</li>'; }).join('') + '</ul>';
+        var table = form.querySelector('table.cp-entry-table, table.legs-table');
+        if (table) table.parentNode.insertBefore(banner, table);
+        else form.insertBefore(banner, form.firstChild);
+        banner.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        return false;
     }
-
-    if (filledRows > 0 && fillQty > 0 && totalQty !== fillQty) {
-        errors.push(
-            'Quantities sum to ' + totalQty +
-            ' but must equal ' + fillQty + '.'
-        );
-    }
-
-    if (errors.length === 0) return true;
-
-    // Show banner above the CP table
-    var banner = document.createElement('div');
-    banner.className = 'cp-validation-banner';
-    banner.style.cssText = 'background:#fff1f0;border-left:4px solid #cc2222;' +
-        'padding:8px 12px;margin-bottom:8px;font-size:13px;color:#cc2222;border-radius:0 4px 4px 0;';
-    banner.innerHTML = '<strong>Please fix the following:</strong><ul style="margin:4px 0 0 16px;padding:0;">' +
-        errors.map(function(e) { return '<li>' + e + '</li>'; }).join('') + '</ul>';
-
-    var table = form.querySelector('table.cp-entry-table, table.legs-table');
-    if (table) {
-        table.parentNode.insertBefore(banner, table);
-    } else {
-        form.insertBefore(banner, form.firstChild);
-    }
-
-    // Scroll banner into view
-    banner.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    return false;
+    return true;
 }
 
 function submitCounterparties(formId, fillQty) {

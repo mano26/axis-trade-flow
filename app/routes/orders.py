@@ -703,15 +703,9 @@ def amend_fill(order_id, fill_id):
                 notes=f"Fill #{fill.id} amended on order #{order.ticket_display}.",
             )
 
-        # ── Stamp AMENDED on terminal orders ──
-        amendable = {OrderStatus.FILLED, OrderStatus.PARTIAL_CANCELLED}
-        if order.status in amendable:
-            old_status = order.status
-            order.transition_to(OrderStatus.AMENDED)
-            audit_service.log_order_status_change(
-                order, current_user.tenant_id, old_status, order.status,
-                notes="Order amended.",
-            )
+        # The order stays in its current filled state — the amendment is a
+        # paperwork correction (prices/counterparties) not a change to what
+        # was traded. The audit log records the full before/after detail.
 
         db.session.commit()
         flash("Amendment saved.", "success")
@@ -879,15 +873,8 @@ def amend_fill_prices(order_id, fill_id):
             fill, current_user.tenant_id, before_prices, after_prices,
         )
 
-        # Transition to AMENDED if order is in a terminal filled state
-        amendable = {OrderStatus.FILLED, OrderStatus.PARTIAL_CANCELLED}
-        if order.status in amendable:
-            old_status = order.status
-            order.transition_to(OrderStatus.AMENDED)
-            audit_service.log_order_status_change(
-                order, current_user.tenant_id, old_status, order.status,
-                notes="Order amended after price correction.",
-            )
+        # The order stays in its current filled state — price correction is
+        # a paperwork amendment. Audit trail records the full before/after.
 
         db.session.commit()
         flash("Prices amended and validated.", "success")
@@ -1031,7 +1018,7 @@ def cancel_duplicate(order_id):
         OrderStatus.FILLED,
         OrderStatus.PARTIAL_FILL,
         OrderStatus.PARTIAL_CANCELLED,
-        OrderStatus.AMENDED,
+        OrderStatus.AMENDED,  # for orders amended before this status change was removed
     }
     if order.status not in eligible:
         flash(
