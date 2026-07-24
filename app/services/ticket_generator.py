@@ -396,3 +396,418 @@ def build_ticket_data_snapshot(order: Order) -> dict:
         "account": order.account,
         "bk_broker": order.bk_broker,
     }
+
+# =============================================================================
+# Broker Ticket + CPs Generator
+# =============================================================================
+# Generates one card per filling broker, each showing the full trade grid
+# on page 1 followed by per-leg CP allocations.  CVD trades get a separate
+# futures card for each broker.
+# =============================================================================
+
+_ROWS_PAGE_1  = 8   # CP rows that fit on page 1 (trade grid takes space)
+_ROWS_CONT    = 12  # CP rows on continuation pages
+
+
+def generate_ticket_with_cps_html(order) -> str:
+    """Generate per-broker broker cards with CP allocations."""
+    from collections import defaultdict
+
+    # ── Group counterparties by filling broker ────────────────────────
+    broker_cps: dict[str, list] = defaultdict(list)
+    for fill in order.fills:
+        for cp in fill.counterparties:
+            broker = (cp.broker or "UNKNOWN").upper()
+            broker_cps[broker].append(cp)
+
+    if not broker_cps:
+        return generate_ticket_html(order)
+
+    # ── Classify legs ─────────────────────────────────────────────────
+    sorted_legs = sorted(order.legs, key=lambda l: l.leg_index)
+
+    def _leg_dict(leg):
+        is_fut = leg.option_type is None and leg.strike is None
+        if is_fut:
+            opt_type = "FUT"
+        elif leg.option_type == "C":
+            opt_type = "CALL"
+        else:
+            opt_type = "PUT"
+        side = "BUY" if leg.side == "B" else "SELL"
+        strike_str = ""
+        if leg.strike:
+            s = str(leg.strike)
+            if "." not in s:
+                strike_str = s + ".00"
+            elif len(s) - s.index(".") < 3:
+                strike_str = s + "0"
+            else:
+                strike_str = s
+        return {
+            "side": side, "opt_type": opt_type,
+            "qty": str(leg.volume), "mo": (leg.mo_card_code or leg.expiry or "").upper(),
+            "strike": strike_str, "price": str(leg.price) if leg.price else "",
+            "is_fut": is_fut, "volume": leg.volume,
+        }
+
+    all_leg_dicts = [_leg_dict(l) for l in sorted_legs]
+    option_dicts  = [d for d in all_leg_dicts if not d["is_fut"]]
+    futures_dicts = [d for d in all_leg_dicts if d["is_fut"]]
+
+    # Max rows for grid sizing (reuse existing helper logic)
+    max_rows = 1
+    for side in ("BUY", "SELL"):
+        for typ in ("CALL", "PUT", "FUT"):
+            cnt = sum(1 for d in all_leg_dicts if d["side"] == side and d["opt_type"] == typ)
+            if cnt > max_rows:
+                max_rows = cnt
+    max_rows = min(max_rows, 4)
+
+    # Timestamps
+    time_in   = _fmt_ts(order.time_in)
+    time_out  = _fmt_ts(order.time_out)
+    fill_times = [_fmt_ts(f.fill_timestamp) for f in order.fills if f.fill_timestamp]
+    mod_times  = []
+    if order.modification_timestamps:
+        from datetime import datetime, timezone
+        for ts in order.modification_timestamps:
+            try:
+                dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                mod_times.append(_fmt_ts(dt))
+            except Exception:
+                mod_times.append(ts[:8])
+
+    ts_parts = []
+    if time_in: ts_parts.append(f"IN: {time_in}")
+    for ft in fill_times:
+        if ft and ft != time_in: ts_parts.append(f"FILL: {ft}")
+    for mt in mod_times:
+        if mt: ts_parts.append(f"MOD: {mt}")
+    if time_out: ts_parts.append(f"OUT: {time_out}")
+    ts_html = f"<div class='timestamps'>{'&nbsp;&nbsp; '.join(ts_parts)}</div>\n" if ts_parts else ""
+
+    # Collect bracket(s) from all fills
+    brackets_seen: list[str] = []
+    for fill in order.fills:
+        for cp in fill.counterparties:
+            if cp.bracket and cp.bracket not in brackets_seen:
+                brackets_seen.append(cp.bracket)
+
+    bk_broker = order.bk_broker or ""
+    total_qty = order.total_quantity or 1
+
+    html = _ticket_html_header_cps(max_rows)
+
+    for broker, cps in broker_cps.items():
+        # ── Page count for this broker ────────────────────────────────
+        n_cps = len(cps)
+        option_pages = 1
+        if n_cps > _ROWS_PAGE_1:
+            remaining   = n_cps - _ROWS_PAGE_1
+            option_pages += (remaining + _ROWS_CONT - 1) // _ROWS_CONT
+        futures_pages = 1 if futures_dicts else 0
+        total_pages   = option_pages + futures_pages
+
+        # ── Page 1: trade grid + first CP batch ──────────────────────
+        page_num  = 1
+        batch     = cps[:_ROWS_PAGE_1]
+        more      = n_cps > _ROWS_PAGE_1
+        cp_range  = f"1\u2013{len(batch)} of {n_cps}" if more else None
+        is_last_opt_page = not more
+
+        html += _cps_page1(
+            order, broker, batch, cp_range,
+            option_dicts, futures_dicts, all_leg_dicts,
+            ts_html, page_num, total_pages,
+            is_last_opt_page, max_rows, total_qty, brackets_seen
+        )
+        page_num += 1
+
+        # ── Continuation pages for options ────────────────────────────
+        offset = _ROWS_PAGE_1
+        while offset < n_cps:
+            batch = cps[offset: offset + _ROWS_CONT]
+            start = offset + 1
+            end   = offset + len(batch)
+            cp_range = f"{start}\u2013{end} of {n_cps}"
+            is_last  = end >= n_cps
+            html += _cps_cont_page(
+                order, broker, batch, cp_range,
+                option_dicts, page_num, total_pages,
+                is_last, total_qty, brackets_seen
+            )
+            page_num += 1
+            offset   += _ROWS_CONT
+
+        # ── Futures card ──────────────────────────────────────────────
+        if futures_dicts:
+            html += _cps_futures_page(
+                order, broker, cps, futures_dicts,
+                page_num, total_pages, total_qty, bk_broker
+            )
+
+    html += "</div></body></html>"
+    return html
+
+
+# ── Sub-builders ──────────────────────────────────────────────────────────
+
+
+def _cps_header_block(order, broker, page_num, total_pages) -> str:
+    date_str = order.trade_date.strftime("%Y/%m/%d")
+    h  = "<div class='tkt-header'>"
+    h += f"<div class='tkt-num'>#{order.ticket_display}</div>"
+    h += "<div class='tkt-title'>A X I S</div>"
+    h += f"<div class='tkt-meta'>{date_str}<br><span class='tkt-pg'>PAGE {page_num} OF {total_pages}</span></div>"
+    h += "</div>\n"
+    h += "<div class='tkt-acct-row'>"
+    h += f"<div>Acct: <span>{order.account or ''}</span></div>"
+    h += f"<div>House: <span>{order.house or ''}</span></div>"
+    h += f"<div>Order: <span>#{order.ticket_display}</span></div>"
+    h += "</div>\n"
+    return h
+
+
+def _cps_cp_rows(cps, has_fut_col, total_qty, buy_vol, sell_vol, is_futures=False) -> str:
+    """Build CP table rows — qty scaled per leg."""
+    rows = ""
+    for cp in cps:
+        sym_raw = cp.symbol or ""
+        if cp.cp_house:
+            cp_sym   = sym_raw.upper()
+            cp_house = cp.cp_house.upper()
+        elif "/" in sym_raw:
+            cp_sym   = sym_raw.split("/")[0].strip().upper()
+            cp_house = sym_raw.split("/")[1].strip().upper()
+        else:
+            cp_sym   = sym_raw.upper()
+            cp_house = ""
+        bracket = (cp.bracket or "").upper()
+        qty     = cp.quantity or 0
+
+        if is_futures:
+            # Use stored futures_quantity if available, else compute
+            fut_qty = cp.futures_quantity if cp.futures_quantity else 0
+            buy_cell  = str(fut_qty) if fut_qty else "&nbsp;"
+            sell_cell = "&nbsp;"
+        else:
+            buy_qty  = round(qty * buy_vol  / total_qty) if buy_vol  else 0
+            sell_qty = round(qty * sell_vol / total_qty) if sell_vol else 0
+            buy_cell  = str(buy_qty)  if buy_qty  else "&nbsp;"
+            sell_cell = str(sell_qty) if sell_qty else "&nbsp;"
+
+        rows += "<tr>"
+        rows += f"<td><span class='cp-chk'></span></td>"
+        rows += f"<td class='cp-qty'>{buy_cell}</td>"
+        rows += f"<td class='cp-qty'>{sell_cell}</td>"
+        rows += f"<td>{cp_sym}</td><td>{cp_house}</td><td>{bracket}</td>"
+        rows += "</tr>\n"
+    return rows
+
+
+def _cps_table(cps, buy_vol, sell_vol, total_qty, cp_range=None,
+               show_side_header=False, is_futures=False, fut_label="SELL") -> str:
+    """Full CP table with optional BUY/SELL header and row range."""
+    h = "<div class='cp-section'>\n"
+    if show_side_header:
+        h += f"<div class='cp-side-hdr'><span>BUY</span><span>{fut_label if is_futures else 'SELL'}</span></div>\n"
+    if cp_range:
+        h += f"<div class='cp-range'>{cp_range}</div>\n"
+    h += "<table class='cp-table'>\n"
+    h += "<thead><tr>"
+    h += "<th></th><th>BUY QTY</th><th>SELL QTY</th>"
+    h += "<th>COUNTERPARTY</th><th>HOUSE</th><th>BKT</th>"
+    h += "</tr></thead>\n<tbody>\n"
+    h += _cps_cp_rows(cps, False, total_qty, buy_vol, sell_vol, is_futures)
+    h += "</tbody></table>\n"
+
+    # Totals
+    buy_total  = sum(round((cp.quantity or 0) * buy_vol  / total_qty) for cp in cps) if buy_vol  else 0
+    sell_total = sum(round((cp.quantity or 0) * sell_vol / total_qty) for cp in cps) if sell_vol else 0
+    if is_futures:
+        sell_total = sum(cp.futures_quantity or 0 for cp in cps)
+        buy_total  = 0
+    if buy_total or sell_total:
+        parts = []
+        if buy_total:  parts.append(f"BUY: {buy_total:,}")
+        if sell_total: parts.append(f"SELL: {sell_total:,}")
+        h += f"<div class='cp-total'>TOTAL &nbsp; {'&nbsp; | &nbsp;'.join(parts)}</div>\n"
+    h += "</div>\n"
+    return h
+
+
+def _cps_footer(broker, bk_broker="") -> str:
+    h = "<div class='tkt-footer'>\n"
+    h += f"<div class='bk-info'>{f'BK: {bk_broker}' if bk_broker else ''}</div>"
+    h += f"<div class='broker-footer'><div class='broker-box'>{' '.join(broker)}</div>"
+    h += "<div class='broker-box-label'>FILLING BROKER</div></div>\n"
+    h += "</div>\n"
+    return h
+
+
+def _cps_page1(order, broker, cps, cp_range,
+               option_dicts, futures_dicts, all_leg_dicts,
+               ts_html, page_num, total_pages,
+               is_last, max_rows, total_qty, brackets_seen) -> str:
+    buy_vol  = sum(d["volume"] for d in option_dicts if d["side"] == "BUY")
+    sell_vol = sum(d["volume"] for d in option_dicts if d["side"] == "SELL")
+
+    h  = "<div class='ticket'>\n"
+    h += _cps_header_block(order, broker, page_num, total_pages)
+
+    # Trade grid (same AXIS layout)
+    h += "<div class='tkt-body'>\n"
+    h += _build_side(all_leg_dicts, "BUY",  max_rows, "")
+    h += _build_side(all_leg_dicts, "SELL", max_rows, "")
+    h += "</div>\n"
+    h += ts_html
+
+    # CP table — no side header on page 1
+    h += _cps_table(cps, buy_vol, sell_vol, total_qty,
+                    cp_range=cp_range, show_side_header=False)
+
+    if is_last:
+        h += _cps_footer(broker)
+    h += "</div>\n"
+    return h
+
+
+def _cps_cont_page(order, broker, cps, cp_range,
+                   option_dicts, page_num, total_pages,
+                   is_last, total_qty, brackets_seen) -> str:
+    buy_vol  = sum(d["volume"] for d in option_dicts if d["side"] == "BUY")
+    sell_vol = sum(d["volume"] for d in option_dicts if d["side"] == "SELL")
+
+    h  = "<div class='ticket'>\n"
+    h += _cps_header_block(order, broker, page_num, total_pages)
+    # BUY/SELL header shown on continuation pages (no trade grid for context)
+    h += _cps_table(cps, buy_vol, sell_vol, total_qty,
+                    cp_range=cp_range, show_side_header=True)
+    if is_last:
+        h += _cps_footer(broker)
+    h += "</div>\n"
+    return h
+
+
+def _cps_futures_page(order, broker, cps, futures_dicts,
+                      page_num, total_pages, total_qty, bk_broker) -> str:
+    fut = futures_dicts[0]  # typically one futures leg
+    max_rows = 1
+
+    h  = "<div class='ticket'>\n"
+    h += _cps_header_block(order, broker, page_num, total_pages)
+
+    # Futures-only trade section
+    h += "<div class='tkt-body'>\n"
+    h += "<div class='tkt-side'>"
+    h += f"<div class='side-title'>{fut['side']}</div>"
+    h += "<div class='opt-section'>"
+    h += "<div class='opt-label'>FUT</div><div class='opt-grid'>"
+    for val in [fut["qty"], fut["mo"], "&nbsp;", fut["price"] or "&nbsp;"]:
+        h += f"<div class='opt-cell-group'><div class='opt-entry'>{val}</div></div>"
+    h += "</div></div>"
+    h += "<div class='col-hdrs'>"
+    for lbl in ["QUANTITY", "CONTRACT/MONTH", "&nbsp;", "PRICE"]:
+        h += f"<div class='col-hdr'>{lbl}</div>"
+    h += "</div>"
+    h += "<div class='con-cxl'><div class='con-cxl-label'>CON<br>CXL</div>"
+    h += "<div style='font-size:12px;margin-left:4px'>&#9655;</div></div>"
+    h += "</div>"  # tkt-side
+    h += "<div class='tkt-side' style='border-left:1.5px solid #000'></div>"
+    h += "</div>\n"  # tkt-body
+
+    # Futures CP table — show stored futures_quantity per CP
+    h += _cps_table(cps, 0, 0, total_qty,
+                    show_side_header=False, is_futures=True,
+                    fut_label=fut["side"])
+    h += _cps_footer(broker, bk_broker)
+    h += "</div>\n"
+    return h
+
+
+def _ticket_html_header_cps(max_rows: int) -> str:
+    sizes = {1: (14, 24, 20, 13), 2: (12, 22, 18, 12), 3: (10, 20, 16, 11)}
+    cF, tF, sF, lF = sizes.get(max_rows, (9, 18, 15, 10))
+
+    return f"""<!DOCTYPE html><html><head><meta charset='utf-8'>
+<title>AXIS Ticket + CPs</title>
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:Arial,Helvetica,sans-serif;background:#e0e0e0;padding:0}}
+.print-nav{{background:#001f60;color:white;padding:0 24px;height:48px;
+  display:flex;align-items:center;gap:24px}}
+.print-nav a{{color:rgba(255,255,255,0.8);font-size:13px;font-weight:600;text-decoration:none}}
+.print-nav .brand{{font-size:16px;font-weight:900;letter-spacing:3px;color:#f7ff4f}}
+.print-nav .print-btn{{background:#f7ff4f;color:#001f60;padding:6px 16px;border-radius:4px;
+  font-weight:700;font-size:13px;cursor:pointer;border:none;margin-left:auto}}
+.tickets-wrap{{display:flex;flex-wrap:wrap;gap:0.25in;justify-content:center;padding:0.4in}}
+.ticket{{width:8in;min-height:4in;border:1.5px solid #000;background:#fff;
+  padding:10px 14px;display:flex;flex-direction:column;page-break-inside:avoid}}
+.tkt-header{{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px}}
+.tkt-num{{font-size:13px;color:#cc2222;font-weight:700;font-family:monospace}}
+.tkt-title{{font-size:{tF}px;font-weight:900;letter-spacing:5px;text-align:center;flex:1}}
+.tkt-meta{{text-align:right;font-size:9px;font-weight:600;line-height:1.5}}
+.tkt-pg{{font-size:9px;font-weight:700;color:#555}}
+.tkt-acct-row{{display:flex;justify-content:space-between;font-size:9px;margin-bottom:4px;
+  padding-bottom:3px;border-bottom:1px solid #ccc}}
+.tkt-acct-row span{{font-weight:700}}
+.tkt-body{{display:flex;flex:0 0 auto;border-top:1.5px solid #000}}
+.tkt-side{{flex:1;display:flex;flex-direction:column;padding:4px 6px}}
+.tkt-side+.tkt-side{{border-left:1.5px solid #000}}
+.side-title{{font-size:{sF}px;font-weight:900;text-align:center;letter-spacing:4px;margin-bottom:2px}}
+.opt-section{{display:flex;align-items:stretch;margin-bottom:1px}}
+.opt-label{{font-size:9px;font-weight:700;width:34px;display:flex;align-items:center;flex-shrink:0}}
+.opt-grid{{flex:1;display:grid;grid-template-columns:1fr 1.3fr 1fr 1fr}}
+.opt-cell-group{{border:0.5px solid #888;display:flex;flex-direction:column}}
+.opt-entry{{flex:1;display:flex;align-items:center;justify-content:center;
+  font-size:{cF}px;font-weight:600;padding:1px 2px;text-align:center;min-height:18px}}
+.col-hdrs{{display:flex;margin-left:34px}}
+.col-hdr{{font-size:7px;font-weight:700;text-align:center;color:#555;padding:0 1px}}
+.col-hdr:nth-child(1){{flex:1}}.col-hdr:nth-child(2){{flex:1.3}}
+.col-hdr:nth-child(3){{flex:1}}.col-hdr:nth-child(4){{flex:1}}
+.bk-info{{font-size:{sF}px;font-weight:900;letter-spacing:2px;text-align:center;
+  margin-top:auto;padding:3px 0}}
+.con-cxl{{display:flex;align-items:center;margin-top:3px}}
+.con-cxl-label{{font-size:9px;font-weight:700;width:34px;line-height:1.1}}
+.timestamps{{font-size:8px;color:#333;text-align:center;padding:3px 0;font-weight:600;
+  border-top:1px solid #ddd;border-bottom:1px solid #ddd;margin:3px 0}}
+.cp-section{{border-top:1.5px solid #000;padding:4px 6px;flex:1}}
+.cp-side-hdr{{display:flex;justify-content:space-around;font-size:11px;font-weight:900;
+  letter-spacing:2px;border-bottom:1px solid #000;padding-bottom:3px;margin-bottom:3px}}
+.cp-range{{font-size:7.5px;font-weight:600;color:#666;text-align:center;margin-bottom:3px}}
+.cp-table{{width:100%;border-collapse:collapse;font-size:9px}}
+.cp-table th{{font-size:7.5px;font-weight:700;text-align:left;padding:2px 4px;
+  color:#444;border-bottom:0.5px solid #888}}
+.cp-table td{{padding:2px 4px;border-bottom:0.5px solid #eee;font-weight:600;vertical-align:middle}}
+.cp-table tr:last-child td{{border-bottom:none}}
+.cp-qty{{text-align:right;font-family:monospace;font-size:9px}}
+.cp-chk{{display:inline-block;width:8px;height:8px;border:0.5px solid #666;vertical-align:middle}}
+.cp-total{{font-size:8px;font-weight:700;color:#333;text-align:right;margin-top:3px;
+  padding-top:2px;border-top:0.5px solid #ccc}}
+.tkt-footer{{display:flex;justify-content:space-between;align-items:flex-end;
+  margin-top:6px;padding-top:4px;border-top:1px solid #ccc}}
+.broker-footer{{display:flex;flex-direction:column;align-items:center}}
+.broker-box{{border:1.5px solid #000;padding:4px 20px;font-size:14px;font-weight:900;
+  letter-spacing:4px;text-align:center;min-width:110px}}
+.broker-box-label{{font-size:7px;font-weight:700;color:#666;text-align:center;
+  letter-spacing:1px;margin-top:2px}}
+@media print{{
+  .print-nav{{display:none !important}}
+  body{{background:white;padding:0;margin:0}}
+  @page{{size:8in 5.5in;margin:0}}
+  .tickets-wrap{{padding:0}}
+  .ticket{{width:8in;border:1.5px solid #000 !important;
+    -webkit-print-color-adjust:exact;print-color-adjust:exact;
+    page-break-inside:avoid}}
+}}
+</style></head><body>
+<div class='print-nav'>
+  <span class='brand'>AXIS TRADE FLOW</span>
+  <a href='/orders'>Orders</a>
+  <a href='/reports/order-log'>Order Log</a>
+  <a href='javascript:history.back()'>← Back</a>
+  <button class='print-btn' onclick='window.print()'>Print (Ctrl+P)</button>
+</div>
+<div class='tickets-wrap'>
+"""

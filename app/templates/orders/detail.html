@@ -728,6 +728,7 @@
         {% if order.status in ('filled', 'partial_fill', 'partial_cancelled') %}
         <a href="{{ url_for('cards.generate', order_id=order.id) }}" class="btn">Print Cards</a>
         <a href="{{ url_for('tickets.generate', order_id=order.id) }}" class="btn">Print Ticket</a>
+        <a href="{{ url_for('tickets.generate_with_cps', order_id=order.id) }}" class="btn">Print Ticket + CPs</a>
         <form method="POST" action="{{ url_for('exchange.submit_to_exchange', order_id=order.id) }}" style="display:inline">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-primary" onclick="return confirm('Submit to exchange?')">Send to Exchange</button>
