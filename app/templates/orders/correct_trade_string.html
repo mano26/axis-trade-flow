@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}Correct Trade String — #{{ order.ticket_display }}{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display:flex; align-items:center; gap:16px; margin-bottom:24px;">
+  <a href="{{ url_for('orders.detail', order_id=order.id) }}"
+     style="font-size:13px; color:var(--color-primary); text-decoration:none; font-weight:600;">
+    ← Order #{{ order.ticket_display }}
+  </a>
+  <h1 style="margin:0; font-size:20px;">Correct Trade String</h1>
+  <span class="badge badge-{{ order.status.value }}">{{ order.status.value.replace('_',' ').title() }}</span>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for category, message in messages %}
+    <div class="alert alert-{{ category }}" style="margin-bottom:16px;">{{ message }}</div>
+  {% endfor %}
+{% endwith %}
+
+<div style="max-width:700px;">
+
+  <!-- Current state -->
+  <section class="order-summary" style="margin-bottom:24px;">
+    <h2 style="font-size:14px; font-weight:700; margin-bottom:12px; color:#555; text-transform:uppercase; letter-spacing:1px;">Current Trade String</h2>
+    <div style="font-family:var(--font-mono); font-size:14px; font-weight:600;
+                background:#f5f5f5; border:1px solid #ddd; border-radius:4px;
+                padding:10px 14px; word-break:break-all;">
+      {{ order.raw_input or '—' }}
+    </div>
+
+    {% if order.legs %}
+    <div style="margin-top:12px;">
+      <table style="width:100%; border-collapse:collapse; font-size:12px;">
+        <thead>
+          <tr style="border-bottom:1px solid #ccc; color:#777; font-weight:700;">
+            <th style="padding:4px 8px; text-align:left;">LEG</th>
+            <th style="padding:4px 8px; text-align:left;">SIDE</th>
+            <th style="padding:4px 8px; text-align:left;">TYPE</th>
+            <th style="padding:4px 8px; text-align:right;">QTY</th>
+            <th style="padding:4px 8px; text-align:left;">CONTRACT</th>
+            <th style="padding:4px 8px; text-align:left;">EXPIRY</th>
+            <th style="padding:4px 8px; text-align:right;">STRIKE</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for leg in order.legs | sort(attribute='leg_index') %}
+          <tr style="border-bottom:1px solid #eee;">
+            <td style="padding:4px 8px; color:#888;">{{ loop.index }}</td>
+            <td style="padding:4px 8px; font-weight:700;
+              color:{% if leg.side == 'B' %}#1565c0{% else %}#c62828{% endif %};">
+              {{ 'BUY' if leg.side == 'B' else 'SELL' }}
+            </td>
+            <td style="padding:4px 8px;">{{ leg.option_type or 'FUT' }}</td>
+            <td style="padding:4px 8px; text-align:right; font-family:var(--font-mono);">{{ leg.volume }}</td>
+            <td style="padding:4px 8px; font-family:var(--font-mono);">{{ leg.contract_type or '—' }}</td>
+            <td style="padding:4px 8px; font-family:var(--font-mono); font-weight:700;">{{ leg.expiry or '—' }}</td>
+            <td style="padding:4px 8px; text-align:right; font-family:var(--font-mono);">{{ leg.strike or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </section>
+
+  <!-- Correction form -->
+  <section class="order-summary">
+    <h2 style="font-size:14px; font-weight:700; margin-bottom:4px; color:#795548; text-transform:uppercase; letter-spacing:1px;">Apply Correction</h2>
+    <p style="font-size:12px; color:#888; margin-bottom:16px; line-height:1.5;">
+      Only the contract code and expiry reference will be updated (e.g. <code>H6 → H7</code>).
+      Strikes, volumes, option types, sides, prices, and counterparties are <strong>not changed</strong>.
+      A reason is required for the audit log.
+    </p>
+
+    <form method="POST" action="{{ url_for('orders.amend_trade_string', order_id=order.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div style="display:flex; flex-direction:column; gap:14px;">
+        <div>
+          <label style="font-size:12px; font-weight:700; display:block; margin-bottom:5px;">
+            Corrected Trade String
+          </label>
+          <input type="text"
+                 name="corrected_trade_string"
+                 value="{{ order.raw_input }}"
+                 class="text-upper"
+                 autocomplete="off"
+                 style="width:100%; font-family:var(--font-mono); font-size:14px;"
+                 placeholder="Enter corrected trade string">
+          <div style="font-size:11px; color:#888; margin-top:4px;">
+            Edit the contract code / expiry above. The parser will validate the structure matches the original.
+          </div>
+        </div>
+
+        <div>
+          <label style="font-size:12px; font-weight:700; display:block; margin-bottom:5px;">
+            Reason for Correction <span style="color:#cc2222;">*</span>
+          </label>
+          <input type="text"
+                 name="correction_reason"
+                 style="width:100%;"
+                 placeholder="e.g. Wrong expiry entered — SFRH6 should be SFRH7"
+                 required>
+          <div style="font-size:11px; color:#888; margin-top:4px;">
+            This reason will be recorded in the audit log alongside the old and new trade strings.
+          </div>
+        </div>
+
+        <div style="display:flex; gap:10px; align-items:center; padding-top:4px;">
+          <button type="submit"
+                  class="btn"
+                  style="background:#795548; color:#fff; border-color:#795548;"
+                  onclick="return confirm('Apply correction to order #{{ order.ticket_display }}?\n\nThis updates the contract/expiry reference on all legs.\nReprint cards and ticket after confirming.\n\nThis action is logged to the audit trail.')">
+            Apply Correction
+          </button>
+          <a href="{{ url_for('orders.detail', order_id=order.id) }}"
+             style="font-size:13px; color:#888; text-decoration:none;">Cancel</a>
+        </div>
+      </div>
+    </form>
+  </section>
+
+</div>
+{% endblock %}

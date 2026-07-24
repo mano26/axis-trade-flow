@@ -1054,6 +1054,33 @@ def cancel_duplicate(order_id):
     return redirect(url_for("orders.detail", order_id=order_id))
 
 
+@orders_bp.route("/<int:order_id>/correct-trade-string", methods=["GET"])
+@login_required
+def correct_trade_string_page(order_id):
+    """Dedicated page for correcting the trade string on a filled order."""
+    if not current_user.is_super():
+        flash("Only super admins can correct a filled order's trade string.", "danger")
+        return redirect(url_for("orders.detail", order_id=order_id))
+
+    order = _get_order_or_404(order_id)
+
+    eligible = {
+        OrderStatus.FILLED,
+        OrderStatus.PARTIAL_FILL,
+        OrderStatus.PARTIAL_CANCELLED,
+        OrderStatus.AMENDED,
+    }
+    if order.status not in eligible:
+        flash("Trade string correction is only available for filled orders.", "warning")
+        return redirect(url_for("orders.detail", order_id=order_id))
+
+    if order.is_generic:
+        flash("Generic orders do not have parsed legs to correct.", "warning")
+        return redirect(url_for("orders.detail", order_id=order_id))
+
+    return render_template("orders/correct_trade_string.html", order=order)
+
+
 @orders_bp.route("/<int:order_id>/amend-trade-string", methods=["POST"])
 @login_required
 def amend_trade_string(order_id):
@@ -1092,12 +1119,14 @@ def amend_trade_string(order_id):
     new_input = request.form.get("corrected_trade_string", "").strip()
     reason    = request.form.get("correction_reason", "").strip()
 
+    _correct_page = url_for("orders.correct_trade_string_page", order_id=order_id)
+
     if not new_input:
         flash("Please enter the corrected trade string.", "warning")
-        return redirect(url_for("orders.detail", order_id=order_id))
+        return redirect(_correct_page)
     if not reason:
         flash("A reason for the correction is required.", "warning")
-        return redirect(url_for("orders.detail", order_id=order_id))
+        return redirect(_correct_page)
 
     try:
         trade_parts = parse_trade_input(new_input)
@@ -1115,7 +1144,7 @@ def amend_trade_string(order_id):
                 f"can change — the trade structure must be identical.",
                 "danger",
             )
-            return redirect(url_for("orders.detail", order_id=order_id))
+            return redirect(_correct_page)
 
         # Guard: same option types, strikes, and sides on each leg
         mismatches = []
@@ -1143,7 +1172,7 @@ def amend_trade_string(order_id):
                 + "; ".join(mismatches),
                 "danger",
             )
-            return redirect(url_for("orders.detail", order_id=order_id))
+            return redirect(_correct_page)
 
         # All validation passed — update only reference fields
         old_raw_input = order.raw_input

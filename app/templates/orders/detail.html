@@ -729,6 +729,10 @@
         <a href="{{ url_for('cards.generate', order_id=order.id) }}" class="btn">Print Cards</a>
         <a href="{{ url_for('tickets.generate', order_id=order.id) }}" class="btn">Print Ticket</a>
         <a href="{{ url_for('tickets.generate_with_cps', order_id=order.id) }}" class="btn">Print Ticket + CPs</a>
+        {% if current_user.is_super() and order.status in ('filled', 'amended', 'partial_fill', 'partial_cancelled') and not order.is_generic %}
+        <a href="{{ url_for('orders.correct_trade_string_page', order_id=order.id) }}"
+           class="btn" style="background:#795548; color:#fff; border-color:#795548;">Correct Trade String</a>
+        {% endif %}
         <form method="POST" action="{{ url_for('exchange.submit_to_exchange', order_id=order.id) }}" style="display:inline">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-primary" onclick="return confirm('Submit to exchange?')">Send to Exchange</button>
@@ -756,47 +760,7 @@
     </div>
 </section>
 
-{% if current_user.is_super() and order.status in ('filled', 'amended', 'partial_fill', 'partial_cancelled') and not order.is_generic %}
-<section class="order-summary" style="margin-top: 24px; border-top: 2px solid #e0e0e0; padding-top: 20px;">
-    <h2 style="color: #795548;">Correct Trade String</h2>
-    <p style="font-size: 12px; color: #888; margin-bottom: 12px;">
-        Super admin only. Use this to fix a wrong contract or expiry reference (e.g. H6 entered instead of H7).
-        Strikes, volumes, option types, sides, prices, and counterparties are <strong>not changed</strong>.
-        A reason is required for compliance.
-    </p>
-    <form method="POST" action="{{ url_for('orders.amend_trade_string', order_id=order.id) }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <div style="display:flex; flex-direction:column; gap:10px; max-width:640px;">
-            <div>
-                <label style="font-size:12px; font-weight:600; display:block; margin-bottom:4px;">
-                    Corrected Trade String
-                </label>
-                <input type="text" name="corrected_trade_string"
-                       value="{{ order.raw_input }}"
-                       class="text-upper"
-                       style="width:100%; font-family:var(--font-mono);"
-                       placeholder="Enter corrected trade string">
-            </div>
-            <div>
-                <label style="font-size:12px; font-weight:600; display:block; margin-bottom:4px;">
-                    Reason for Correction <span style="color:#cc2222;">*</span>
-                </label>
-                <input type="text" name="correction_reason"
-                       style="width:100%;"
-                       placeholder="e.g. Wrong expiry entered — SFRH6 should be SFRH7"
-                       required>
-            </div>
-            <div>
-                <button type="submit" class="btn"
-                        style="background:#795548; color:#fff; border-color:#795548;"
-                        onclick="return confirm('Apply correction to order #{{ order.ticket_display }}?\n\nThis updates the contract/expiry reference on all legs.\nReprint cards and ticket after confirming.\n\nThis action is logged to the audit trail.')">
-                    Apply Correction
-                </button>
-            </div>
-        </div>
-    </form>
-</section>
-{% endif %}
+
 
 <a href="{{ url_for('orders.index') }}" class="btn btn-back" style="margin-top: 20px;">← Back to Orders</a>
 {% endblock %}
