@@ -9,6 +9,10 @@
 from __future__ import annotations
 from app.models.order import Order
 
+# ── Display toggles ───────────────────────────────────────────────────────────
+# Set to True to re-enable timestamp rows on printed tickets.
+SHOW_TIMESTAMPS = False
+
 try:
     from zoneinfo import ZoneInfo
     _EXCHANGE_TZ = ZoneInfo("America/Chicago")
@@ -238,7 +242,7 @@ def _build_ticket(
             ts_parts.append(f"MOD: {mt}")
     if time_out:
         ts_parts.append(f"OUT: {time_out}")
-    if ts_parts:
+    if ts_parts and SHOW_TIMESTAMPS:
         h += f"<div class='timestamps'>{' &nbsp;&nbsp; '.join(ts_parts)}</div>\n"
 
     # Footer
@@ -508,7 +512,7 @@ def generate_ticket_with_cps_html(order) -> str:
         if mt: ts_parts.append(f"MOD: {mt}")
     if time_out: ts_parts.append(f"OUT: {time_out}")
     ts_html = (f"<div class='timestamps'>{'&nbsp;&nbsp; '.join(ts_parts)}</div>\n"
-               if ts_parts else "")
+               if ts_parts and SHOW_TIMESTAMPS else "")
 
     bk_broker = order.bk_broker or ""
     total_qty = order.total_quantity or 1
