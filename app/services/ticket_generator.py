@@ -459,6 +459,26 @@ def generate_ticket_with_cps_html(order) -> str:
     buy_vol  = sum(d["volume"] for d in option_dicts if d["side"] == "BUY")
     sell_vol = sum(d["volume"] for d in option_dicts if d["side"] == "SELL")
 
+    # ── CVD mode detection ────────────────────────────────────────────
+    # Simple CVD: all option legs on one side + a futures hedge.
+    # e.g. SELL CALL + BUY FUT.  One card suffices; fold futures qty
+    # into the CP table alongside the option qty.
+    #
+    # Spread CVD: options on BOTH sides + futures (e.g. PS + CVD).
+    # Generates a separate futures card per broker.
+    has_buy_options  = buy_vol  > 0
+    has_sell_options = sell_vol > 0
+    is_simple_cvd    = bool(futures_dicts) and not (has_buy_options and has_sell_options)
+    needs_futures_card = bool(futures_dicts) and not is_simple_cvd
+
+    # For simple CVD, identify which side carries options vs futures
+    if is_simple_cvd and futures_dicts:
+        _fut_side = futures_dicts[0]["side"]          # "BUY" or "SELL"
+        _opt_side = "SELL" if _fut_side == "BUY" else "BUY"
+        _opt_vol  = sell_vol if _opt_side == "SELL" else buy_vol
+    else:
+        _fut_side = _opt_side = _opt_vol = None
+
     max_rows = 1
     for side in ("BUY", "SELL"):
         for typ in ("CALL", "PUT", "FUT"):
@@ -499,7 +519,7 @@ def generate_ticket_with_cps_html(order) -> str:
         n_cps = len(cps)
         option_pages = 1 + max(0, (n_cps - _ROWS_PAGE_1 + _ROWS_CONT - 1) // _ROWS_CONT
                                if n_cps > _ROWS_PAGE_1 else 0)
-        futures_pages = 1 if futures_dicts else 0
+        futures_pages = 1 if needs_futures_card else 0
         total_pages   = option_pages + futures_pages
 
         page_num = 1
@@ -510,7 +530,12 @@ def generate_ticket_with_cps_html(order) -> str:
         rng   = f"1\u2013{len(batch)} of {n_cps}" if more else None
         html += _cps_page1(order, broker, batch, rng, all_leg_dicts,
                            futures_dicts, buy_vol, sell_vol, ts_html,
-                           page_num, total_pages, not more, max_rows, total_qty)
+                           page_num, total_pages, not more, max_rows, total_qty,
+                           is_simple_cvd=is_simple_cvd,
+                           simple_cvd_opt_side=_opt_side,
+                           simple_cvd_opt_vol=_opt_vol,
+                           simple_cvd_fut_side=_fut_side,
+                           bk_broker=bk_broker)
         page_num += 1
 
         # Continuation pages
@@ -522,12 +547,16 @@ def generate_ticket_with_cps_html(order) -> str:
             html += _cps_cont_page(order, broker, batch,
                                    f"{start}\u2013{end} of {n_cps}",
                                    buy_vol, sell_vol,
-                                   page_num, total_pages, is_last, total_qty)
+                                   page_num, total_pages, is_last, total_qty,
+                                   is_simple_cvd=is_simple_cvd,
+                                   simple_cvd_opt_side=_opt_side,
+                                   simple_cvd_opt_vol=_opt_vol,
+                                   simple_cvd_fut_side=_fut_side)
             page_num += 1
             offset   += _ROWS_CONT
 
-        # Futures card
-        if futures_dicts:
+        # Futures card — spread CVD only
+        if needs_futures_card:
             html += _cps_futures_page(order, broker, cps, futures_dicts,
                                       page_num, total_pages, total_qty, bk_broker)
 
@@ -562,10 +591,13 @@ def _cp_qty_for_leg(cp_qty, leg_vol, total_qty):
 
 def _cp_half_table(cps, leg_vol, total_qty, cp_range=None,
                    show_hdr=False, hdr_label="BUY",
-                   is_futures=False) -> str:
+                   is_futures=False, qty_fn=None) -> str:
     """
     One half of the split CP section (BUY side or SELL side).
     Columns: □ | QTY | COUNTERPARTY | HOUSE | BKT
+
+    qty_fn: optional callable(cp) -> int that overrides the default
+            quantity calculation (used for simple CVD futures half).
     """
     h = "<div class='cp-half'>\n"
     if show_hdr:
@@ -592,7 +624,9 @@ def _cp_half_table(cps, leg_vol, total_qty, cp_range=None,
 
         bracket = (cp.bracket or "").upper()
 
-        if is_futures:
+        if qty_fn is not None:
+            qty = qty_fn(cp)
+        elif is_futures:
             qty = cp.futures_quantity or 0
         else:
             qty = _cp_qty_for_leg(cp.quantity or 0, leg_vol, total_qty)
@@ -628,6 +662,43 @@ def _cp_split_section(cps, buy_vol, sell_vol, total_qty,
     return h
 
 
+def _cp_simple_cvd_section(cps, opt_side, opt_vol, fut_side,
+                            total_qty, cp_range=None, show_hdrs=False) -> str:
+    """
+    CP section for a simple CVD trade (options on one side only).
+    Options half shows scaled option qty; futures half shows stored
+    futures_quantity per CP.  Layout mirrors the trade grid above:
+    options leg sits on opt_side, futures leg sits on fut_side.
+    """
+    def _opt_qty(cp):
+        return _cp_qty_for_leg(cp.quantity or 0, opt_vol, total_qty)
+
+    def _fut_qty(cp):
+        return cp.futures_quantity or 0
+
+    # Build each half in the correct order
+    if opt_side == "BUY":
+        buy_half  = _cp_half_table(cps, opt_vol, total_qty, cp_range,
+                                   show_hdr=show_hdrs, hdr_label="BUY",
+                                   qty_fn=_opt_qty)
+        sell_half = _cp_half_table(cps, 0, total_qty, cp_range,
+                                   show_hdr=show_hdrs, hdr_label="SELL",
+                                   qty_fn=_fut_qty)
+    else:
+        buy_half  = _cp_half_table(cps, 0, total_qty, cp_range,
+                                   show_hdr=show_hdrs, hdr_label="BUY",
+                                   qty_fn=_fut_qty)
+        sell_half = _cp_half_table(cps, opt_vol, total_qty, cp_range,
+                                   show_hdr=show_hdrs, hdr_label="SELL",
+                                   qty_fn=_opt_qty)
+
+    h = "<div class='cp-section'>\n"
+    h += buy_half
+    h += sell_half
+    h += "</div>\n"
+    return h
+
+
 def _cps_footer_html(broker, bk_broker="") -> str:
     h  = "<div class='tkt-footer'>\n"
     bk = f"BK: {bk_broker}" if bk_broker else ""
@@ -641,7 +712,10 @@ def _cps_footer_html(broker, bk_broker="") -> str:
 
 def _cps_page1(order, broker, cps, cp_range, all_leg_dicts, futures_dicts,
                buy_vol, sell_vol, ts_html,
-               page_num, total_pages, is_last, max_rows, total_qty) -> str:
+               page_num, total_pages, is_last, max_rows, total_qty,
+               is_simple_cvd=False, simple_cvd_opt_side=None,
+               simple_cvd_opt_vol=None, simple_cvd_fut_side=None,
+               bk_broker="") -> str:
     h  = "<div class='ticket'>\n"
     h += _cps_mini_header(order, broker, page_num, total_pages)
     h += "<div class='tkt-body'>\n"
@@ -649,25 +723,51 @@ def _cps_page1(order, broker, cps, cp_range, all_leg_dicts, futures_dicts,
     h += _build_side(all_leg_dicts, "SELL", max_rows, "")
     h += "</div>\n"
     h += ts_html
-    # Page 1: no BUY/SELL header on CP section (trade grid gives context)
-    h += _cp_split_section(cps, buy_vol, sell_vol, total_qty,
-                           cp_range=cp_range, show_hdrs=False)
+
+    if is_simple_cvd and simple_cvd_opt_side:
+        h += _cp_simple_cvd_section(
+            cps, simple_cvd_opt_side, simple_cvd_opt_vol,
+            simple_cvd_fut_side, total_qty,
+            cp_range=cp_range, show_hdrs=False,
+        )
+    else:
+        h += _cp_split_section(cps, buy_vol, sell_vol, total_qty,
+                               cp_range=cp_range, show_hdrs=False)
+
     if is_last:
-        h += _cps_footer_html(broker)
+        # For simple CVD the BK broker lives on the only card, not a separate futures page
+        h += _cps_footer_html(broker, bk_broker if is_simple_cvd else "")
     h += "</div>\n"
     return h
 
 
 def _cps_cont_page(order, broker, cps, cp_range,
                    buy_vol, sell_vol,
-                   page_num, total_pages, is_last, total_qty) -> str:
+                   page_num, total_pages, is_last, total_qty,
+                   is_simple_cvd=False, simple_cvd_opt_side=None,
+                   simple_cvd_opt_vol=None, simple_cvd_fut_side=None) -> str:
     h  = "<div class='ticket'>\n"
     h += _cps_mini_header(order, broker, page_num, total_pages)
-    # Continuation pages show BUY/SELL headers (no trade grid for context)
-    h += _cp_split_section(cps, buy_vol, sell_vol, total_qty,
-                           cp_range=cp_range, show_hdrs=True)
+
+    if is_simple_cvd and simple_cvd_opt_side:
+        h += _cp_simple_cvd_section(
+            cps, simple_cvd_opt_side, simple_cvd_opt_vol,
+            simple_cvd_fut_side, total_qty,
+            cp_range=cp_range, show_hdrs=True,
+        )
+    else:
+        h += _cp_split_section(cps, buy_vol, sell_vol, total_qty,
+                               cp_range=cp_range, show_hdrs=True)
+
     if is_last:
         h += _cps_footer_html(broker)
+    h += "</div>\n"
+    return h
+    h = "<div class='cp-section'>\n"
+    h += _cp_half_table(cps, buy_vol,  total_qty, cp_range,
+                        show_hdr=show_hdrs, hdr_label="BUY")
+    h += _cp_half_table(cps, sell_vol, total_qty, cp_range,
+                        show_hdr=show_hdrs, hdr_label="SELL")
     h += "</div>\n"
     return h
 
