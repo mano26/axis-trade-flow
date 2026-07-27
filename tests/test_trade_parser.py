@@ -95,6 +95,41 @@ class TestSpreadParsing:
         assert result[0].strategy == "rr"
         assert len(result[0].strikes) == 2
 
+    def test_rr_cvd_futures_direction_buy_put_qualifier(self):
+        """
+        BUY RR CVD with (PUT) qualifier: buy put + sell call → net negative
+        delta → CVD futures should be BUY.  Regression for bug where SELL
+        futures was produced instead.
+        """
+        from app.services.strategy_handlers import build_legs
+        legs = build_legs(
+            parse_trade_input("SFRZ6 95.375 96.375 RR CVD 95.87 D 32 0.75/1000 (PUT)")[0]
+        )
+        fut = [l for l in legs if l.get("option_type") is None and l.get("strike") is None]
+        assert len(fut) == 1, "Expected exactly one futures leg"
+        assert fut[0]["side"] == "B", f"Expected BUY futures, got {fut[0]['side']}"
+
+    def test_rr_cvd_futures_direction_no_qualifier(self):
+        """RR CVD without any qualifier should also produce BUY futures."""
+        from app.services.strategy_handlers import build_legs
+        legs = build_legs(
+            parse_trade_input("SFRZ6 95.375 96.375 RR CVD 95.87 D 32 0.75/1000")[0]
+        )
+        fut = [l for l in legs if l.get("option_type") is None and l.get("strike") is None]
+        assert len(fut) == 1
+        assert fut[0]["side"] == "B"
+
+    def test_rr_cvd_leg_structure(self):
+        """RR CVD should produce: BUY low-strike PUT, SELL high-strike CALL, BUY futures."""
+        from app.services.strategy_handlers import build_legs
+        legs = build_legs(
+            parse_trade_input("SFRZ6 95.375 96.375 RR CVD 95.87 D 32 0.75/1000")[0]
+        )
+        opt = [l for l in legs if l.get("option_type") is not None]
+        fut = [l for l in legs if l.get("option_type") is None and l.get("strike") is None]
+        assert opt[0]["side"] == "B" and opt[0]["option_type"] == "P"
+        assert opt[1]["side"] == "S" and opt[1]["option_type"] == "C"
+        assert fut[0]["side"] == "B"
 
 class TestStraddleStrangleParsing:
     """Test straddle and strangle parsing."""

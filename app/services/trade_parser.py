@@ -243,10 +243,10 @@ def set_strategy(trade: TradeInput, token: str, i: int, tokens: list[str]) -> in
         return 0
 
     # --- Centric flags ---
-    if u == "(CALLS)":
+    if u in ("(CALLS)", "(CALL)"):
         trade.is_call_centric = True
         return 0
-    if u == "(PUTS)":
+    if u in ("(PUTS)", "(PUT)"):
         trade.is_put_centric = True
         return 0
 

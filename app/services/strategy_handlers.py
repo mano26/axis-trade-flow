@@ -401,6 +401,12 @@ def build_cvd_overlay(trade: TradeInput) -> list[dict]:
             side_fut = trade.direction_side
         else:
             side_fut = "S" if trade.direction_side == "B" else "B"
+    elif trade.strategy == "rr":
+        # RR: BUY PUT + SELL CALL (or vice-versa). Both legs carry delta in
+        # the same direction as the trade, so CVD futures always match it.
+        # BUY RR → BUY PUT + SELL CALL → net negative delta → BUY futures.
+        # SELL RR → SELL PUT + BUY CALL → net positive delta → SELL futures.
+        side_fut = trade.direction_side
     elif trade.is_put_centric:
         side_fut = trade.direction_side
     elif trade.is_call_centric:
