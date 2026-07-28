@@ -43,9 +43,16 @@ def generate_ticket_html(order: Order) -> str:
     account   = order.account  or ""
     bk_broker = order.bk_broker or ""
 
+    # Normalization base for fill quantity scaling — same logic as card_generator:
+    # min non-zero option leg volume = the "1x" unit for ratio scaling.
+    opt_vols = [l.volume for l in order.legs
+                if not (l.option_type is None and l.strike is None)
+                and l.volume and l.volume > 0]
+    min_opt_vol = min(opt_vols) if opt_vols else 1
+
     # Build base leg structure (structure and volumes from order.legs).
     # Prices are overridden per-fill below.
-    def _make_legs(fill_price_map=None):
+    def _make_legs(fill_price_map=None, fill_quantity=None):
         legs = []
         for leg in order.legs:
             is_fut = leg.option_type is None and leg.strike is None
@@ -69,10 +76,19 @@ def generate_ticket_html(order: Order) -> str:
             else:
                 price_str = str(leg.price) if leg.price else ""
 
+            # Scale quantity to this fill's size using leg ratio.
+            # For a 1:1 trade all legs show fill_quantity.
+            # For a 1:2 ratio spread the 2x leg shows 2 × fill_quantity.
+            # Futures legs keep their stored volume (delta hedge is fixed).
+            if fill_quantity is not None and not is_fut and min_opt_vol:
+                qty_val = round(fill_quantity * leg.volume / min_opt_vol)
+            else:
+                qty_val = leg.volume
+
             legs.append({
                 "side": side_display,
                 "opt_type": opt_type,
-                "qty": str(leg.volume),
+                "qty": str(qty_val),
                 "mo": (leg.mo_card_code or leg.expiry or "").upper(),
                 "strike": strike_str,
                 "price": price_str,
@@ -120,7 +136,7 @@ def generate_ticket_html(order: Order) -> str:
         fill_price_map = ({lp.leg_index: lp.price for lp in fill.leg_prices}
                           if fill.leg_prices else {})
 
-        legs = _make_legs(fill_price_map)
+        legs = _make_legs(fill_price_map, fill_quantity=fill.fill_quantity)
 
         # Brackets and broker from this fill's CPs only
         brackets_seen = []
