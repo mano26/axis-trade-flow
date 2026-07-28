@@ -424,17 +424,164 @@ _ROWS_CONT   = 12   # CP rows on continuation pages
 
 
 def generate_ticket_with_cps_html(order) -> str:
-    """Generate per-broker broker cards with CP allocations."""
+    """Generate per-broker broker cards with CP allocations.
+
+    Each fill that has counterparties gets its own set of cards.
+    Multiple partial fills produce separate card sets, each showing
+    that fill's prices and counterparties only.
+    """
     from collections import defaultdict
 
-    broker_cps: dict = defaultdict(list)
-    for fill in order.fills:
+    # Only process fills that have counterparties entered
+    fills_with_cps = [f for f in order.fills if f.counterparties]
+    if not fills_with_cps:
+        return generate_ticket_html(order)
+
+    # ── Leg structure from order (same for all fills) ─────────────────
+    sorted_legs = sorted(order.legs, key=lambda l: l.leg_index)
+
+    def _leg_dict(leg, fill_price_map=None):
+        is_fut = leg.option_type is None and leg.strike is None
+        opt_type = "FUT" if is_fut else ("CALL" if leg.option_type == "C" else "PUT")
+        side = "BUY" if leg.side == "B" else "SELL"
+        s = str(leg.strike) if leg.strike else ""
+        if s:
+            if "." not in s: s += ".00"
+            elif len(s) - s.index(".") < 3: s += "0"
+        # Use fill-specific price if available, fall back to leg's stored price
+        if fill_price_map and leg.leg_index in fill_price_map:
+            price_str = str(fill_price_map[leg.leg_index])
+        else:
+            price_str = str(leg.price) if leg.price else ""
+        return {
+            "side": side, "opt_type": opt_type,
+            "qty": str(leg.volume),
+            "mo": (leg.mo_card_code or leg.expiry or "").upper(),
+            "strike": s,
+            "price": price_str,
+            "is_fut": is_fut, "volume": leg.volume,
+        }
+
+    # Leg classification (structure only — prices applied per fill below)
+    _base_leg_dicts = [_leg_dict(l) for l in sorted_legs]
+    option_dicts    = [d for d in _base_leg_dicts if not d["is_fut"]]
+    futures_dicts   = [d for d in _base_leg_dicts if d["is_fut"]]
+
+    _buy_opt  = [d for d in option_dicts if d["side"] == "BUY"]
+    _sell_opt = [d for d in option_dicts if d["side"] == "SELL"]
+
+    _all_opt_vols = [d["volume"] for d in option_dicts] or [1]
+    _min_opt_vol  = min(_all_opt_vols)
+
+    buy_vol  = (sum(d["volume"] for d in _buy_opt)  / len(_buy_opt))  if _buy_opt  else 0
+    sell_vol = (sum(d["volume"] for d in _sell_opt) / len(_sell_opt)) if _sell_opt else 0
+
+    # ── CVD mode detection ────────────────────────────────────────────
+    has_buy_options    = buy_vol  > 0
+    has_sell_options   = sell_vol > 0
+    is_simple_cvd      = bool(futures_dicts) and not (has_buy_options and has_sell_options)
+    needs_futures_card = bool(futures_dicts) and not is_simple_cvd
+
+    if is_simple_cvd and futures_dicts:
+        _fut_side = futures_dicts[0]["side"]
+        _opt_side = "SELL" if _fut_side == "BUY" else "BUY"
+        _opt_vol  = sell_vol if _opt_side == "SELL" else buy_vol
+    else:
+        _fut_side = _opt_side = _opt_vol = None
+
+    max_rows = 1
+    for side in ("BUY", "SELL"):
+        for typ in ("CALL", "PUT", "FUT"):
+            cnt = sum(1 for d in _base_leg_dicts if d["side"] == side and d["opt_type"] == typ)
+            max_rows = max(max_rows, cnt)
+    max_rows = min(max_rows, 4)
+
+    bk_broker = order.bk_broker or ""
+    total_qty = _min_opt_vol
+
+    total_fills = len(fills_with_cps)
+    html = _ticket_html_header_cps(max_rows)
+
+    for fill_num, fill in enumerate(fills_with_cps, 1):
+        # Build price map for this specific fill
+        fill_price_map = {lp.leg_index: lp.price for lp in fill.leg_prices} \
+                         if fill.leg_prices else {}
+
+        # Build leg dicts with this fill's prices
+        all_leg_dicts = [_leg_dict(l, fill_price_map) for l in sorted_legs]
+        # Re-derive futures_dicts with prices for this fill
+        fill_futures_dicts = [d for d in all_leg_dicts if d["is_fut"]]
+
+        # Timestamps for this fill only
+        fill_ts = _fmt_ts(fill.fill_timestamp) if fill.fill_timestamp else ""
+        time_in = _fmt_ts(order.time_in)
+        if SHOW_TIMESTAMPS and (time_in or fill_ts):
+            ts_parts = []
+            if time_in: ts_parts.append(f"IN: {time_in}")
+            if fill_ts: ts_parts.append(f"FILL: {fill_ts}")
+            ts_html = f"<div class='timestamps'>{'&nbsp;&nbsp; '.join(ts_parts)}</div>\n"
+        else:
+            ts_html = ""
+
+        # Fill label shown on every card when there are multiple fills
+        fill_label = (f"FILL {fill_num} OF {total_fills} — {fill.fill_quantity:,} LOTS"
+                      if total_fills > 1 else None)
+
+        # Group this fill's CPs by broker
+        broker_cps: dict = defaultdict(list)
         for cp in fill.counterparties:
             broker = (cp.broker or "UNKNOWN").upper()
             broker_cps[broker].append(cp)
 
-    if not broker_cps:
-        return generate_ticket_html(order)
+        for broker, cps in broker_cps.items():
+            n_cps = len(cps)
+            option_pages = 1 + max(0, (n_cps - _ROWS_PAGE_1 + _ROWS_CONT - 1) // _ROWS_CONT
+                                   if n_cps > _ROWS_PAGE_1 else 0)
+            futures_pages = 1 if needs_futures_card else 0
+            total_pages   = option_pages + futures_pages
+
+            page_num = 1
+
+            # Page 1
+            batch = cps[:_ROWS_PAGE_1]
+            more  = n_cps > _ROWS_PAGE_1
+            rng   = f"1\u2013{len(batch)} of {n_cps}" if more else None
+            html += _cps_page1(order, broker, batch, rng, all_leg_dicts,
+                               fill_futures_dicts, buy_vol, sell_vol, ts_html,
+                               page_num, total_pages, not more, max_rows, total_qty,
+                               is_simple_cvd=is_simple_cvd,
+                               simple_cvd_opt_side=_opt_side,
+                               simple_cvd_opt_vol=_opt_vol,
+                               simple_cvd_fut_side=_fut_side,
+                               bk_broker=bk_broker,
+                               fill_label=fill_label)
+            page_num += 1
+
+            # Continuation pages
+            offset = _ROWS_PAGE_1
+            while offset < n_cps:
+                batch = cps[offset: offset + _ROWS_CONT]
+                start, end = offset + 1, offset + len(batch)
+                is_last = end >= n_cps
+                html += _cps_cont_page(order, broker, batch,
+                                       f"{start}\u2013{end} of {n_cps}",
+                                       buy_vol, sell_vol,
+                                       page_num, total_pages, is_last, total_qty,
+                                       is_simple_cvd=is_simple_cvd,
+                                       simple_cvd_opt_side=_opt_side,
+                                       simple_cvd_opt_vol=_opt_vol,
+                                       simple_cvd_fut_side=_fut_side,
+                                       fill_label=fill_label)
+                page_num += 1
+                offset   += _ROWS_CONT
+
+            if needs_futures_card:
+                html += _cps_futures_page(order, broker, cps, fill_futures_dicts,
+                                          page_num, total_pages, total_qty, bk_broker,
+                                          fill_label=fill_label)
+
+    html += "</div></body></html>"
+    return html
 
     # ── Classify legs ─────────────────────────────────────────────────
     sorted_legs = sorted(order.legs, key=lambda l: l.leg_index)
@@ -581,13 +728,16 @@ def generate_ticket_with_cps_html(order) -> str:
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _cps_mini_header(order, broker, page_num, total_pages) -> str:
+def _cps_mini_header(order, broker, page_num, total_pages, fill_label=None) -> str:
     date_str = order.trade_date.strftime("%Y/%m/%d")
     h  = "<div class='tkt-header'>"
     h += f"<div class='tkt-num'>#{order.ticket_display}</div>"
     h += "<div class='tkt-title'>A X I S</div>"
+    pg_line = f"PAGE {page_num} OF {total_pages}"
+    if fill_label:
+        pg_line += f"<br><span class='fill-label'>{fill_label}</span>"
     h += (f"<div class='tkt-meta'>{date_str}<br>"
-          f"<span class='tkt-pg'>PAGE {page_num} OF {total_pages}</span></div>")
+          f"<span class='tkt-pg'>{pg_line}</span></div>")
     h += "</div>\n"
     h += "<div class='tkt-acct-row'>"
     h += f"<div>Acct: <span>{order.account or ''}</span></div>"
@@ -730,9 +880,9 @@ def _cps_page1(order, broker, cps, cp_range, all_leg_dicts, futures_dicts,
                page_num, total_pages, is_last, max_rows, total_qty,
                is_simple_cvd=False, simple_cvd_opt_side=None,
                simple_cvd_opt_vol=None, simple_cvd_fut_side=None,
-               bk_broker="") -> str:
+               bk_broker="", fill_label=None) -> str:
     h  = "<div class='ticket'>\n"
-    h += _cps_mini_header(order, broker, page_num, total_pages)
+    h += _cps_mini_header(order, broker, page_num, total_pages, fill_label)
     h += "<div class='tkt-body'>\n"
     h += _build_side(all_leg_dicts, "BUY",  max_rows, "")
     h += _build_side(all_leg_dicts, "SELL", max_rows, "")
@@ -750,7 +900,6 @@ def _cps_page1(order, broker, cps, cp_range, all_leg_dicts, futures_dicts,
                                cp_range=cp_range, show_hdrs=False)
 
     if is_last:
-        # For simple CVD the BK broker lives on the only card, not a separate futures page
         h += _cps_footer_html(broker, bk_broker if is_simple_cvd else "")
     h += "</div>\n"
     return h
@@ -760,9 +909,10 @@ def _cps_cont_page(order, broker, cps, cp_range,
                    buy_vol, sell_vol,
                    page_num, total_pages, is_last, total_qty,
                    is_simple_cvd=False, simple_cvd_opt_side=None,
-                   simple_cvd_opt_vol=None, simple_cvd_fut_side=None) -> str:
+                   simple_cvd_opt_vol=None, simple_cvd_fut_side=None,
+                   fill_label=None) -> str:
     h  = "<div class='ticket'>\n"
-    h += _cps_mini_header(order, broker, page_num, total_pages)
+    h += _cps_mini_header(order, broker, page_num, total_pages, fill_label)
 
     if is_simple_cvd and simple_cvd_opt_side:
         h += _cp_simple_cvd_section(
@@ -778,22 +928,15 @@ def _cps_cont_page(order, broker, cps, cp_range,
         h += _cps_footer_html(broker)
     h += "</div>\n"
     return h
-    h = "<div class='cp-section'>\n"
-    h += _cp_half_table(cps, buy_vol,  total_qty, cp_range,
-                        show_hdr=show_hdrs, hdr_label="BUY")
-    h += _cp_half_table(cps, sell_vol, total_qty, cp_range,
-                        show_hdr=show_hdrs, hdr_label="SELL")
-    h += "</div>\n"
-    return h
 
 
 def _cps_futures_page(order, broker, cps, futures_dicts,
-                      page_num, total_pages, total_qty, bk_broker) -> str:
+                      page_num, total_pages, total_qty, bk_broker,
+                      fill_label=None) -> str:
     fut = futures_dicts[0]
     h  = "<div class='ticket'>\n"
-    h += _cps_mini_header(order, broker, page_num, total_pages)
+    h += _cps_mini_header(order, broker, page_num, total_pages, fill_label)
 
-    # Show only the futures leg in a minimal trade section
     h += "<div class='tkt-body'>\n"
     h += f"<div class='tkt-side'><div class='side-title'>{fut['side']}</div>"
     h += "<div class='opt-section'><div class='opt-label'>FUT</div><div class='opt-grid'>"
@@ -810,7 +953,6 @@ def _cps_futures_page(order, broker, cps, futures_dicts,
     h += "<div class='tkt-side' style='border-left:1.5px solid #000'></div>"
     h += "</div>\n"
 
-    # Futures CP table — single half, full width
     h += "<div class='cp-section'>\n"
     h += _cp_half_table(cps, 0, total_qty, show_hdr=True,
                         hdr_label=fut["side"], is_futures=True)
@@ -843,6 +985,7 @@ body{{font-family:Arial,Helvetica,sans-serif;background:#e0e0e0;padding:0}}
 .tkt-title{{font-size:{tF}px;font-weight:900;letter-spacing:5px;text-align:center;flex:1}}
 .tkt-meta{{text-align:right;font-size:9px;font-weight:600;line-height:1.5}}
 .tkt-pg{{font-size:9px;font-weight:700;color:#555}}
+.fill-label{{font-size:8px;font-weight:700;color:#795548;letter-spacing:0.5px}}
 .tkt-acct-row{{display:flex;justify-content:space-between;font-size:9px;margin-bottom:4px;
   padding-bottom:3px;border-bottom:1px solid #ccc}}
 .tkt-acct-row span{{font-weight:700}}
