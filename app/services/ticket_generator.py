@@ -848,14 +848,18 @@ def _cp_split_section(cps, buy_vol, sell_vol, total_qty,
                       cp_range=None, show_hdrs=False) -> str:
     """
     Full split CP section: BUY half | vertical line | SELL half.
+    Sides with no option legs (vol=0) are omitted entirely; the
+    remaining side expands to full width automatically.
     On page 1 show_hdrs=False (context from trade grid above).
     On page 2+ show_hdrs=True.
     """
     h = "<div class='cp-section'>\n"
-    h += _cp_half_table(cps, buy_vol,  total_qty, cp_range,
-                        show_hdr=show_hdrs, hdr_label="BUY")
-    h += _cp_half_table(cps, sell_vol, total_qty, cp_range,
-                        show_hdr=show_hdrs, hdr_label="SELL")
+    if buy_vol > 0:
+        h += _cp_half_table(cps, buy_vol, total_qty, cp_range,
+                            show_hdr=show_hdrs, hdr_label="BUY")
+    if sell_vol > 0:
+        h += _cp_half_table(cps, sell_vol, total_qty, cp_range,
+                            show_hdr=show_hdrs, hdr_label="SELL")
     h += "</div>\n"
     return h
 
