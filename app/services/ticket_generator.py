@@ -896,29 +896,95 @@ def _cp_split_section(cps, buy_vol, sell_vol, total_qty,
     return h
 
 
+def _cp_cvd_half_table(cps, opt_vol, total_qty, cp_range=None,
+                       show_hdr=False, hdr_label="BUY",
+                       is_multi_leg=False) -> str:
+    """CVD half-table: □ | OPT | FUT | COUNTERPARTY | HOUSE | BKT."""
+    h = "<div class='cp-half'>\n"
+    if show_hdr:
+        h += f"<div class='cp-half-title'>{hdr_label}</div>\n"
+    if cp_range:
+        h += f"<div class='cp-range'>{cp_range}</div>\n"
+    h += "<table class='cp-table'>\n"
+    h += ("<thead><tr>"
+          "<th></th><th>OPT</th><th>FUT</th>"
+          "<th>COUNTERPARTY</th><th>HOUSE</th><th>BKT</th>"
+          "</tr></thead>\n<tbody>\n")
+
+    opt_total = fut_total = 0
+    for cp in cps:
+        sym_raw = cp.symbol or ""
+        if cp.cp_house:
+            cp_sym, cp_house = sym_raw.upper(), cp.cp_house.upper()
+        elif "/" in sym_raw:
+            cp_sym   = sym_raw.split("/")[0].strip().upper()
+            cp_house = sym_raw.split("/")[1].strip().upper()
+        else:
+            cp_sym, cp_house = sym_raw.upper(), ""
+
+        bracket = (cp.bracket or "").upper()
+        bracket_display = bracket + ("6" if is_multi_leg and bracket else "")
+
+        opt_qty = _cp_qty_for_leg(cp.quantity or 0, opt_vol, total_qty)
+        fut_qty = cp.futures_quantity or 0
+        opt_total += opt_qty
+        fut_total += fut_qty
+
+        h += (f"<tr>"
+              f"<td><span class='cp-chk'></span></td>"
+              f"<td class='cp-qty'>{opt_qty if opt_qty else '&nbsp;'}</td>"
+              f"<td class='cp-qty'>{fut_qty if fut_qty else '&nbsp;'}</td>"
+              f"<td>{cp_sym}</td><td>{cp_house}</td><td>{bracket_display}</td>"
+              f"</tr>\n")
+
+    h += "</tbody></table>\n"
+    parts = []
+    if opt_total: parts.append(f"OPT: {opt_total:,}")
+    if fut_total: parts.append(f"FUT: {fut_total:,}")
+    if parts:
+        h += f"<div class='cp-total'>TOTAL &nbsp; {'&nbsp;|&nbsp;'.join(parts)}</div>\n"
+    h += "</div>\n"
+    return h
+
+
 def _cp_simple_cvd_section(cps, opt_side, opt_vol, fut_side,
                             total_qty, cp_range=None, show_hdrs=False,
                             is_multi_leg=False) -> str:
     """
-    CP section for a simple CVD trade (one option type + futures hedge).
-    Always renders two columns — OPT qty and FUT qty — regardless of
-    whether the option and futures are on the same or opposite trade sides.
-    The trade grid above already makes the direction clear on page 1.
-    On page 2+ the column headers show 'OPT' and 'FUT'.
-    """
-    def _opt_qty(cp):
-        return _cp_qty_for_leg(cp.quantity or 0, opt_vol, total_qty)
+    CVD CP section: each leg appears on its correct trade side.
 
-    def _fut_qty(cp):
+    Same-side CVD (BUY PUT+FUT or SELL PUT+FUT):
+      → Combined OPT+FUT table on that side, other side empty.
+
+    Opposite-side CVD (SELL CALL+BUY FUT or BUY CALL+SELL FUT):
+      → Option qty on opt_side, futures qty on fut_side, standard half-tables.
+    """
+    def _fut_qty_fn(cp):
         return cp.futures_quantity or 0
 
     h = "<div class='cp-section'>\n"
-    h += _cp_half_table(cps, opt_vol, total_qty, cp_range,
-                        show_hdr=show_hdrs, hdr_label="OPT",
-                        qty_fn=_opt_qty, is_multi_leg=is_multi_leg)
-    h += _cp_half_table(cps, 0, total_qty, cp_range,
-                        show_hdr=show_hdrs, hdr_label="FUT",
-                        qty_fn=_fut_qty, is_multi_leg=is_multi_leg)
+
+    if opt_side == fut_side:
+        # Both legs on the same side — combined OPT+FUT half on that side
+        cvd  = _cp_cvd_half_table(cps, opt_vol, total_qty, cp_range,
+                                   show_hdr=show_hdrs, hdr_label=opt_side,
+                                   is_multi_leg=is_multi_leg)
+        empty = "<div class='cp-half'></div>\n"
+        h += (cvd + empty) if opt_side == "BUY" else (empty + cvd)
+    else:
+        # Opposite sides — options on opt_side, futures on fut_side
+        opt_half = _cp_half_table(cps, opt_vol, total_qty, cp_range,
+                                   show_hdr=show_hdrs, hdr_label=opt_side,
+                                   is_multi_leg=is_multi_leg)
+        fut_half = _cp_half_table(cps, 0, total_qty, cp_range,
+                                   show_hdr=show_hdrs, hdr_label=fut_side,
+                                   qty_fn=_fut_qty_fn, is_multi_leg=is_multi_leg)
+        # Always BUY on left, SELL on right
+        if opt_side == "BUY":
+            h += opt_half + fut_half   # BUY=opt, SELL=fut
+        else:
+            h += fut_half + opt_half   # BUY=fut, SELL=opt
+
     h += "</div>\n"
     return h
 
