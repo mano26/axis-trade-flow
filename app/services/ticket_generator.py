@@ -541,15 +541,8 @@ def generate_ticket_with_cps_html(order) -> str:
 
     if is_simple_cvd and futures_dicts:
         _fut_side    = futures_dicts[0]["side"]
-        _opt_side_raw = "BUY" if has_buy_options else "SELL"
-        _opt_vol     = buy_vol if _opt_side_raw == "BUY" else sell_vol
-        # For opposite-side CVD (e.g. SELL CALL + BUY FUT, BUY CALL + SELL FUT),
-        # use the split options/futures layout.
-        # For same-side CVD (BUY PUT + BUY FUT, SELL PUT + SELL FUT), the
-        # options and futures both live on the same side, so we fall back to
-        # _cp_split_section which shows option quantities only — futures are
-        # shown via the BK broker in the footer.
-        _opt_side = _opt_side_raw if _opt_side_raw != _fut_side else None
+        _opt_side    = "BUY" if has_buy_options else "SELL"   # derived from actual option legs
+        _opt_vol     = buy_vol if _opt_side == "BUY" else sell_vol
     else:
         _fut_side = _opt_side = _opt_vol = None
 
@@ -907,7 +900,11 @@ def _cp_simple_cvd_section(cps, opt_side, opt_vol, fut_side,
                             total_qty, cp_range=None, show_hdrs=False,
                             is_multi_leg=False) -> str:
     """
-    CP section for a simple CVD trade (options on one side only).
+    CP section for a simple CVD trade (one option type + futures hedge).
+    Always renders two columns — OPT qty and FUT qty — regardless of
+    whether the option and futures are on the same or opposite trade sides.
+    The trade grid above already makes the direction clear on page 1.
+    On page 2+ the column headers show 'OPT' and 'FUT'.
     """
     def _opt_qty(cp):
         return _cp_qty_for_leg(cp.quantity or 0, opt_vol, total_qty)
@@ -915,24 +912,13 @@ def _cp_simple_cvd_section(cps, opt_side, opt_vol, fut_side,
     def _fut_qty(cp):
         return cp.futures_quantity or 0
 
-    if opt_side == "BUY":
-        buy_half  = _cp_half_table(cps, opt_vol, total_qty, cp_range,
-                                   show_hdr=show_hdrs, hdr_label="BUY",
-                                   qty_fn=_opt_qty, is_multi_leg=is_multi_leg)
-        sell_half = _cp_half_table(cps, 0, total_qty, cp_range,
-                                   show_hdr=show_hdrs, hdr_label="SELL",
-                                   qty_fn=_fut_qty, is_multi_leg=is_multi_leg)
-    else:
-        buy_half  = _cp_half_table(cps, 0, total_qty, cp_range,
-                                   show_hdr=show_hdrs, hdr_label="BUY",
-                                   qty_fn=_fut_qty, is_multi_leg=is_multi_leg)
-        sell_half = _cp_half_table(cps, opt_vol, total_qty, cp_range,
-                                   show_hdr=show_hdrs, hdr_label="SELL",
-                                   qty_fn=_opt_qty, is_multi_leg=is_multi_leg)
-
     h = "<div class='cp-section'>\n"
-    h += buy_half
-    h += sell_half
+    h += _cp_half_table(cps, opt_vol, total_qty, cp_range,
+                        show_hdr=show_hdrs, hdr_label="OPT",
+                        qty_fn=_opt_qty, is_multi_leg=is_multi_leg)
+    h += _cp_half_table(cps, 0, total_qty, cp_range,
+                        show_hdr=show_hdrs, hdr_label="FUT",
+                        qty_fn=_fut_qty, is_multi_leg=is_multi_leg)
     h += "</div>\n"
     return h
 
