@@ -60,16 +60,21 @@ def generate_cards_html(order: Order) -> str:
     # Futures legs are excluded from the min calculation; their quantities
     # are handled via futures_quantity or scaled against the option base.
     total_qty = order.total_quantity or 1
+    delta_ratio = 0  # retained for _build_card signature; no longer used in rendering
 
-    opt_volumes = [l["volume"] for l in legs if not l["is_fut"]]
+    # Normalize to the smallest non-zero option leg volume so that:
+    #   - Ratio spreads: min = 1x leg → ratios 1.0 / 2.0
+    #   - Generic orders with legs at fill level: min=fill_vol, ratio=1.0
+    #   - Fully parsed 1:1 orders: min==total_quantity → unchanged
+    # Futures legs are excluded; their qty is handled via futures_quantity.
+    opt_volumes = [l["volume"] for l in legs if not l["is_fut"] and l["volume"] > 0]
     min_opt_vol = min(opt_volumes) if opt_volumes else total_qty
 
     for l in legs:
         if l["is_fut"]:
-            # CVD futures: keep existing total_quantity-based scaling
             l["leg_ratio"] = l["volume"] / total_qty
         else:
-            l["leg_ratio"] = l["volume"] / min_opt_vol
+            l["leg_ratio"] = l["volume"] / min_opt_vol if min_opt_vol else 0
 
     # Collect counterparties grouped by bracket + broker
     groups = []  # list of {bracket, broker, cps: [{qty, symbol}]}
