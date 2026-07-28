@@ -296,9 +296,9 @@ def _build_ticket(
 
     # Footer
     h += "<div class='tkt-footer'>\n"
-    # For spread trades (more than one option leg), also circle "6" per
-    # floor convention — same logic as the card generator.
-    is_multi_leg = len([l for l in legs if not l.get("is_fut", False)]) > 1
+    # For spread trades AND single-option CVD trades, circle "6" per floor
+    # convention — matches card generator which uses len(all legs) > 1.
+    is_multi_leg = len(legs) > 1
     active_brackets = list(brackets) + (["6"] if is_multi_leg and brackets else [])
     h += _build_bracket_row(active_brackets)
     h += "<div class='footer-row'>"
@@ -540,9 +540,16 @@ def generate_ticket_with_cps_html(order) -> str:
     needs_futures_card = bool(futures_dicts) and not is_simple_cvd
 
     if is_simple_cvd and futures_dicts:
-        _fut_side = futures_dicts[0]["side"]
-        _opt_side = "SELL" if _fut_side == "BUY" else "BUY"
-        _opt_vol  = sell_vol if _opt_side == "SELL" else buy_vol
+        _fut_side    = futures_dicts[0]["side"]
+        _opt_side_raw = "BUY" if has_buy_options else "SELL"
+        _opt_vol     = buy_vol if _opt_side_raw == "BUY" else sell_vol
+        # For opposite-side CVD (e.g. SELL CALL + BUY FUT, BUY CALL + SELL FUT),
+        # use the split options/futures layout.
+        # For same-side CVD (BUY PUT + BUY FUT, SELL PUT + SELL FUT), the
+        # options and futures both live on the same side, so we fall back to
+        # _cp_split_section which shows option quantities only — futures are
+        # shown via the BK broker in the footer.
+        _opt_side = _opt_side_raw if _opt_side_raw != _fut_side else None
     else:
         _fut_side = _opt_side = _opt_vol = None
 
@@ -555,7 +562,7 @@ def generate_ticket_with_cps_html(order) -> str:
 
     bk_broker = order.bk_broker or ""
     total_qty = _min_opt_vol
-    is_multi_leg = len(option_dicts) > 1  # bracket gets "6" suffix for spreads
+    is_multi_leg = len(option_dicts) > 1 or bool(futures_dicts)  # bracket+6 for spreads and CVD
 
     total_fills = len(fills_with_cps)
     html = _ticket_html_header_cps(max_rows)
