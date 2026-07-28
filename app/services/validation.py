@@ -68,6 +68,13 @@ def validate_fill_prices(
     ValidationError
         If prices do not reconcile within tolerance.
     """
+    # Generic orders have manually entered legs whose volumes may not
+    # correspond to the parsed total_quantity, making the reconciliation
+    # formula unreliable.  Skip validation entirely for generic orders —
+    # the user is responsible for entering correct prices.
+    if order.is_generic:
+        return
+
     errors = []
 
     # Build a map of leg_index → price for quick lookup
