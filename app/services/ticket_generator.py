@@ -33,81 +33,70 @@ def _fmt_ts(dt) -> str:
 
 
 def generate_ticket_html(order: Order) -> str:
-    """Generate the full HTML document for an exchange ticket."""
+    """Generate the full HTML document for an exchange ticket.
 
-    account = order.account or ""
+    Produces one ticket per fill that has counterparties or leg prices.
+    For a single fill this is identical to the previous behaviour.
+    For multiple partial fills each ticket shows that fill's prices.
+    """
+
+    account   = order.account  or ""
     bk_broker = order.bk_broker or ""
 
-    # Collect legs — always use full order leg volume, not a fill ratio.
-    # The ticket is the master record for the trade; fill quantities are
-    # tracked separately via Fill and FillCounterparty records.
-    legs = []
-    for leg in order.legs:
-        is_fut = leg.option_type is None and leg.strike is None
-        vol = leg.volume
+    # Build base leg structure (structure and volumes from order.legs).
+    # Prices are overridden per-fill below.
+    def _make_legs(fill_price_map=None):
+        legs = []
+        for leg in order.legs:
+            is_fut = leg.option_type is None and leg.strike is None
+            opt_type = ("FUT" if is_fut
+                        else "CALL" if leg.option_type == "C" else "PUT")
+            side_display = "BUY" if leg.side == "B" else "SELL"
 
-        if is_fut:
-            opt_type = "FUT"
-        elif leg.option_type == "C":
-            opt_type = "CALL"
-        else:
-            opt_type = "PUT"
+            strike_str = ""
+            if leg.strike:
+                s = str(leg.strike)
+                if "." not in s:
+                    strike_str = s + ".00"
+                elif len(s) - s.index(".") < 3:
+                    strike_str = s + "0"
+                else:
+                    strike_str = s
 
-        side_display = "BUY" if leg.side == "B" else "SELL"
-
-        strike_str = ""
-        if leg.strike:
-            s = str(leg.strike)
-            if "." not in s:
-                strike_str = s + ".00"
-            elif len(s) - s.index(".") < 3:
-                strike_str = s + "0"
+            # Use fill-specific price when available
+            if fill_price_map and leg.leg_index in fill_price_map:
+                price_str = str(fill_price_map[leg.leg_index])
             else:
-                strike_str = s
+                price_str = str(leg.price) if leg.price else ""
 
-        legs.append({
-            "side": side_display,
-            "opt_type": opt_type,
-            "qty": str(vol),
-            "mo": (leg.mo_card_code or leg.expiry or "").upper(),
-            "strike": strike_str,
-            "price": str(leg.price) if leg.price else "",
-            "is_fut": is_fut,
-        })
+            legs.append({
+                "side": side_display,
+                "opt_type": opt_type,
+                "qty": str(leg.volume),
+                "mo": (leg.mo_card_code or leg.expiry or "").upper(),
+                "strike": strike_str,
+                "price": price_str,
+                "is_fut": is_fut,
+            })
+        return legs
 
-    # Determine if futures are on buy side, sell side, or both
-    fut_on_buy = any(l["is_fut"] and l["side"] == "BUY" for l in legs)
-    fut_on_sell = any(l["is_fut"] and l["side"] == "SELL" for l in legs)
-
-    # Collect ALL brackets across all fills (multiple partials → multiple brackets)
-    # and all brokers.
-    brackets_seen = []
-    brokers = []
-    for fill in order.fills:
-        for cp in fill.counterparties:
-            if cp.bracket and cp.bracket not in brackets_seen:
-                brackets_seen.append(cp.bracket)
-            if cp.broker and cp.broker.upper() not in brokers:
-                brokers.append(cp.broker.upper())
-    broker_str = " / ".join(brokers)
-
-    # Max rows per type per side
+    # Max rows per type per side (same across all fills)
+    base_legs = _make_legs()
     max_rows = 1
-    counts = {"BUY": {"CALL": 0, "PUT": 0, "FUT": 0}, "SELL": {"CALL": 0, "PUT": 0, "FUT": 0}}
-    for l in legs:
+    counts = {"BUY": {"CALL": 0, "PUT": 0, "FUT": 0},
+              "SELL": {"CALL": 0, "PUT": 0, "FUT": 0}}
+    for l in base_legs:
         counts[l["side"]][l["opt_type"]] += 1
     for side in counts.values():
         for c in side.values():
             if c > max_rows:
                 max_rows = c
-    if max_rows > 4:
-        max_rows = 4
+    max_rows = min(max_rows, 4)
 
-    # Timestamps — all converted from UTC to Chicago time.
-    time_in = _fmt_ts(order.time_in)
-    time_out = _fmt_ts(order.time_out)
+    fut_on_buy  = any(l["is_fut"] and l["side"] == "BUY"  for l in base_legs)
+    fut_on_sell = any(l["is_fut"] and l["side"] == "SELL" for l in base_legs)
 
-    # Modification timestamps are stored as ISO strings (UTC). Parse and convert.
+    # Modification timestamps (shared across all fills)
     mod_times = []
     if order.modification_timestamps:
         from datetime import datetime, timezone
@@ -116,17 +105,56 @@ def generate_ticket_html(order: Order) -> str:
                 dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
                 mod_times.append(_fmt_ts(dt))
             except Exception:
-                mod_times.append(ts[:8])  # fallback: use raw string
+                mod_times.append(ts[:8])
 
-    # Per-fill timestamps — each fill records when it occurred.
-    fill_times = [_fmt_ts(f.fill_timestamp) for f in order.fills if f.fill_timestamp]
+    time_in  = _fmt_ts(order.time_in)
+    time_out = _fmt_ts(order.time_out)
 
     html = _ticket_html_header(max_rows)
-    html += _build_ticket(
-        order.ticket_display, legs, max_rows, brackets_seen, broker_str,
-        account, bk_broker, fut_on_buy, fut_on_sell,
-        time_in, mod_times, fill_times, time_out,
-    )
+
+    fills = order.fills or []
+    total_fills = len(fills)
+
+    for fill_num, fill in enumerate(fills, 1):
+        # Build price map for this fill
+        fill_price_map = ({lp.leg_index: lp.price for lp in fill.leg_prices}
+                          if fill.leg_prices else {})
+
+        legs = _make_legs(fill_price_map)
+
+        # Brackets and broker from this fill's CPs only
+        brackets_seen = []
+        brokers = []
+        for cp in fill.counterparties:
+            if cp.bracket and cp.bracket not in brackets_seen:
+                brackets_seen.append(cp.bracket)
+            if cp.broker and cp.broker.upper() not in brokers:
+                brokers.append(cp.broker.upper())
+        broker_str = " / ".join(brokers)
+
+        fill_ts = [_fmt_ts(fill.fill_timestamp)] if fill.fill_timestamp else []
+
+        # Fill indicator shown in header when order has multiple fills
+        fill_label = (f"FILL {fill_num} OF {total_fills} — {fill.fill_quantity:,} LOTS"
+                      if total_fills > 1 else None)
+
+        html += _build_ticket(
+            order.ticket_display, legs, max_rows, brackets_seen, broker_str,
+            account, bk_broker, fut_on_buy, fut_on_sell,
+            time_in, mod_times, fill_ts, time_out,
+            fill_label=fill_label,
+        )
+
+    # If the order has no fills at all, print a blank ticket with order prices
+    if not fills:
+        brackets_seen = []
+        brokers = []
+        html += _build_ticket(
+            order.ticket_display, base_legs, max_rows, brackets_seen, "",
+            account, bk_broker, fut_on_buy, fut_on_sell,
+            time_in, mod_times, [], time_out,
+        )
+
     html += "</div></body></html>"
     return html
 
@@ -155,6 +183,7 @@ body {{ font-family:Arial,Helvetica,sans-serif; background:#e0e0e0; padding:0; }
 .tkt-title {{ font-size:{tF}px; font-weight:900; letter-spacing:5px; text-align:center; flex:1; }}
 .tkt-acct {{ text-align:right; font-size:10px; }}
 .tkt-acct-val {{ border:1px solid #888; padding:2px 8px; min-width:80px; font-weight:700; font-size:11px; }}
+.fill-label {{ font-size:8px; font-weight:700; color:#795548; margin-top:2px; }}
 .tkt-body {{ display:flex; flex:1; gap:0; border-top:1.5px solid #000; }}
 .tkt-side {{ flex:1; display:flex; flex-direction:column; padding:5px 8px; }}
 .tkt-side + .tkt-side {{ border-left:1.5px solid #000; }}
@@ -213,6 +242,7 @@ def _build_ticket(
     brackets: list, broker: str, account: str, bk_broker: str,
     fut_on_buy: bool, fut_on_sell: bool,
     time_in: str, mod_times: list, fill_times: list, time_out: str,
+    fill_label: str = None,
 ) -> str:
     h = "<div class='ticket'>\n"
 
@@ -220,7 +250,10 @@ def _build_ticket(
     h += "<div class='tkt-header'>"
     h += f"<div class='tkt-num'>{ticket_num}</div>"
     h += "<div class='tkt-title'>A X I S</div>"
-    h += f"<div class='tkt-acct'>Account No.<div class='tkt-acct-val'>{account}</div></div>"
+    acct_block = f"Account No.<div class='tkt-acct-val'>{account}</div>"
+    if fill_label:
+        acct_block += f"<div class='fill-label'>{fill_label}</div>"
+    h += f"<div class='tkt-acct'>{acct_block}</div>"
     h += "</div>\n"
 
     # Body: buy side / sell side
