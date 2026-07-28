@@ -296,18 +296,15 @@ def _build_ticket(
 
     # Footer
     h += "<div class='tkt-footer'>\n"
-    h += _build_bracket_row(brackets)
+    # For spread trades (more than one option leg), also circle "6" per
+    # floor convention — same logic as the card generator.
+    is_multi_leg = len([l for l in legs if not l.get("is_fut", False)]) > 1
+    active_brackets = list(brackets) + (["6"] if is_multi_leg and brackets else [])
+    h += _build_bracket_row(active_brackets)
     h += "<div class='footer-row'>"
-    h += "<div class='footer-section'>"
-    h += "<span class='check-box'></span> INITIAL &nbsp;&nbsp;&nbsp;"
-    h += "<span class='check-box'></span> CLOSING</div>"
-    h += "<div class='slmq-box'>S<br>L<br>M<br>Q</div>"
     h += f"<div style='text-align:center'>"
     h += f"<div class='broker-box'>{broker}</div>"
     h += "<div class='broker-label'>Broker No.</div></div>"
-    h += "<div class='footer-section'>"
-    h += "<span class='check-box'></span> INITIAL &nbsp;&nbsp;&nbsp;"
-    h += "<span class='check-box'></span> CLOSING</div>"
     h += "</div>\n"
     h += "</div>\n"  # tkt-footer
     h += "</div>\n"  # ticket
@@ -558,6 +555,7 @@ def generate_ticket_with_cps_html(order) -> str:
 
     bk_broker = order.bk_broker or ""
     total_qty = _min_opt_vol
+    is_multi_leg = len(option_dicts) > 1  # bracket gets "6" suffix for spreads
 
     total_fills = len(fills_with_cps)
     html = _ticket_html_header_cps(max_rows)
@@ -615,7 +613,8 @@ def generate_ticket_with_cps_html(order) -> str:
                                simple_cvd_opt_vol=_opt_vol,
                                simple_cvd_fut_side=_fut_side,
                                bk_broker=bk_broker,
-                               fill_label=fill_label)
+                               fill_label=fill_label,
+                               is_multi_leg=is_multi_leg)
             page_num += 1
 
             # Continuation pages
@@ -632,7 +631,8 @@ def generate_ticket_with_cps_html(order) -> str:
                                        simple_cvd_opt_side=_opt_side,
                                        simple_cvd_opt_vol=_opt_vol,
                                        simple_cvd_fut_side=_fut_side,
-                                       fill_label=fill_label)
+                                       fill_label=fill_label,
+                                       is_multi_leg=is_multi_leg)
                 page_num += 1
                 offset   += _ROWS_CONT
 
@@ -817,13 +817,14 @@ def _cp_qty_for_leg(cp_qty, leg_vol, total_qty):
 
 def _cp_half_table(cps, leg_vol, total_qty, cp_range=None,
                    show_hdr=False, hdr_label="BUY",
-                   is_futures=False, qty_fn=None) -> str:
+                   is_futures=False, qty_fn=None, is_multi_leg=False) -> str:
     """
     One half of the split CP section (BUY side or SELL side).
     Columns: □ | QTY | COUNTERPARTY | HOUSE | BKT
 
     qty_fn: optional callable(cp) -> int that overrides the default
             quantity calculation (used for simple CVD futures half).
+    is_multi_leg: when True, appends "6" to the bracket per floor convention.
     """
     h = "<div class='cp-half'>\n"
     if show_hdr:
@@ -849,6 +850,7 @@ def _cp_half_table(cps, leg_vol, total_qty, cp_range=None,
             cp_house = ""
 
         bracket = (cp.bracket or "").upper()
+        bracket_display = bracket + ("6" if is_multi_leg and bracket else "")
 
         if qty_fn is not None:
             qty = qty_fn(cp)
@@ -862,7 +864,7 @@ def _cp_half_table(cps, leg_vol, total_qty, cp_range=None,
         h += (f"<tr>"
               f"<td><span class='cp-chk'></span></td>"
               f"<td class='cp-qty'>{qty_str}</td>"
-              f"<td>{cp_sym}</td><td>{cp_house}</td><td>{bracket}</td>"
+              f"<td>{cp_sym}</td><td>{cp_house}</td><td>{bracket_display}</td>"
               f"</tr>\n")
 
     h += "</tbody></table>\n"
@@ -873,7 +875,7 @@ def _cp_half_table(cps, leg_vol, total_qty, cp_range=None,
 
 
 def _cp_split_section(cps, buy_vol, sell_vol, total_qty,
-                      cp_range=None, show_hdrs=False) -> str:
+                      cp_range=None, show_hdrs=False, is_multi_leg=False) -> str:
     """
     Full split CP section: BUY half | vertical line | SELL half.
     Sides with no option legs (vol=0) are omitted entirely; the
@@ -884,21 +886,21 @@ def _cp_split_section(cps, buy_vol, sell_vol, total_qty,
     h = "<div class='cp-section'>\n"
     if buy_vol > 0:
         h += _cp_half_table(cps, buy_vol, total_qty, cp_range,
-                            show_hdr=show_hdrs, hdr_label="BUY")
+                            show_hdr=show_hdrs, hdr_label="BUY",
+                            is_multi_leg=is_multi_leg)
     if sell_vol > 0:
         h += _cp_half_table(cps, sell_vol, total_qty, cp_range,
-                            show_hdr=show_hdrs, hdr_label="SELL")
+                            show_hdr=show_hdrs, hdr_label="SELL",
+                            is_multi_leg=is_multi_leg)
     h += "</div>\n"
     return h
 
 
 def _cp_simple_cvd_section(cps, opt_side, opt_vol, fut_side,
-                            total_qty, cp_range=None, show_hdrs=False) -> str:
+                            total_qty, cp_range=None, show_hdrs=False,
+                            is_multi_leg=False) -> str:
     """
     CP section for a simple CVD trade (options on one side only).
-    Options half shows scaled option qty; futures half shows stored
-    futures_quantity per CP.  Layout mirrors the trade grid above:
-    options leg sits on opt_side, futures leg sits on fut_side.
     """
     def _opt_qty(cp):
         return _cp_qty_for_leg(cp.quantity or 0, opt_vol, total_qty)
@@ -906,21 +908,20 @@ def _cp_simple_cvd_section(cps, opt_side, opt_vol, fut_side,
     def _fut_qty(cp):
         return cp.futures_quantity or 0
 
-    # Build each half in the correct order
     if opt_side == "BUY":
         buy_half  = _cp_half_table(cps, opt_vol, total_qty, cp_range,
                                    show_hdr=show_hdrs, hdr_label="BUY",
-                                   qty_fn=_opt_qty)
+                                   qty_fn=_opt_qty, is_multi_leg=is_multi_leg)
         sell_half = _cp_half_table(cps, 0, total_qty, cp_range,
                                    show_hdr=show_hdrs, hdr_label="SELL",
-                                   qty_fn=_fut_qty)
+                                   qty_fn=_fut_qty, is_multi_leg=is_multi_leg)
     else:
         buy_half  = _cp_half_table(cps, 0, total_qty, cp_range,
                                    show_hdr=show_hdrs, hdr_label="BUY",
-                                   qty_fn=_fut_qty)
+                                   qty_fn=_fut_qty, is_multi_leg=is_multi_leg)
         sell_half = _cp_half_table(cps, opt_vol, total_qty, cp_range,
                                    show_hdr=show_hdrs, hdr_label="SELL",
-                                   qty_fn=_opt_qty)
+                                   qty_fn=_opt_qty, is_multi_leg=is_multi_leg)
 
     h = "<div class='cp-section'>\n"
     h += buy_half
@@ -945,7 +946,7 @@ def _cps_page1(order, broker, cps, cp_range, all_leg_dicts, futures_dicts,
                page_num, total_pages, is_last, max_rows, total_qty,
                is_simple_cvd=False, simple_cvd_opt_side=None,
                simple_cvd_opt_vol=None, simple_cvd_fut_side=None,
-               bk_broker="", fill_label=None) -> str:
+               bk_broker="", fill_label=None, is_multi_leg=False) -> str:
     h  = "<div class='ticket'>\n"
     h += _cps_mini_header(order, broker, page_num, total_pages, fill_label)
     h += "<div class='tkt-body'>\n"
@@ -958,11 +959,12 @@ def _cps_page1(order, broker, cps, cp_range, all_leg_dicts, futures_dicts,
         h += _cp_simple_cvd_section(
             cps, simple_cvd_opt_side, simple_cvd_opt_vol,
             simple_cvd_fut_side, total_qty,
-            cp_range=cp_range, show_hdrs=False,
+            cp_range=cp_range, show_hdrs=False, is_multi_leg=is_multi_leg,
         )
     else:
         h += _cp_split_section(cps, buy_vol, sell_vol, total_qty,
-                               cp_range=cp_range, show_hdrs=False)
+                               cp_range=cp_range, show_hdrs=False,
+                               is_multi_leg=is_multi_leg)
 
     if is_last:
         h += _cps_footer_html(broker, bk_broker if is_simple_cvd else "")
@@ -975,7 +977,7 @@ def _cps_cont_page(order, broker, cps, cp_range,
                    page_num, total_pages, is_last, total_qty,
                    is_simple_cvd=False, simple_cvd_opt_side=None,
                    simple_cvd_opt_vol=None, simple_cvd_fut_side=None,
-                   fill_label=None) -> str:
+                   fill_label=None, is_multi_leg=False) -> str:
     h  = "<div class='ticket'>\n"
     h += _cps_mini_header(order, broker, page_num, total_pages, fill_label)
 
@@ -983,11 +985,12 @@ def _cps_cont_page(order, broker, cps, cp_range,
         h += _cp_simple_cvd_section(
             cps, simple_cvd_opt_side, simple_cvd_opt_vol,
             simple_cvd_fut_side, total_qty,
-            cp_range=cp_range, show_hdrs=True,
+            cp_range=cp_range, show_hdrs=True, is_multi_leg=is_multi_leg,
         )
     else:
         h += _cp_split_section(cps, buy_vol, sell_vol, total_qty,
-                               cp_range=cp_range, show_hdrs=True)
+                               cp_range=cp_range, show_hdrs=True,
+                               is_multi_leg=is_multi_leg)
 
     if is_last:
         h += _cps_footer_html(broker)
