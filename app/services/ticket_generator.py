@@ -489,7 +489,13 @@ def generate_ticket_with_cps_html(order) -> str:
     # ── Leg structure from order (same for all fills) ─────────────────
     sorted_legs = sorted(order.legs, key=lambda l: l.leg_index)
 
-    def _leg_dict(leg, fill_price_map=None):
+    # Normalization base for fill quantity scaling
+    _opt_vols_raw = [l.volume for l in sorted_legs
+                     if not (l.option_type is None and l.strike is None)
+                     and l.volume and l.volume > 0]
+    _min_opt_vol_raw = min(_opt_vols_raw) if _opt_vols_raw else 1
+
+    def _leg_dict(leg, fill_price_map=None, fill_quantity=None):
         is_fut = leg.option_type is None and leg.strike is None
         opt_type = "FUT" if is_fut else ("CALL" if leg.option_type == "C" else "PUT")
         side = "BUY" if leg.side == "B" else "SELL"
@@ -502,9 +508,14 @@ def generate_ticket_with_cps_html(order) -> str:
             price_str = str(fill_price_map[leg.leg_index])
         else:
             price_str = str(leg.price) if leg.price else ""
+        # Scale displayed qty to this fill's size; futures keep stored volume
+        if fill_quantity is not None and not is_fut and _min_opt_vol_raw:
+            qty_val = round(fill_quantity * leg.volume / _min_opt_vol_raw)
+        else:
+            qty_val = leg.volume
         return {
             "side": side, "opt_type": opt_type,
-            "qty": str(leg.volume),
+            "qty": str(qty_val),
             "mo": (leg.mo_card_code or leg.expiry or "").upper(),
             "strike": s,
             "price": price_str,
@@ -556,8 +567,9 @@ def generate_ticket_with_cps_html(order) -> str:
         fill_price_map = {lp.leg_index: lp.price for lp in fill.leg_prices} \
                          if fill.leg_prices else {}
 
-        # Build leg dicts with this fill's prices
-        all_leg_dicts = [_leg_dict(l, fill_price_map) for l in sorted_legs]
+        # Build leg dicts with this fill's prices and fill-scaled quantities
+        all_leg_dicts = [_leg_dict(l, fill_price_map, fill_quantity=fill.fill_quantity)
+                         for l in sorted_legs]
         # Re-derive futures_dicts with prices for this fill
         fill_futures_dicts = [d for d in all_leg_dicts if d["is_fut"]]
 
