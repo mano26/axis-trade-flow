@@ -460,8 +460,19 @@ def generate_ticket_with_cps_html(order) -> str:
     option_dicts  = [d for d in all_leg_dicts if not d["is_fut"]]
     futures_dicts = [d for d in all_leg_dicts if d["is_fut"]]
 
-    buy_vol  = sum(d["volume"] for d in option_dicts if d["side"] == "BUY")
-    sell_vol = sum(d["volume"] for d in option_dicts if d["side"] == "SELL")
+    _buy_opt  = [d for d in option_dicts if d["side"] == "BUY"]
+    _sell_opt = [d for d in option_dicts if d["side"] == "SELL"]
+
+    # Use AVERAGE per-leg volume per side, normalised to the minimum option
+    # leg volume.  This prevents overcounting on multi-leg structures like
+    # a STUPID iron condor (4 buy legs × 100 summing to 400 when the correct
+    # per-side qty is 100), and also handles GENERIC orders where legs are
+    # entered at fill level rather than full order size.
+    _all_opt_vols = [d["volume"] for d in option_dicts] or [1]
+    _min_opt_vol  = min(_all_opt_vols)
+
+    buy_vol  = (sum(d["volume"] for d in _buy_opt)  / len(_buy_opt))  if _buy_opt  else 0
+    sell_vol = (sum(d["volume"] for d in _sell_opt) / len(_sell_opt)) if _sell_opt else 0
 
     # ── CVD mode detection ────────────────────────────────────────────
     # Simple CVD: all option legs on one side + a futures hedge.
@@ -515,7 +526,7 @@ def generate_ticket_with_cps_html(order) -> str:
                if ts_parts and SHOW_TIMESTAMPS else "")
 
     bk_broker = order.bk_broker or ""
-    total_qty = order.total_quantity or 1
+    total_qty = _min_opt_vol  # normalise to base leg, not raw order.total_quantity
 
     html = _ticket_html_header_cps(max_rows)
 

@@ -46,18 +46,30 @@ def generate_cards_html(order: Order) -> str:
             "is_fut": is_fut,
         })
 
-    # Leg ratio: each leg's share of the total order quantity.
-    # Used uniformly for ALL leg types (options and futures).
-    # Examples:
-    #   1x2 spread:  legs 4000/8000, total=4000 → ratios 1.0/2.0
-    #   Generic CVD: legs 1000/1250/400, total=250 → ratios 4.0/5.0/1.6
-    #   Parsed CVD:  legs 500 opt/200 fut, total=500 → ratios 1.0/0.4
-    # cp.quantity * leg_ratio = correct card quantity for every leg.
+    # Leg ratio: each leg's share of the base package size.
+    #
+    # We normalize to the MINIMUM option leg volume rather than
+    # order.total_quantity.  This handles two important cases correctly:
+    #
+    #   Ratio spreads (e.g. 1x2):  min=1x leg → ratios 1.0 / 2.0
+    #   Generic orders with legs entered at fill level:
+    #     total_quantity=1000, leg.volume=100 → old ratio=0.1 (wrong 10x)
+    #     min_opt_vol=100 → ratio=1.0 (correct)
+    #   Fully parsed 1:1 orders: min==total_quantity → unchanged
+    #
+    # Futures legs are excluded from the min calculation; their quantities
+    # are handled via futures_quantity or scaled against the option base.
     total_qty = order.total_quantity or 1
-    delta_ratio = 0  # retained for reference but no longer used in _build_card
+
+    opt_volumes = [l["volume"] for l in legs if not l["is_fut"]]
+    min_opt_vol = min(opt_volumes) if opt_volumes else total_qty
 
     for l in legs:
-        l["leg_ratio"] = l["volume"] / total_qty
+        if l["is_fut"]:
+            # CVD futures: keep existing total_quantity-based scaling
+            l["leg_ratio"] = l["volume"] / total_qty
+        else:
+            l["leg_ratio"] = l["volume"] / min_opt_vol
 
     # Collect counterparties grouped by bracket + broker
     groups = []  # list of {bracket, broker, cps: [{qty, symbol}]}
