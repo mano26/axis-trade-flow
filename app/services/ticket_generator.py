@@ -937,7 +937,9 @@ def _cp_section_html(cps, buy_vol, sell_vol, futures_dicts, total_qty,
     return "<div class='cp-section'>\n" + buy_half + sell_half + "</div>\n"
 
 
-def _cp_qty_for_leg(cp_qty, leg_vol, total_qty):
+def _cp_cvd_half_table(cps, opt_vol, total_qty, cp_range=None,
+                       show_hdr=False, hdr_label="BUY",
+                       is_multi_leg=False) -> str:
     """CVD half-table: □ | OPT | FUT | COUNTERPARTY | HOUSE | BKT."""
     h = "<div class='cp-half'>\n"
     if show_hdr:
