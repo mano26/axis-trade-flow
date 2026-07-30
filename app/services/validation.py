@@ -68,13 +68,6 @@ def validate_fill_prices(
     ValidationError
         If prices do not reconcile within tolerance.
     """
-    # Generic orders have manually entered legs whose volumes may not
-    # correspond to the parsed total_quantity, making the reconciliation
-    # formula unreliable.  Skip validation entirely for generic orders —
-    # the user is responsible for entering correct prices.
-    if order.is_generic:
-        return
-
     errors = []
 
     # Build a map of leg_index → price for quick lookup
@@ -104,20 +97,22 @@ def validate_fill_prices(
         if not all_filled:
             continue
 
-        # Compute net premium per base lot.
+        # Normalise leg volumes to get per-lot-unit contributions.
         #
-        # We normalise by order.total_quantity (the "1 lot" unit from the
-        # price format, e.g. 1000 for "1.5/1000"). This correctly handles
-        # NxM ratio spreads such as 2X3 where the minimum leg volume
-        # (2 * 1000 = 2000) is NOT the base lot size (1000).
+        # Parsed orders: use order.total_quantity (the "1 lot" unit from the
+        # price format, e.g. 1000 for "1.5/1000"). Correctly handles NxM ratio
+        # spreads where the minimum leg volume is not the base lot size.
         #
-        # The previous approach used min(leg.volume) as the normaliser,
-        # which gave the right answer for 1XN ratios (where the buy-side
-        # volume equals the base lot size) but was off by a factor of N
-        # for MXN ratios where M > 1.
-        total_qty = order.total_quantity if (
-            order.total_quantity and order.total_quantity > 0
-        ) else 1
+        # Generic orders: legs are entered at fill level, so total_quantity
+        # is the full order size, not the fill size — making the ratio wrong.
+        # Use fill.fill_quantity instead: leg.volume / fill_qty gives the
+        # correct leg ratio in all cases (1:1, 1:2, 2:3, etc.).
+        if order.is_generic is True:
+            total_qty = (fill.fill_quantity
+                         if fill.fill_quantity and fill.fill_quantity > 0 else 1)
+        else:
+            total_qty = (order.total_quantity
+                         if order.total_quantity and order.total_quantity > 0 else 1)
 
         net = 0.0
         for leg in legs:
