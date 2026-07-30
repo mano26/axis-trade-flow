@@ -118,6 +118,7 @@ def create():
                 raw_input=raw_input,
                 direction=direction,
                 total_quantity=volume,
+                legs_base_qty=volume,
                 package_premium=premium,
                 strategy="generic",
                 is_generic=True,
@@ -159,6 +160,7 @@ def create():
                 raw_input=raw_input,
                 direction=direction,
                 total_quantity=total_volume,
+                legs_base_qty=total_volume,
                 package_premium=package_premium,
                 strategy=primary_strategy,
                 is_generic=False,
@@ -1281,6 +1283,236 @@ def modify(order_id):
 @orders_bp.route("/<int:order_id>/modify-balance", methods=["GET", "POST"])
 @login_required
 def modify_balance(order_id):
+    """
+    Modify the working balance of a partially-filled order.
+
+    Closes the original order at its filled quantity (PARTIAL_CANCELLED) and
+    opens a NEW order for the revised balance with the next ticket number.
+    The closed order's raw_input is updated to reflect the actual filled
+    quantity so it displays correctly (e.g. 4/800 not 4/2000).
+    """
+    order = _get_order_or_404(order_id)
+
+    if order.status != OrderStatus.PARTIAL_FILL:
+        flash("Only partially-filled orders can have their balance modified.", "warning")
+        return redirect(url_for("orders.detail", order_id=order.id))
+
+    if request.method == "GET":
+        return render_template("orders/modify_balance.html", order=order)
+
+    new_input = request.form.get("trade_string", "").strip().upper()
+    if not new_input:
+        flash("Please enter a trade string for the balance.", "warning")
+        return redirect(url_for("orders.modify_balance", order_id=order.id))
+
+    try:
+        trade_parts = parse_trade_input(new_input)
+        all_legs = []
+        for part in trade_parts:
+            all_legs.extend(build_legs(part))
+
+        new_volume    = trade_parts[0].volume
+        new_premium   = trade_parts[0].premium
+        new_strategy  = trade_parts[0].strategy
+        new_direction = trade_parts[0].direction_side
+
+        # ── Close the original order ──────────────────────────────────────
+        old_status = order.status
+        filled     = order.filled_quantity
+        original   = order.total_quantity
+
+        # Update raw_input to show filled quantity (4/2000 → 4/800)
+        if filled != original and original > 0:
+            orig_s = str(original)
+            fill_s = str(filled)
+            # price/qty format:  .../ORIG → .../FILLED
+            updated = re.sub(r'(?<=/)' + re.escape(orig_s) + r'',
+                             fill_s, order.raw_input, count=1)
+            if updated == order.raw_input:
+                # qty@price format: ORIG@... → FILLED@...
+                updated = re.sub(r'' + re.escape(orig_s) + r'(?=@)',
+                                 fill_s, order.raw_input, count=1)
+            order.raw_input = updated
+
+        # Scale leg volumes to filled quantity before closing
+        if filled > 0 and original > 0 and filled != original:
+            scale = filled / original
+            for leg in order.legs:
+                leg.volume = round(leg.volume * scale)
+
+        order.transition_to(OrderStatus.PARTIAL_CANCELLED)
+
+        audit_service.log_order_status_change(
+            order, current_user.tenant_id, old_status, order.status,
+            notes=f"Balance modified — new ticket opened for {new_volume} contracts.",
+        )
+
+        # ── Open new order for the balance ────────────────────────────────
+        ticket_num = _get_next_ticket_number(current_user.tenant_id)
+        new_order = Order(
+            tenant_id=current_user.tenant_id,
+            ticket_number=ticket_num,
+            ticket_display=f"{ticket_num:04d}",
+            trade_date=date.today(),
+            raw_input=new_input,
+            direction=new_direction,
+            total_quantity=new_volume,
+            legs_base_qty=new_volume,
+            package_premium=new_premium,
+            strategy=new_strategy,
+            is_generic=False,
+            status=OrderStatus.OPEN,
+            created_by_id=current_user.id,
+            house=order.house,
+            account=order.account,
+        )
+        db.session.add(new_order)
+        db.session.flush()
+
+        for idx, leg_data in enumerate(all_legs):
+            leg = OrderLeg(
+                order_id=new_order.id,
+                leg_index=idx,
+                side=leg_data["side"],
+                volume=leg_data["volume"],
+                market=leg_data["market"],
+                contract_type=leg_data["contract_type"],
+                expiry=leg_data["expiry"],
+                strike=leg_data.get("strike"),
+                option_type=leg_data.get("option_type"),
+                price=leg_data.get("price"),
+                mo_card_code=leg_data.get("mo_card_code"),
+                package_premium=leg_data.get("package_premium"),
+                suppress_premium=leg_data.get("suppress_premium", False),
+                cvd_raw_volume=leg_data.get("cvd_raw_volume"),
+            )
+            db.session.add(leg)
+
+        audit_service.log_order_created(new_order, current_user.tenant_id)
+        db.session.commit()
+
+        flash(
+            f"Order #{order.ticket_display} closed at {filled:,} contracts. "
+            f"New order #{new_order.ticket_display} opened for {new_volume:,} contracts.",
+            "success",
+        )
+        return redirect(url_for("orders.detail", order_id=new_order.id))
+
+    except ParseError as e:
+        flash(f"Parse error: {e}", "danger")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error modifying balance: {e}", "danger")
+
+    return redirect(url_for("orders.modify_balance", order_id=order.id))
+
+
+@orders_bp.route("/<int:order_id>/cancel-balance", methods=["GET", "POST"])
+@login_required
+def cancel_balance(order_id):
+    """
+    Cancel the remaining balance and open a NEW order (new ticket number).
+
+    Use this for clients who want a separate ticket for the revised balance.
+    """
+    order = _get_order_or_404(order_id)
+
+    if order.status != OrderStatus.PARTIAL_FILL:
+        flash("Only partially-filled orders can have their balance cancelled.", "warning")
+        return redirect(url_for("orders.detail", order_id=order.id))
+
+    if request.method == "GET":
+        return render_template("orders/cancel_balance.html", order=order)
+
+    new_input = request.form.get("trade_string", "").strip().upper()
+    if not new_input:
+        flash("Please enter a trade string for the new order.", "warning")
+        return redirect(url_for("orders.cancel_balance", order_id=order.id))
+
+    try:
+        trade_parts = parse_trade_input(new_input)
+        all_legs = []
+        for part in trade_parts:
+            all_legs.extend(build_legs(part))
+
+        new_volume    = trade_parts[0].volume
+        new_premium   = trade_parts[0].premium
+        new_strategy  = trade_parts[0].strategy
+        new_direction = trade_parts[0].direction_side
+
+        # Close the partial fill on the original order
+        old_status = order.status
+        filled     = order.filled_quantity
+        original   = order.total_quantity
+        if filled > 0 and original > 0 and filled != original:
+            scale = filled / original
+            for leg in order.legs:
+                leg.volume = round(leg.volume * scale)
+        order.transition_to(OrderStatus.PARTIAL_CANCELLED)
+
+        audit_service.log_order_status_change(
+            order, current_user.tenant_id, old_status, order.status,
+            notes=f"Balance cancelled — new ticket will open for {new_volume} contracts.",
+        )
+
+        # Open new order for the balance
+        ticket_num = _get_next_ticket_number(current_user.tenant_id)
+        new_order = Order(
+            tenant_id=current_user.tenant_id,
+            ticket_number=ticket_num,
+            ticket_display=f"{ticket_num:04d}",
+            trade_date=date.today(),
+            raw_input=new_input,
+            direction=new_direction,
+            total_quantity=new_volume,
+            legs_base_qty=new_volume,
+            package_premium=new_premium,
+            strategy=new_strategy,
+            is_generic=False,
+            status=OrderStatus.OPEN,
+            created_by_id=current_user.id,
+            house=order.house,
+            account=order.account,
+        )
+        db.session.add(new_order)
+        db.session.flush()
+
+        for idx, leg_data in enumerate(all_legs):
+            leg = OrderLeg(
+                order_id=new_order.id,
+                leg_index=idx,
+                side=leg_data["side"],
+                volume=leg_data["volume"],
+                market=leg_data["market"],
+                contract_type=leg_data["contract_type"],
+                expiry=leg_data["expiry"],
+                strike=leg_data.get("strike"),
+                option_type=leg_data.get("option_type"),
+                price=leg_data.get("price"),
+                mo_card_code=leg_data.get("mo_card_code"),
+                package_premium=leg_data.get("package_premium"),
+                suppress_premium=leg_data.get("suppress_premium", False),
+                cvd_raw_volume=leg_data.get("cvd_raw_volume"),
+            )
+            db.session.add(leg)
+
+        audit_service.log_order_created(new_order, current_user.tenant_id)
+        db.session.commit()
+
+        flash(
+            f"Order #{order.ticket_display} closed at {order.total_quantity:,} contracts. "
+            f"New order #{new_order.ticket_display} opened for {new_volume:,} contracts.",
+            "success",
+        )
+        return redirect(url_for("orders.detail", order_id=new_order.id))
+
+    except ParseError as e:
+        flash(f"Parse error: {e}", "danger")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error cancelling balance: {e}", "danger")
+
+    return redirect(url_for("orders.cancel_balance", order_id=order.id))
     """
     Modify the working balance of a partially-filled order.
 

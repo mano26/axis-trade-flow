@@ -104,6 +104,14 @@
             <label style="display:block;font-size:11px;font-weight:600;color:#666;margin-bottom:2px;">Counterparty</label>
             <input type="text" id="f-cp"         placeholder="MANO"        style="width:80px;"  oninput="applyFilters()" class="filter-input text-upper">
         </div>
+        <div>
+            <label style="display:block;font-size:11px;font-weight:600;color:#666;margin-bottom:2px;">Strategy</label>
+            <input type="text" id="f-strategy"   placeholder="CS, FLY…"   style="width:80px;"  oninput="applyFilters()" class="filter-input text-upper">
+        </div>
+        <div>
+            <label style="display:block;font-size:11px;font-weight:600;color:#666;margin-bottom:2px;">Search (strike, expiry…)</label>
+            <input type="text" id="f-search"     placeholder="96.25, SFRK6"  style="width:140px;" oninput="applyFilters()" class="filter-input text-upper">
+        </div>
         <button type="button" class="btn" onclick="clearFilters()" style="align-self:flex-end;">Clear</button>
     </div>
 
@@ -162,7 +170,9 @@
             data-brokers="{{ row.brokers }}"
             data-cps="{{ row.cps }}"
             data-opts="{{ row.opts_vol }}"
-            data-futs="{{ row.fut_vol }}">
+            data-futs="{{ row.fut_vol }}"
+            data-strategy="{{ o.strategy | upper }}"
+            data-search="{{ o.raw_input | upper }}">
             <td class="ticket-num">#{{ o.ticket_display }}</td>
             <td>{{ o.time_in | chicago_time if o.time_in else '' }}</td>
             <td>{{ o.time_out | chicago_time if o.time_out else '' }}</td>
@@ -218,16 +228,18 @@
 {% block scripts %}
 <script>
 function getVal(id) {
-    return document.getElementById(id).value.trim().toUpperCase();
+    return (document.getElementById(id)||{value:''}).value.trim().toUpperCase();
 }
 
 function applyFilters() {
-    var fStatus  = getVal('f-status');
-    var fTicket  = getVal('f-ticket');
-    var fHouse   = getVal('f-house');
-    var fAccount = getVal('f-account');
-    var fBroker  = getVal('f-broker');
-    var fCp      = getVal('f-cp');
+    var fStatus   = getVal('f-status');
+    var fTicket   = getVal('f-ticket');
+    var fHouse    = getVal('f-house');
+    var fAccount  = getVal('f-account');
+    var fBroker   = getVal('f-broker');
+    var fCp       = getVal('f-cp');
+    var fStrategy = getVal('f-strategy');
+    var fSearch   = getVal('f-search');
 
     // Broker or CP filter → switch to fill-row view
     var fillMode = !!(fBroker || fCp);
@@ -269,8 +281,10 @@ function applyFilters() {
                 (!fStatus  || d.status.toUpperCase().replace(/_/g,' ').includes(fStatus) ||
                               d.status.toUpperCase().includes(fStatus))                   &&
                 (!fTicket  || d.ticket.toUpperCase().includes(fTicket))                   &&
-                (!fHouse   || d.house.toUpperCase().includes(fHouse))                     &&
-                (!fAccount || d.account.toUpperCase().includes(fAccount));
+                (!fHouse    || d.house.toUpperCase().includes(fHouse))                    &&
+                (!fAccount  || d.account.toUpperCase().includes(fAccount))               &&
+                (!fStrategy || (d.strategy||'').toUpperCase().includes(fStrategy))       &&
+                (!fSearch   || (d.search||'').toUpperCase().includes(fSearch));
             r.style.display = show ? '' : 'none';
             if (show) {
                 totalOpts += parseInt(d.opts) || 0;
@@ -288,8 +302,8 @@ function applyFilters() {
 }
 
 function clearFilters() {
-    ['f-status','f-ticket','f-house','f-account','f-broker','f-cp'].forEach(function(id) {
-        document.getElementById(id).value = '';
+    ['f-status','f-ticket','f-house','f-account','f-broker','f-cp','f-strategy','f-search'].forEach(function(id) {
+        var el = document.getElementById(id); if (el) el.value = '';
     });
     applyFilters();
 }

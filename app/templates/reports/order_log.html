@@ -6,46 +6,75 @@
     <h1>Order Log</h1>
 </div>
 
-<!-- Filters -->
-<section class="order-summary" style="margin-bottom: 20px;">
+{# ── Date range (server-side — needs submit to reload data) ── #}
+<section class="order-summary" style="margin-bottom: 12px;">
     <form method="GET" action="{{ url_for('reports.order_log') }}">
-        <div class="inline-form-row" style="flex-wrap: wrap; gap: 8px; align-items: center;">
+        <div class="inline-form-row" style="flex-wrap:wrap;gap:8px;align-items:center;">
             <label>From:</label>
             <input type="date" name="date_from" value="{{ date_from.isoformat() }}" class="filter-input">
             <label>To:</label>
-            <input type="date" name="date_to" value="{{ date_to.isoformat() }}" class="filter-input">
-            <label>Ticket:</label>
-            <input type="text" name="ticket" value="{{ ticket_filter }}" placeholder="#" class="filter-input" style="width: 60px;">
-            <label>Strategy:</label>
-            <input type="text" name="strategy" value="{{ strategy_filter }}" placeholder="All" class="filter-input text-upper" style="width: 80px;">
-            <label>House:</label>
-            <input type="text" name="house" value="{{ house_filter }}" placeholder="All" class="filter-input text-upper" style="width: 80px;">
-            <label>Account:</label>
-            <input type="text" name="account" value="{{ account_filter }}" placeholder="All" class="filter-input text-upper" style="width: 80px;">
-            <label>Search:</label>
-            <input type="text" name="search" value="{{ search_filter }}" placeholder="SFRK6, strike..." class="filter-input text-upper" style="width: 140px;">
-            <button type="submit" class="btn btn-primary">Filter</button>
-            <a href="{{ url_for('reports.order_log') }}" class="btn">Reset</a>
+            <input type="date" name="date_to"   value="{{ date_to.isoformat() }}"   class="filter-input">
+            <button type="submit" class="btn btn-primary">Load</button>
+            <a href="{{ url_for('reports.order_log') }}" class="btn">Today</a>
+            <span style="font-size:12px;color:#aaa;margin-left:8px;">{{ orders | length }} orders loaded</span>
         </div>
     </form>
 </section>
 
-<!-- Results -->
+{# ── Dynamic filters (client-side, as-you-type) ── #}
+<section class="order-summary" style="margin-bottom: 16px;">
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;">
+        <div>
+            <label style="display:block;font-size:11px;font-weight:600;color:#666;margin-bottom:2px;">Ticket #</label>
+            <input type="text" id="f-ticket"   oninput="applyFilters()" class="filter-input" style="width:70px;" placeholder="e.g. 42">
+        </div>
+        <div>
+            <label style="display:block;font-size:11px;font-weight:600;color:#666;margin-bottom:2px;">Strategy</label>
+            <input type="text" id="f-strategy" oninput="applyFilters()" class="filter-input text-upper" style="width:80px;" placeholder="CS, FLY…">
+        </div>
+        <div>
+            <label style="display:block;font-size:11px;font-weight:600;color:#666;margin-bottom:2px;">House</label>
+            <input type="text" id="f-house"    oninput="applyFilters()" class="filter-input text-upper" style="width:72px;" placeholder="684">
+        </div>
+        <div>
+            <label style="display:block;font-size:11px;font-weight:600;color:#666;margin-bottom:2px;">Account</label>
+            <input type="text" id="f-account"  oninput="applyFilters()" class="filter-input text-upper" style="width:90px;" placeholder="TJM00684">
+        </div>
+        <div>
+            <label style="display:block;font-size:11px;font-weight:600;color:#666;margin-bottom:2px;">Status</label>
+            <input type="text" id="f-status"   oninput="applyFilters()" class="filter-input text-upper" style="width:90px;" placeholder="filled…">
+        </div>
+        <div>
+            <label style="display:block;font-size:11px;font-weight:600;color:#666;margin-bottom:2px;">Filling Broker</label>
+            <input type="text" id="f-broker"   oninput="applyFilters()" class="filter-input text-upper" style="width:80px;" placeholder="GKX">
+        </div>
+        <div>
+            <label style="display:block;font-size:11px;font-weight:600;color:#666;margin-bottom:2px;">Counterparty</label>
+            <input type="text" id="f-cp"       oninput="applyFilters()" class="filter-input text-upper" style="width:80px;" placeholder="MANO">
+        </div>
+        <div>
+            <label style="display:block;font-size:11px;font-weight:600;color:#666;margin-bottom:2px;">Search (strike, expiry…)</label>
+            <input type="text" id="f-search"   oninput="applyFilters()" class="filter-input text-upper" style="width:140px;" placeholder="SFRK6, 96.25…">
+        </div>
+        <button type="button" class="btn" onclick="clearFilters()" style="align-self:flex-end;">Clear</button>
+    </div>
+    <div id="filter-count" style="font-size:12px;color:#888;margin-top:6px;"></div>
+</section>
+
+{# ── Results ── #}
 {% if orders %}
 <form method="POST" action="{{ url_for('orders.bulk_delete') }}" id="bulk-delete-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <section>
     {% if current_user.is_super() %}
-    <div style="display:flex; align-items:center; gap:16px; margin-bottom:8px; flex-wrap:wrap;">
+    <div style="display:flex;align-items:center;gap:16px;margin-bottom:8px;">
         <button type="button" class="btn"
                 style="background:#cc2222;color:#fff;border-color:#cc2222;"
-                onclick="confirmBulkDelete()">
-            Delete Selected
-        </button>
+                onclick="confirmBulkDelete()">Delete Selected</button>
         <span id="selected-count" style="font-size:12px;color:#888;"></span>
     </div>
     {% endif %}
-    <table class="legs-table">
+    <table class="legs-table" id="log-table">
         <thead>
             <tr>
                 {% if current_user.is_super() %}
@@ -60,16 +89,33 @@
                 <th>Time Out</th>
                 <th>B/S</th>
                 <th>Strategy</th>
-                <th>Trade String</th>
                 <th>House</th>
                 <th>Account</th>
+                <th>Trade String</th>
                 <th>Status</th>
                 <th>Links</th>
             </tr>
         </thead>
         <tbody>
             {% for order in orders %}
-            <tr class="clickable-row" onclick="rowClick(event, '{{ url_for('orders.detail', order_id=order.id) }}')">
+            {# Collect broker/CP data for client-side filtering #}
+            {% set brokers = [] %}{% set cps = [] %}
+            {% for fill in order.fills %}
+              {% for cp in fill.counterparties %}
+                {% if cp.broker and cp.broker.upper() not in brokers %}{% set _ = brokers.append(cp.broker.upper()) %}{% endif %}
+                {% if cp.symbol and cp.symbol.upper() not in cps %}{% set _ = cps.append(cp.symbol.upper()) %}{% endif %}
+              {% endfor %}
+            {% endfor %}
+            <tr class="clickable-row log-row"
+                onclick="rowClick(event, '{{ url_for('orders.detail', order_id=order.id) }}')"
+                data-ticket="{{ order.ticket_display }}"
+                data-strategy="{{ order.strategy | upper }}"
+                data-house="{{ (order.house or '') | upper }}"
+                data-account="{{ (order.account or '') | upper }}"
+                data-status="{{ order.status | upper }}"
+                data-brokers="{{ brokers | join(',') }}"
+                data-cps="{{ cps | join(',') }}"
+                data-search="{{ order.raw_input | upper }}">
                 {% if current_user.is_super() %}
                 <td onclick="event.stopPropagation()">
                     <input type="checkbox" name="order_ids" value="{{ order.id }}"
@@ -78,17 +124,17 @@
                 {% endif %}
                 <td class="ticket-num">#{{ order.ticket_display }}</td>
                 <td>{{ order.trade_date.strftime('%m/%d/%Y') }}</td>
-                <td>{{ order.time_in | chicago_time if order.time_in else '' }}</td>
+                <td>{{ order.time_in  | chicago_time if order.time_in  else '' }}</td>
                 <td>{{ order.time_out | chicago_time if order.time_out else '' }}</td>
                 <td class="direction-{{ order.direction }}">{{ order.direction }}</td>
                 <td>{{ order.strategy | upper }}{% if order.is_generic %} (GEN){% endif %}</td>
-                <td class="trade-string">{{ order.raw_input }}</td>
                 <td>{{ order.house or '' }}</td>
                 <td>{{ order.account or '' }}</td>
-                <td><span class="status-badge status-{{ order.status }}">{{ order.status | replace('_', ' ') | upper }}</span></td>
+                <td class="trade-string">{{ order.raw_input }}</td>
+                <td><span class="status-badge status-{{ order.status }}">{{ order.status | replace('_',' ') | upper }}</span></td>
                 <td onclick="event.stopPropagation()" style="white-space:nowrap;">
-                    {% if order.status in ('filled', 'partial_fill', 'partial_cancelled', 'amended') %}
-                    <a href="{{ url_for('cards.generate', order_id=order.id) }}" class="btn btn-sm">Cards</a>
+                    {% if order.status in ('filled','partial_fill','partial_cancelled','amended') %}
+                    <a href="{{ url_for('cards.generate', order_id=order.id) }}"  class="btn btn-sm">Cards</a>
                     <a href="{{ url_for('tickets.generate', order_id=order.id) }}" class="btn btn-sm">Ticket</a>
                     {% endif %}
                 </td>
@@ -96,11 +142,10 @@
             {% endfor %}
         </tbody>
     </table>
-    <p class="form-help" style="margin-top: 8px;">{{ orders | length }} order(s) found. Click a row to view details.</p>
 </section>
 </form>
 {% else %}
-<p class="empty-state">No orders found for the selected filters.</p>
+<p class="empty-state">No orders found for the selected date range.</p>
 {% endif %}
 
 <a href="{{ url_for('orders.index') }}" class="btn btn-back">Back to Orders</a>
@@ -108,44 +153,70 @@
 
 {% block scripts %}
 <script>
+function getVal(id) { return (document.getElementById(id)||{value:''}).value.trim().toUpperCase(); }
+
+function applyFilters() {
+    var fTicket   = getVal('f-ticket');
+    var fStrategy = getVal('f-strategy');
+    var fHouse    = getVal('f-house');
+    var fAccount  = getVal('f-account');
+    var fStatus   = getVal('f-status');
+    var fBroker   = getVal('f-broker');
+    var fCp       = getVal('f-cp');
+    var fSearch   = getVal('f-search');
+
+    var rows = document.querySelectorAll('.log-row');
+    var visible = 0;
+    rows.forEach(function(r) {
+        var d = r.dataset;
+        var statusNorm = d.status.replace(/_/g,' ');
+        var show =
+            (!fTicket   || d.ticket.includes(fTicket))                        &&
+            (!fStrategy || d.strategy.includes(fStrategy))                     &&
+            (!fHouse    || d.house.includes(fHouse))                           &&
+            (!fAccount  || d.account.includes(fAccount))                       &&
+            (!fStatus   || statusNorm.includes(fStatus) || d.status.includes(fStatus)) &&
+            (!fBroker   || d.brokers.includes(fBroker))                        &&
+            (!fCp       || d.cps.includes(fCp))                               &&
+            (!fSearch   || d.search.includes(fSearch));
+        r.style.display = show ? '' : 'none';
+        if (show) visible++;
+    });
+    var el = document.getElementById('filter-count');
+    if (el) el.textContent = visible + ' of ' + rows.length + ' orders visible';
+}
+
+function clearFilters() {
+    ['f-ticket','f-strategy','f-house','f-account','f-status','f-broker','f-cp','f-search']
+        .forEach(function(id) { var el=document.getElementById(id); if(el) el.value=''; });
+    applyFilters();
+}
+
 function rowClick(e, url) {
     if (e.target.type === 'checkbox') return;
     window.location = url;
 }
-
 function toggleAll(cb) {
     document.querySelectorAll('.order-cb').forEach(function(c) { c.checked = cb.checked; });
     updateCount();
 }
-
 function updateCount() {
     var checked = document.querySelectorAll('.order-cb:checked').length;
-    var total = document.querySelectorAll('.order-cb').length;
+    var total   = document.querySelectorAll('.order-cb').length;
     var el = document.getElementById('selected-count');
     if (el) el.textContent = checked > 0 ? checked + ' of ' + total + ' selected' : '';
     var sa = document.getElementById('select-all');
-    if (sa) sa.indeterminate = checked > 0 && checked < total;
-    if (sa) sa.checked = checked === total && total > 0;
+    if (sa) { sa.indeterminate = checked > 0 && checked < total; sa.checked = checked === total && total > 0; }
 }
-
 function confirmBulkDelete() {
     var checked = document.querySelectorAll('.order-cb:checked');
-    if (checked.length === 0) {
-        alert('No orders selected.');
-        return;
-    }
-    var msg = 'WARNING\n\n' +
-              'You are about to permanently remove ' + checked.length + ' order(s) from view.\n\n' +
-              'This action cannot be undone. Deletion of exchange-executed trades ' +
-              'may violate record-keeping requirements under exchange rules and ' +
-              'applicable regulations.\n\n' +
-              'Proceed only for test or erroneous entries.\n\n' +
-              'Type DELETE to confirm:';
-    var input = prompt(msg);
+    if (checked.length === 0) { alert('No orders selected.'); return; }
+    var input = prompt('WARNING\n\nYou are about to permanently remove ' + checked.length +
+        ' order(s).\n\nType DELETE to confirm:');
     if (input !== null && input.trim().toUpperCase() === 'DELETE') {
         document.getElementById('bulk-delete-form').submit();
     } else if (input !== null) {
-        alert('Deletion cancelled. You must type DELETE exactly to confirm.');
+        alert('Deletion cancelled. You must type DELETE exactly.');
     }
 }
 </script>

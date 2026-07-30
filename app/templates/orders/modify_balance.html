@@ -27,22 +27,25 @@
 <section>
     <h2>Revised Balance</h2>
     <p class="form-help" style="margin-bottom: 12px;">
-        Enter the revised trade string for the remaining
-        <strong>{{ order.remaining_quantity }} contracts</strong>.
-        Order #{{ order.ticket_display }} will be closed at {{ order.filled_quantity }} filled contracts,
-        and a new ticket will be opened for the balance.
+        Enter the trade string for what still needs to be filled.
+        Order #{{ order.ticket_display }} will close at {{ order.filled_quantity }} contracts
+        and a <strong>new ticket</strong> will open for the balance.
+        You may change price, quantity, or structure (e.g. add CVD).
+    </p>
+    <p class="form-help" style="margin-bottom: 16px; color: #888;">
+        Example — same structure remaining: pre-fill the price and remaining quantity.<br>
+        Example — add CVD to balance: <code>SFRZ6 96.125 96.25 96.375 C FLY CVD 95.965 D 10 4/1000</code>
     </p>
 
     <form method="POST" action="{{ url_for('orders.modify_balance', order_id=order.id) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
         <div class="trade-input-row">
-            <input type="text" name="trade_string" class="trade-input"
-                   value="{{ order.raw_input }}"
+            <input type="text" name="trade_string" class="trade-input text-upper"
                    autofocus autocomplete="off" spellcheck="false"
-                   placeholder="Enter revised trade string for the balance">
+                   placeholder="Enter balance trade string">
             <button type="submit" class="btn btn-primary"
-                    onclick="return confirm('This will close order #{{ order.ticket_display }} and open a new ticket for the balance. Continue?')">
+                    onclick="return confirm('Close order #{{ order.ticket_display }} at {{ order.filled_quantity }} filled\nand open a new ticket for the balance?')">
                 Close Partial &amp; Open New Ticket
             </button>
         </div>

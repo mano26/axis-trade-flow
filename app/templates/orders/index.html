@@ -60,14 +60,30 @@
 </section>
 
 <section class="order-blotter">
-    <h2>Today's Orders</h2>
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+        <h2 style="margin:0;">Today's Orders</h2>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
+            <input type="text" id="f-ticket"   oninput="filterOrders()" placeholder="Ticket #"
+                   class="filter-input" style="width:72px;">
+            <input type="text" id="f-strategy" oninput="filterOrders()" placeholder="Strategy"
+                   class="filter-input text-upper" style="width:90px;">
+            <input type="text" id="f-house"    oninput="filterOrders()" placeholder="House"
+                   class="filter-input text-upper" style="width:80px;">
+            <input type="text" id="f-account"  oninput="filterOrders()" placeholder="Account"
+                   class="filter-input text-upper" style="width:90px;">
+            <input type="text" id="f-status"   oninput="filterOrders()" placeholder="Status"
+                   class="filter-input text-upper" style="width:90px;">
+            <button type="button" class="btn" onclick="clearOrderFilters()" style="padding:4px 10px;font-size:12px;">Clear</button>
+        </div>
+    </div>
     {% if orders %}
-    <table class="blotter-table">
+    <table class="blotter-table" id="orders-table">
         <thead>
             <tr>
                 <th>Ticket</th>
                 <th>B/S</th>
                 <th>Strategy</th>
+                <th>House</th>
                 <th>Trade String</th>
                 <th>Status</th>
                 <th>Actions</th>
@@ -75,10 +91,17 @@
         </thead>
         <tbody>
             {% for order in orders %}
-            <tr class="clickable-row" onclick="window.location='{{ url_for('orders.detail', order_id=order.id) }}'">
+            <tr class="clickable-row order-blotter-row"
+                onclick="window.location='{{ url_for('orders.detail', order_id=order.id) }}'"
+                data-ticket="{{ order.ticket_display }}"
+                data-strategy="{{ order.strategy | upper }}{% if order.is_generic %} GEN{% endif %}"
+                data-house="{{ order.house or '' }}"
+                data-account="{{ order.account or '' }}"
+                data-status="{{ order.status | upper }}">
                 <td class="ticket-num">#{{ order.ticket_display }}</td>
                 <td class="direction-{{ order.direction }}">{{ order.direction }}</td>
                 <td>{{ order.strategy | upper }}{% if order.is_generic %} (GEN){% endif %}</td>
+                <td>{{ order.house or '—' }}</td>
                 <td class="trade-string">{{ order.raw_input }}</td>
                 <td><span class="status-badge status-{{ order.status }}">{{ order.status | replace('_', ' ') | upper }}</span></td>
                 <td>
@@ -88,6 +111,7 @@
             {% endfor %}
         </tbody>
     </table>
+    <p id="orders-count" class="form-help" style="margin-top:6px;font-size:12px;color:#888;"></p>
     {% else %}
     <p class="empty-state">No orders entered today.</p>
     {% endif %}
@@ -96,6 +120,36 @@
 
 {% block scripts %}
 <script>
+function filterOrders() {
+    var fTicket   = document.getElementById('f-ticket').value.trim().toUpperCase();
+    var fStrategy = document.getElementById('f-strategy').value.trim().toUpperCase();
+    var fHouse    = document.getElementById('f-house').value.trim().toUpperCase();
+    var fAccount  = document.getElementById('f-account').value.trim().toUpperCase();
+    var fStatus   = document.getElementById('f-status').value.trim().toUpperCase();
+
+    var rows = document.querySelectorAll('.order-blotter-row');
+    var visible = 0;
+    rows.forEach(function(r) {
+        var d = r.dataset;
+        var show = (!fTicket   || d.ticket.includes(fTicket))   &&
+                   (!fStrategy || d.strategy.includes(fStrategy)) &&
+                   (!fHouse    || d.house.includes(fHouse))     &&
+                   (!fAccount  || d.account.includes(fAccount)) &&
+                   (!fStatus   || d.status.replace(/_/g,' ').includes(fStatus) || d.status.includes(fStatus));
+        r.style.display = show ? '' : 'none';
+        if (show) visible++;
+    });
+    var countEl = document.getElementById('orders-count');
+    if (countEl) countEl.textContent = visible + ' of ' + rows.length + ' orders';
+}
+
+function clearOrderFilters() {
+    ['f-ticket','f-strategy','f-house','f-account','f-status'].forEach(function(id) {
+        document.getElementById(id).value = '';
+    });
+    filterOrders();
+}
+
 function toggleGeneric() {
     var cb = document.getElementById('generic_checkbox');
     document.getElementById('is_generic_hidden').value = cb.checked ? '1' : '0';
