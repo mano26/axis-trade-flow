@@ -486,8 +486,218 @@ _ROWS_CONT    = 12  # CP rows on continuation pages
 # Broker Ticket + CPs Generator
 # =============================================================================
 
-_ROWS_PAGE_1 = 8    # CP rows that fit on page 1 (trade grid takes space)
-_ROWS_CONT   = 12   # CP rows on continuation pages
+_ROWS_PAGE_1 = 8    # broker section rows that fit on page 1 (after trade grid)
+_ROWS_CONT   = 15   # broker section rows on continuation pages
+
+
+def _fmt_strike(val) -> str:
+    if val is None: return ""
+    s = str(val)
+    if "." not in s: s += ".000"
+    elif len(s) - s.index(".") < 4:
+        s += "0" * (4 - (len(s) - s.index(".")))
+    return s
+
+
+def _build_broker_sections(fill_cps, sorted_legs, gcd_opt_vol, futures_dicts, is_multi_leg):
+    fut_side      = futures_dicts[0]["side"] if futures_dicts else None
+    buy_opt_legs  = sorted([l for l in sorted_legs
+                             if l.option_type is not None and l.side == "B"],
+                            key=lambda l: float(l.strike or 0))
+    sell_opt_legs = sorted([l for l in sorted_legs
+                             if l.option_type is not None and l.side == "S"],
+                            key=lambda l: float(l.strike or 0))
+    broker_order  = []
+    cps_by_broker = {}
+    for cp in fill_cps:
+        bk = (cp.broker or "UNKNOWN").upper()
+        if bk not in cps_by_broker:
+            broker_order.append(bk)
+            cps_by_broker[bk] = []
+        cps_by_broker[bk].append(cp)
+
+    sections = []
+    for broker in broker_order:
+        cps      = cps_by_broker[broker]
+        cp_order = []
+        cp_agg   = {}
+        for cp in cps:
+            sym_raw = cp.symbol or ""
+            if cp.cp_house:
+                cp_sym, cp_house = sym_raw.upper(), cp.cp_house.upper()
+            elif "/" in sym_raw:
+                cp_sym   = sym_raw.split("/")[0].strip().upper()
+                cp_house = sym_raw.split("/")[1].strip().upper()
+            else:
+                cp_sym, cp_house = sym_raw.upper(), ""
+            bracket   = (cp.bracket or "").upper()
+            bracket_d = bracket + ("6" if is_multi_leg and bracket else "")
+            key = (cp_sym, cp_house, bracket_d)
+            if key not in cp_agg:
+                cp_order.append(key)
+                cp_agg[key] = {"cp": cp_sym, "house": cp_house, "bracket": bracket_d,
+                               "qty": 0, "fut_qty": 0}
+            cp_agg[key]["qty"]     += (cp.quantity         or 0)
+            cp_agg[key]["fut_qty"] += (cp.futures_quantity or 0)
+
+        buy_rows = []
+        sell_rows = []
+        buy_opt_total = buy_fut_total = sell_opt_total = sell_fut_total = 0
+        total_fill_qty = 0
+
+        for key in cp_order:
+            d   = cp_agg[key]
+            qty = d["qty"]
+            fq  = d["fut_qty"]
+            total_fill_qty += qty
+
+            def _new_cp(rows):
+                return not rows or rows[-1]["cp"] != d["cp"]
+
+            for leg in buy_opt_legs:
+                lq = round(qty * leg.volume / gcd_opt_vol) if gcd_opt_vol else 0
+                buy_rows.append({"qty": lq, "strike": _fmt_strike(leg.strike),
+                                 "cp": d["cp"], "house": d["house"],
+                                 "bracket": d["bracket"], "is_fut": False,
+                                 "new_cp": _new_cp(buy_rows)})
+                buy_opt_total += lq
+
+            if fut_side == "B" and fq:
+                buy_rows.append({"qty": fq, "strike": "FUT",
+                                 "cp": d["cp"], "house": d["house"],
+                                 "bracket": d["bracket"], "is_fut": True,
+                                 "new_cp": _new_cp(buy_rows)})
+                buy_fut_total += fq
+
+            for leg in sell_opt_legs:
+                lq = round(qty * leg.volume / gcd_opt_vol) if gcd_opt_vol else 0
+                sell_rows.append({"qty": lq, "strike": _fmt_strike(leg.strike),
+                                  "cp": d["cp"], "house": d["house"],
+                                  "bracket": d["bracket"], "is_fut": False,
+                                  "new_cp": _new_cp(sell_rows)})
+                sell_opt_total += lq
+
+            if fut_side == "S" and fq:
+                sell_rows.append({"qty": fq, "strike": "FUT",
+                                  "cp": d["cp"], "house": d["house"],
+                                  "bracket": d["bracket"], "is_fut": True,
+                                  "new_cp": _new_cp(sell_rows)})
+                sell_fut_total += fq
+
+        sections.append({
+            "broker": broker,
+            "fill_qty": total_fill_qty,
+            "buy_rows": buy_rows,
+            "sell_rows": sell_rows,
+            "buy_opt_total": buy_opt_total, "buy_fut_total": buy_fut_total,
+            "sell_opt_total": sell_opt_total, "sell_fut_total": sell_fut_total,
+            "n_rows": 1 + max(len(buy_rows), len(sell_rows)) + 1,
+        })
+
+    return sections
+
+
+def _cp_row_html(row) -> str:
+    sep = " cp-cp-sep" if row.get("new_cp") else ""
+    st  = ("<td class='cp-strike-fut'>FUT</td>" if row["is_fut"]
+           else f"<td class='cp-strike'>{row['strike']}</td>")
+    return (f"<tr class='cp-data-row{sep}'>"
+            f"<td><span class='cp-chk'></span></td>"
+            f"<td class='cp-qty'>{row['qty']:,}</td>{st}"
+            f"<td>{row['cp']}</td><td>{row['house']}</td><td>{row['bracket']}</td>"
+            f"</tr>\n")
+
+
+def _cp_leg_half_html(rows, side_label, sub_opt, sub_fut, broker, show_hdr) -> str:
+    h = "<div class='cp-half'>\n"
+    if show_hdr:
+        h += f"<div class='cp-half-title'>{side_label}</div>\n"
+    h += ("<table class='cp-table cp-table-leg'>\n"
+          "<thead><tr><th></th><th>QTY</th><th>STRIKE</th>"
+          "<th>CP</th><th>HOUSE</th><th>BKT</th></tr></thead>\n<tbody>\n")
+    for row in rows:
+        h += _cp_row_html(row)
+    h += "</tbody></table>\n"
+    parts = []
+    if sub_opt: parts.append(f"{sub_opt:,} OPT")
+    if sub_fut: parts.append(f"{sub_fut:,} FUT")
+    if parts:
+        h += (f"<div class='cp-broker-sub'>"
+              f"<span>{broker} {side_label}</span>"
+              f"<span>{' · '.join(parts)}</span></div>\n")
+    h += "</div>\n"
+    return h
+
+
+def _broker_section_html(section, show_hdrs=False) -> str:
+    bk = section["broker"]
+    h  = (f"<div class='broker-bar'><span>{bk}</span>"
+          f"<span class='broker-bar-qty'>{section['fill_qty']:,} RATIOS</span></div>\n")
+    h += "<div class='cp-section'>\n"
+    h += _cp_leg_half_html(section["buy_rows"], "BUY",
+                            section["buy_opt_total"],  section["buy_fut_total"],
+                            bk, show_hdrs)
+    h += "<div style='width:1.5px;background:#000'></div>\n"
+    h += _cp_leg_half_html(section["sell_rows"], "SELL",
+                            section["sell_opt_total"], section["sell_fut_total"],
+                            bk, show_hdrs)
+    h += "</div>\n"
+    return h
+
+
+def _grand_totals_html(sections) -> str:
+    if len(sections) < 2:
+        return ""
+    bo = sum(s["buy_opt_total"]  for s in sections)
+    bf = sum(s["buy_fut_total"]  for s in sections)
+    so = sum(s["sell_opt_total"] for s in sections)
+    sf = sum(s["sell_fut_total"] for s in sections)
+    def _p(opt, fut):
+        p = []
+        if opt: p.append(f"{opt:,} OPT")
+        if fut: p.append(f"{fut:,} FUT")
+        return " · ".join(p)
+    return (f"<div class='cp-grand-total'>"
+            f"<div class='cp-grand-half'>TOTAL BUY: {_p(bo,bf)}</div>"
+            f"<div class='cp-grand-half'>TOTAL SELL: {_p(so,sf)}</div>"
+            f"</div>\n")
+
+
+def _new_cps_page(order, page_num, total_pages, fill_label,
+                  leg_dicts, ts_html, max_rows,
+                  sections_on_page, show_trade_grid,
+                  show_grand_totals, all_sections) -> str:
+    h  = "<div class='ticket'>\n"
+    pg_line = f"PAGE {page_num} OF {total_pages}"
+    h += (f"<div class='tkt-header'>"
+          f"<span class='tkt-num'>#{order.ticket_display}</span>"
+          f"<span class='tkt-title'>A X I S</span>"
+          f"<div class='tkt-meta'>"
+          f"{order.trade_date.strftime('%Y/%m/%d') if order.trade_date else ''}<br>"
+          f"<span class='tkt-pg'>{pg_line}</span><br>")
+    if fill_label:
+        h += f"<span class='fill-label'>{fill_label}</span>"
+    h += f"<br>Order: #{order.ticket_display}</div></div>\n"
+    acct  = order.account or ""
+    house = order.house   or ""
+    h += (f"<div class='tkt-acct-row'>"
+          f"<span>Acct: {acct}</span>"
+          f"<span>House: {house}</span>"
+          f"</div>\n")
+    if show_trade_grid:
+        h += "<div class='tkt-body'>\n"
+        h += _build_side(leg_dicts, "BUY",  max_rows, "")
+        h += _build_side(leg_dicts, "SELL", max_rows, "")
+        h += "</div>\n"
+        h += ts_html
+    for i, section in enumerate(sections_on_page):
+        # Show BUY/SELL column headers: always on cont pages, on 2nd+ section of page 1
+        show_hdrs = (not show_trade_grid) or (i > 0)
+        h += _broker_section_html(section, show_hdrs=show_hdrs)
+    if show_grand_totals:
+        h += _grand_totals_html(all_sections)
+    h += "</div>\n"
+    return h
 
 
 def generate_ticket_with_cps_html(order) -> str:
@@ -583,17 +793,12 @@ def generate_ticket_with_cps_html(order) -> str:
     html = _ticket_html_header_cps(max_rows)
 
     for fill_num, fill in enumerate(fills_with_cps, 1):
-        # Build price map for this specific fill
         fill_price_map = {lp.leg_index: lp.price for lp in fill.leg_prices} \
                          if fill.leg_prices else {}
-
-        # Build leg dicts with this fill's prices and fill-scaled quantities
         all_leg_dicts = [_leg_dict(l, fill_price_map, fill_quantity=fill.fill_quantity)
                          for l in sorted_legs]
-        # Re-derive futures_dicts with prices for this fill
         fill_futures_dicts = [d for d in all_leg_dicts if d["is_fut"]]
 
-        # Timestamps for this fill only
         fill_ts = _fmt_ts(fill.fill_timestamp) if fill.fill_timestamp else ""
         time_in = _fmt_ts(order.time_in)
         if SHOW_TIMESTAMPS and (time_in or fill_ts):
@@ -604,57 +809,45 @@ def generate_ticket_with_cps_html(order) -> str:
         else:
             ts_html = ""
 
-        # Fill label shown on every card when there are multiple fills
         fill_label = (f"FILL {fill_num} OF {total_fills} — {fill.fill_quantity:,} LOTS"
                       if total_fills > 1 else None)
 
-        # Group this fill's CPs by broker
-        broker_cps: dict = defaultdict(list)
-        for cp in fill.counterparties:
-            broker = (cp.broker or "UNKNOWN").upper()
-            broker_cps[broker].append(cp)
+        # Build all broker sections for this fill (new grouped design)
+        all_sections = _build_broker_sections(
+            fill.counterparties, sorted_legs, _min_opt_vol_raw,
+            fill_futures_dicts, is_multi_leg
+        )
 
-        for broker, cps in broker_cps.items():
-            n_cps = len(cps)
-            option_pages = 1 + max(0, (n_cps - _ROWS_PAGE_1 + _ROWS_CONT - 1) // _ROWS_CONT
-                                   if n_cps > _ROWS_PAGE_1 else 0)
-            futures_pages = 1 if needs_futures_card else 0
-            total_pages   = option_pages + futures_pages
+        # Paginate broker sections across pages.
+        # Page 1 has less vertical space (trade grid occupies the top).
+        pages = []          # list of lists-of-sections
+        current_page = []
+        current_rows = 0
+        budget = _ROWS_PAGE_1
 
-            page_num = 1
+        for section in all_sections:
+            if current_rows + section["n_rows"] > budget and current_page:
+                pages.append(current_page)
+                current_page = []
+                current_rows = 0
+                budget = _ROWS_CONT
+            current_page.append(section)
+            current_rows += section["n_rows"]
+        if current_page:
+            pages.append(current_page)
 
-            # Page 1
-            batch = cps[:_ROWS_PAGE_1]
-            more  = n_cps > _ROWS_PAGE_1
-            rng   = f"1\u2013{len(batch)} of {n_cps}" if more else None
-            html += _cps_page1(order, broker, batch, rng, all_leg_dicts,
-                               fill_futures_dicts, buy_vol, sell_vol, ts_html,
-                               page_num, total_pages, not more, max_rows, total_qty,
-                               bk_broker=bk_broker,
-                               fill_label=fill_label,
-                               is_multi_leg=is_multi_leg)
-            page_num += 1
+        total_pages = len(pages)
 
-            # Continuation pages
-            offset = _ROWS_PAGE_1
-            while offset < n_cps:
-                batch = cps[offset: offset + _ROWS_CONT]
-                start, end = offset + 1, offset + len(batch)
-                is_last = end >= n_cps
-                html += _cps_cont_page(order, broker, batch,
-                                       f"{start}\u2013{end} of {n_cps}",
-                                       buy_vol, sell_vol,
-                                       page_num, total_pages, is_last, total_qty,
-                                       futures_dicts=fill_futures_dicts,
-                                       fill_label=fill_label,
-                                       is_multi_leg=is_multi_leg)
-                page_num += 1
-                offset   += _ROWS_CONT
-
-            if needs_futures_card:
-                html += _cps_futures_page(order, broker, cps, fill_futures_dicts,
-                                          page_num, total_pages, total_qty, bk_broker,
-                                          fill_label=fill_label)
+        for page_idx, sections_on_page in enumerate(pages):
+            page_num       = page_idx + 1
+            is_last_page   = (page_idx == len(pages) - 1)
+            show_trade_grid= (page_idx == 0)
+            html += _new_cps_page(
+                order, page_num, total_pages, fill_label,
+                all_leg_dicts, ts_html, max_rows,
+                sections_on_page, show_trade_grid,
+                is_last_page, all_sections
+            )
 
     html += "</div></body></html>"
     return html
@@ -1198,6 +1391,20 @@ body{{font-family:Arial,Helvetica,sans-serif;background:#e0e0e0;padding:0}}
 .cp-chk{{display:inline-block;width:8px;height:8px;border:0.5px solid #666;vertical-align:middle}}
 .cp-total{{font-size:7.5px;font-weight:700;color:#333;text-align:right;margin-top:3px;
   padding-top:2px;border-top:0.5px solid #ccc}}
+/* Broker section bar */
+.broker-bar{{background:#1a1a2e;color:#fff;font-size:10px;font-weight:900;letter-spacing:2px;
+  padding:3px 8px;display:flex;justify-content:space-between;align-items:center;
+  border-top:1px solid #000}}
+.broker-bar-qty{{font-size:8px;font-weight:400;opacity:.75;letter-spacing:1px}}
+/* Per-leg CP rows */
+.cp-strike{{font-family:monospace}}
+.cp-strike-fut{{font-style:italic;font-weight:900;font-size:8.5px;color:#555}}
+.cp-cp-sep td{{border-top:1px dashed #bbb !important}}
+.cp-broker-sub{{font-size:8px;font-weight:700;display:flex;justify-content:space-between;
+  padding:2px 5px;background:#f0f0f0;border-top:1px solid #666}}
+.cp-grand-total{{display:flex;border-top:2px solid #000}}
+.cp-grand-half{{flex:1;padding:3px 8px;font-size:9px;font-weight:900}}
+.cp-grand-half+.cp-grand-half{{border-left:1.5px solid #000}}
 /* Footer */
 .tkt-footer{{display:flex;justify-content:space-between;align-items:flex-end;
   margin-top:6px;padding-top:4px;border-top:1px solid #ccc}}

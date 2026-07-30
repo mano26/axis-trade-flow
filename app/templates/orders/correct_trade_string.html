@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "layouts/base.html" %}
 
 {% block title %}Correct Trade String — #{{ order.ticket_display }}{% endblock %}
 
@@ -9,7 +9,7 @@
     ← Order #{{ order.ticket_display }}
   </a>
   <h1 style="margin:0; font-size:20px;">Correct Trade String</h1>
-  <span class="badge badge-{{ order.status.value }}">{{ order.status.value.replace('_',' ').title() }}</span>
+  <span class="badge badge-{{ order.status }}">{{ order.status.replace('_',' ').title() }}</span>
 </div>
 
 {% with messages = get_flashed_messages(with_categories=true) %}
