@@ -254,6 +254,14 @@ def detail(order_id):
         latest_fill,
     )
 
+    # GCD of option leg volumes — used to scale CP quantities to per-leg lot counts
+    # e.g. for a 2X3 CS (legs 500/750), gcd=250, so 250 packages → 500 BUY / 750 SELL
+    from math import gcd as _gcd
+    from functools import reduce as _reduce
+    _opt_vols = [l.volume for l in order.legs
+                 if l.option_type is not None and l.volume and l.volume > 0]
+    gcd_opt_vol = _reduce(_gcd, _opt_vols) if _opt_vols else 1
+
     return render_template(
         "orders/detail.html",
         order=order,
@@ -263,6 +271,7 @@ def detail(order_id):
         lookups=lookups,
         display_legs=display_legs,
         has_prices=has_prices,
+        gcd_opt_vol=gcd_opt_vol,
     )
 
 

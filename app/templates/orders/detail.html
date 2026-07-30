@@ -349,10 +349,11 @@
                     {% for cp in fd.counterparties %}
                     <tr>
                         <td>
+                            {%- set _gcd = gcd_opt_vol | default(1) -%}
                             {%- set _opt_legs = order.legs | selectattr('option_type') | list | sort(attribute='leg_index') -%}
-                            {%- if _opt_legs | length > 1 and gcd_opt_vol > 0 -%}
+                            {%- if _opt_legs | length > 1 and _gcd > 0 -%}
                                 {%- for _leg in _opt_legs -%}
-                                    {{ 'B' if _leg.side == 'B' else 'S' }} {{ ((cp.quantity * _leg.volume) // gcd_opt_vol) }}{% if not loop.last %} / {% endif %}
+                                    {{ 'B' if _leg.side == 'B' else 'S' }} {{ (cp.quantity * _leg.volume) // _gcd }}{% if not loop.last %} / {% endif %}
                                 {%- endfor -%}
                             {%- else -%}
                                 {{ cp.quantity }}
