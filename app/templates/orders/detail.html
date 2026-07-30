@@ -65,6 +65,10 @@
             <label>Time Out</label>
             <span>{{ order.time_out | chicago_time if order.time_out else '—' }}</span>
         </div>
+        <div class="summary-item">
+            <label>House</label>
+            <span>{{ order.house or '—' }}</span>
+        </div>
     </div>
 </section>
 
