@@ -54,9 +54,10 @@
         <li><a href="#advanced">Advanced Modifiers (CVD, Ratios, Stupid/Strip)</a></li>
         <li><a href="#tick-check">Quarter-Tick Check</a></li>
         <li><a href="#generic">Generic Trade Mode</a></li>
-        <li><a href="#fills">Recording Fills</a></li>
+        <li><a href="#fills">Recording Fills &amp; Partial Fills</a></li>
         <li><a href="#cards-tickets">Cards &amp; Tickets</a></li>
         <li><a href="#amend">Amending a Trade</a></li>
+        <li><a href="#modify-balance">Modifying the Balance</a></li>
         <li><a href="#order-log">Order Log</a></li>
     </ol>
 </div>
@@ -302,16 +303,17 @@ SFRM7 SFRU7 SFRZ7 SFRH8 99.00 C strip 45/750  &lt;- buy all 4 contracts</div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <div class="guide-section" id="fills">
-    <h2>8 — Recording Fills</h2>
+    <h2>8 — Recording Fills &amp; Partial Fills</h2>
 
     <h3>Single Fill</h3>
     <p>On the order detail page, enter the fill quantity in the <em>Record Fill</em> section and click <strong>Record Fill</strong>. For a complete fill enter the remaining quantity (pre-filled by default).</p>
 
     <h3>Partial Fills</h3>
-    <p>Enter a quantity less than the total to record a partial fill. The order status becomes <em>PARTIAL FILL</em>. Repeat as needed — each partial gets its own set of prices and counterparties. The balance remains open for additional fills.</p>
+    <p>Enter a quantity less than the total to record a partial fill. The order status becomes <em>PARTIAL FILL</em>. Repeat as needed — each partial fill gets its own set of prices and counterparties. The balance remains open for additional fills.</p>
+    <p>When printing tickets on an order with multiple partial fills, each fill generates its own ticket card showing that fill's prices and lot size. A <em>FILL 1 OF 2 — 3,500 LOTS</em> label appears in the top-right to identify each card.</p>
 
     <h3>Save Prices</h3>
-    <p>Enter the price for each leg in the Confirmation Legs table. When there are multiple pending fills, prices are saved to the oldest unallocated fill first. The system validates that prices reconcile to the package premium before saving.</p>
+    <p>Enter the price for each leg in the Confirmation Legs table. When there are multiple pending fills, prices are saved to the oldest unallocated fill first. The system validates that prices reconcile to the package premium before saving. For <strong>generic orders</strong>, validation uses the actual fill quantity as the per-lot normaliser, so manually entered leg volumes always reconcile correctly regardless of order size.</p>
 
     <h3>Save Counterparties</h3>
     <p>For each fill enter the filling broker, counterparty symbol, bracket, and quantity. Quantities must sum to the fill quantity. Once saved the fill status becomes <em>ALLOCATED</em>.</p>
@@ -323,16 +325,27 @@ SFRM7 SFRU7 SFRZ7 SFRH8 99.00 C strip 45/750  &lt;- buy all 4 contracts</div>
 <!-- ═══════════════════════════════════════════════════════ -->
 <div class="guide-section" id="cards-tickets">
     <h2>9 — Cards &amp; Tickets</h2>
-    <p>Cards and tickets are available from the order detail page and the order log once all fills are fully allocated.</p>
+    <p>Cards and tickets are available from the order detail page once fills are allocated. Three buttons appear in the Actions section:</p>
 
-    <h3>Cards</h3>
-    <p>One card is printed per leg per bracket. Each card shows the quantity, contract/month, strike, premium, counterparty, and bracket. For multi-leg trades the bracket letter is circled and suffixed with <em>6</em> to indicate a spread.</p>
-    <p>Quantities on the card are scaled by the leg's ratio relative to the base lot size. For a 1×2 spread where the counterparty allocated 1000 lots at the base leg, the 2× leg card will show 2000.</p>
+    <h3>Print Cards</h3>
+    <p>One card per leg per bracket. Each card shows the quantity, contract/month, strike, premium, counterparty, and bracket. For spread and CVD trades the bracket letter is suffixed with <em>6</em> (e.g. K6) to indicate a spread. Quantities are scaled by the leg's ratio relative to the base lot size — for a 1×2 spread the 2× leg shows double the allocated lots.</p>
 
-    <h3>Ticket</h3>
-    <p>One ticket per order. Shows all legs on both buy and sell sides, plus timestamps (IN, FILL, MOD, OUT) all in Chicago time. All brackets used across all fills are circled in the bracket row at the bottom.</p>
+    <h3>Print Ticket</h3>
+    <p>One ticket per fill. For orders with multiple partial fills a separate ticket is generated for each fill, each showing that fill's prices and size. A <em>FILL 1 OF 2 — 3,500 LOTS</em> label appears in the top-right when there are multiple fills. All prices print with at least two decimal places.</p>
 
-    <div class="tip-box">Use your browser's Print function (Ctrl+P) on the cards or ticket page. The print stylesheet removes the navigation bar and formats each card to 3.5×5.5 inches, each ticket to 8×5.5 inches.</div>
+    <h3>Print Ticket + CPs</h3>
+    <p>Generates one broker card per filling broker per fill. Each card shows:</p>
+    <ul>
+        <li>The full trade grid at the top (all legs with that fill's prices)</li>
+        <li>A counterparty table below, split by trade side</li>
+        <li>For <strong>CVD trades</strong> with opposite-side option/futures: the option quantities appear on the option side, futures quantities on the futures side</li>
+        <li>For <strong>CVD trades</strong> with same-side option/futures (e.g. BUY PUT + BUY FUT): a combined OPT / FUT column on that side</li>
+        <li>For <strong>spread + CVD</strong> (options on both sides): the futures quantities appear alongside options on whichever side the futures belong to</li>
+        <li>The filling broker box at the bottom right</li>
+    </ul>
+    <p>The bracket column shows the bracket letter suffixed with <em>6</em> for any trade that has more than one leg (spreads, flies, CVD, etc.).</p>
+
+    <div class="tip-box">Use your browser's Print function (Ctrl+P). The print stylesheet removes the navigation bar and formats each card to 3.5×5.5 inches, each ticket to 8×5.5 inches.</div>
 </div>
 
 
@@ -347,13 +360,60 @@ SFRM7 SFRU7 SFRZ7 SFRH8 99.00 C strip 45/750  &lt;- buy all 4 contracts</div>
         <li>House and account</li>
     </ul>
     <p>Save Amendment commits both price and counterparty changes in a single transaction. The order status updates to <em>AMENDED</em> and a full before/after record is written to the audit trail.</p>
+
+    <h3>Correct Trade String</h3>
+    <p>For super admins only. If the wrong expiry or contract code was entered (e.g. H6 instead of H7), click the brown <strong>Correct Trade String</strong> button in the Actions bar. This opens a dedicated page showing the current leg structure and a form to enter the corrected trade string.</p>
+    <p>Only the contract code and expiry reference are updated — strikes, volumes, option types, sides, prices, and counterparties are not changed. A reason is required for the audit log. Reprint cards and tickets after correcting.</p>
+
     <div class="tip-box">To amend the trade structure itself (strikes, strategy, direction) use the <strong>Modify Order</strong> button. This re-parses a new trade string and rebuilds the legs.</div>
 </div>
 
 
 <!-- ═══════════════════════════════════════════════════════ -->
+<div class="guide-section" id="modify-balance">
+    <h2>11 — Modifying the Balance</h2>
+    <p>When an order is partially filled and you need to revise what's still working — whether the price, quantity, or structure has changed — use the <strong>Modify Balance</strong> button on the order detail page. It is only visible when the order is in <em>PARTIAL FILL</em> status.</p>
+
+    <h3>How it works</h3>
+    <p>Clicking Modify Balance opens a form where you enter the trade string for <em>what still needs to be filled</em> — not the full original order, just the remaining balance. The system will:</p>
+    <ol>
+        <li>Close the original order at its filled quantity (status becomes <em>PARTIAL CANCELLED</em>)</li>
+        <li>Update the closed order's trade string to show the actual filled quantity (e.g. <code>4/2000</code> becomes <code>4/800</code>)</li>
+        <li>Open a new <em>OPEN</em> order with the next sequential ticket number, copying house and account from the original</li>
+    </ol>
+
+    <h3>Example</h3>
+    <p>Original order: <code>SFRZ6 96.125 96.25 96.375 C FLY 4/2000</code> — 2000 lots working at 4 ticks. You fill 800 lots. Now the client wants to work the balance differently — they want to add a CVD and increase to 4000 lots at 4.5 ticks:</p>
+    <pre style="background:#f5f5f5;border:1px solid #ddd;border-radius:4px;padding:10px;font-family:monospace;font-size:13px;margin:8px 0">SFRZ6 96.125 96.25 96.375 C FLY CVD 95.965 D 10 4.5/4000</pre>
+    <p>After submitting:</p>
+    <ul>
+        <li>Original order #0162 closes at 800 lots — trade string updates to <code>4/800</code>, status becomes <em>PARTIAL CANCELLED</em></li>
+        <li>New order #0163 opens for 4000 lots with the butterfly + CVD structure at 4.5 ticks</li>
+        <li>Each order has its own ticket number, cards, and tickets</li>
+        <li>The new order's fills validate against the new structure and price</li>
+    </ul>
+
+    <h3>What to enter as the balance string</h3>
+    <p>Enter only what still needs to be filled — the parser treats it as a fresh order. You can:</p>
+    <ul>
+        <li><strong>Change price only</strong> — same structure, different price/qty: <code>SFRZ6 96.125 96.25 96.375 C FLY 4.5/1200</code></li>
+        <li><strong>Change quantity</strong> — same structure, more or fewer lots: <code>SFRZ6 96.125 96.25 96.375 C FLY 4/500</code></li>
+        <li><strong>Add CVD</strong> — add a futures hedge that wasn't on the original: <code>SFRZ6 96.125 96.25 96.375 C FLY CVD 95.965 D 10 4/4000</code></li>
+        <li><strong>Change structure entirely</strong> — if the trade has shifted, enter a completely different strategy</li>
+    </ul>
+
+    <h3>Display after modify</h3>
+    <p>The closed order shows its actual filled quantity in all views — Orders page, Order Log, and EOD Summary. A 4/2000 order filled at 800 lots will display as <code>4/800 (PARTIAL CANCELLED)</code>. The new balance order displays normally as a fresh open order.</p>
+
+    <div class="tip-box">
+        <strong>If the client wants both fills on the same ticket number</strong> — enter partial fills sequentially on the same order without using Modify Balance. Each fill records its own prices and counterparties, and Print Ticket + CPs generates one broker card per fill under the same ticket number. Only use Modify Balance when the underlying order terms (price, structure, or quantity) have changed.
+    </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════ -->
 <div class="guide-section" id="order-log">
-    <h2>11 — Order Log</h2>
+    <h2>12 — Order Log</h2>
     <p>The Order Log shows all orders across any date range. Use the filters to search by:</p>
     <ul>
         <li><strong>Date range</strong> — defaults to today</li>
