@@ -32,6 +32,24 @@ def _fmt_ts(dt) -> str:
     return dt.astimezone(_EXCHANGE_TZ).strftime("%H:%M:%S")
 
 
+def _fmt_price(price) -> str:
+    """Format a price with at least 2 decimal places.
+
+    Examples: 0.1 → '0.10', 96.25 → '96.25', 0.0675 → '0.0675'
+    """
+    if price is None:
+        return ""
+    s = str(price)
+    if not s:
+        return ""
+    if "." not in s:
+        return s + ".00"
+    dec_places = len(s) - s.index(".") - 1
+    if dec_places < 2:
+        s += "0" * (2 - dec_places)
+    return s
+
+
 def generate_ticket_html(order: Order) -> str:
     """Generate the full HTML document for an exchange ticket.
 
@@ -72,9 +90,9 @@ def generate_ticket_html(order: Order) -> str:
 
             # Use fill-specific price when available
             if fill_price_map and leg.leg_index in fill_price_map:
-                price_str = str(fill_price_map[leg.leg_index])
+                price_str = _fmt_price(fill_price_map[leg.leg_index])
             else:
-                price_str = str(leg.price) if leg.price else ""
+                price_str = _fmt_price(leg.price)
 
             # Scale quantity to this fill's size using leg ratio.
             # For a 1:1 trade all legs show fill_quantity.
@@ -428,7 +446,7 @@ def build_ticket_data_snapshot(order: Order) -> dict:
             "qty": str(leg.volume),
             "mo": leg.mo_card_code or leg.expiry,
             "strike": f"{leg.strike:.2f}" if leg.strike else "",
-            "price": str(leg.price) if leg.price else "",
+            "price": _fmt_price(leg.price),
         })
     brackets = []
     brokers = []
@@ -502,9 +520,9 @@ def generate_ticket_with_cps_html(order) -> str:
             elif len(s) - s.index(".") < 3: s += "0"
         # Use fill-specific price if available, fall back to leg's stored price
         if fill_price_map and leg.leg_index in fill_price_map:
-            price_str = str(fill_price_map[leg.leg_index])
+            price_str = _fmt_price(fill_price_map[leg.leg_index])
         else:
-            price_str = str(leg.price) if leg.price else ""
+            price_str = _fmt_price(leg.price)
         # Scale displayed qty to this fill's size; futures keep stored volume
         if fill_quantity is not None and not is_fut and _min_opt_vol_raw:
             qty_val = round(fill_quantity * leg.volume / _min_opt_vol_raw)
@@ -653,7 +671,7 @@ def generate_ticket_with_cps_html(order) -> str:
             "qty": str(leg.volume),
             "mo": (leg.mo_card_code or leg.expiry or "").upper(),
             "strike": s,
-            "price": str(leg.price) if leg.price else "",
+            "price": _fmt_price(leg.price),
             "is_fut": is_fut, "volume": leg.volume,
         }
 
