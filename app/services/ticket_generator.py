@@ -7,6 +7,8 @@
 # =============================================================================
 
 from __future__ import annotations
+from math import gcd
+from functools import reduce
 from app.models.order import Order
 
 # ── Display toggles ───────────────────────────────────────────────────────────
@@ -66,7 +68,8 @@ def generate_ticket_html(order: Order) -> str:
     opt_vols = [l.volume for l in order.legs
                 if not (l.option_type is None and l.strike is None)
                 and l.volume and l.volume > 0]
-    min_opt_vol = min(opt_vols) if opt_vols else 1
+    # GCD handles NxM ratios (e.g. 2x3) correctly; min() would undercount
+    min_opt_vol = reduce(gcd, opt_vols) if opt_vols else 1
 
     # Build base leg structure (structure and volumes from order.legs).
     # Prices are overridden per-fill below.
@@ -508,7 +511,8 @@ def generate_ticket_with_cps_html(order) -> str:
     _opt_vols_raw = [l.volume for l in sorted_legs
                      if not (l.option_type is None and l.strike is None)
                      and l.volume and l.volume > 0]
-    _min_opt_vol_raw = min(_opt_vols_raw) if _opt_vols_raw else 1
+    # GCD handles NxM ratios (e.g. 2x3) correctly; min() would undercount
+    _min_opt_vol_raw = reduce(gcd, _opt_vols_raw) if _opt_vols_raw else 1
 
     def _leg_dict(leg, fill_price_map=None, fill_quantity=None):
         is_fut = leg.option_type is None and leg.strike is None

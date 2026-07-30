@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 from datetime import datetime
+from math import gcd
+from functools import reduce
 from app.models.order import Order
 
 
@@ -68,7 +70,9 @@ def generate_cards_html(order: Order) -> str:
     #   - Fully parsed 1:1 orders: min==total_quantity → unchanged
     # Futures legs are excluded; their qty is handled via futures_quantity.
     opt_volumes = [l["volume"] for l in legs if not l["is_fut"] and l["volume"] > 0]
-    min_opt_vol = min(opt_volumes) if opt_volumes else total_qty
+    # GCD handles NxM ratios (e.g. 2x3) correctly; min() would give wrong
+    # ratio for spreads like BUY 500 / SELL 750 (gcd=250, ratios 2:3).
+    min_opt_vol = reduce(gcd, opt_volumes) if opt_volumes else total_qty
 
     for l in legs:
         if l["is_fut"]:
