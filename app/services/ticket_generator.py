@@ -638,7 +638,7 @@ def _cp_leg_half_html(rows, side_label, sub_opt, sub_fut, broker, show_hdr) -> s
 def _broker_section_html(section, show_hdrs=False) -> str:
     bk = section["broker"]
     h  = (f"<div class='broker-bar'><span>{bk}</span>"
-          f"<span class='broker-bar-qty'>{section['fill_qty']:,} RATIOS</span></div>\n")
+          f"<span class='broker-bar-qty'>{section['fill_qty']:,} PACKAGES</span></div>\n")
     h += "<div class='cp-section'>\n"
     h += _cp_leg_half_html(section["buy_rows"], "BUY",
                             section["buy_opt_total"],  section["buy_fut_total"],
