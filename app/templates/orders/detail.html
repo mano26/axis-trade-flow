@@ -31,7 +31,7 @@
         </div>
         <div class="summary-item">
             <label>Package Premium</label>
-            <span>{{ '%.4f' % order.package_premium if order.package_premium else '' }}</span>
+            <span>{{ '%.4f' % order.package_premium if order.package_premium is not none else '' }}</span>
         </div>
         <div class="summary-item">
             <label>Date</label>
@@ -64,6 +64,10 @@
         <div class="summary-item">
             <label>Time Out</label>
             <span>{{ order.time_out | chicago_time if order.time_out else '—' }}</span>
+        </div>
+        <div class="summary-item">
+            <label>House</label>
+            <span>{{ order.house or '—' }}</span>
         </div>
     </div>
 </section>
@@ -344,7 +348,17 @@
                 <tbody>
                     {% for cp in fd.counterparties %}
                     <tr>
-                        <td>{{ cp.quantity }}</td>
+                        <td>
+                            {%- set _gcd = gcd_opt_vol | default(1) -%}
+                            {%- set _opt_legs = order.legs | selectattr('option_type') | list | sort(attribute='leg_index') -%}
+                            {%- if _opt_legs | length > 1 and _gcd > 0 -%}
+                                {%- for _leg in _opt_legs -%}
+                                    {{ 'B' if _leg.side == 'B' else 'S' }} {{ (cp.quantity * _leg.volume) // _gcd }}{% if not loop.last %} / {% endif %}
+                                {%- endfor -%}
+                            {%- else -%}
+                                {{ cp.quantity }}
+                            {%- endif -%}
+                        </td>
                         <td>{{ cp.broker | upper if cp.broker else '' }}</td>
                         <td>
                             {%- if cp.cp_house -%}
