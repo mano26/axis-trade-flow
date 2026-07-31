@@ -285,7 +285,8 @@ def _build_ticket(
 
     # Header
     h += "<div class='tkt-header'>"
-    h += f"<div class='tkt-num'>{ticket_num}</div>"
+    # ticket number hidden per user request
+    h += "<div class='tkt-num'></div>"
     h += "<div class='tkt-title'>A X I S</div>"
     acct_block = f"Account No.<div class='tkt-acct-val'>{account}</div>"
     if fill_label:
@@ -563,6 +564,7 @@ def _build_broker_sections(fill_cps, sorted_legs, gcd_opt_vol, futures_dicts, is
             for leg in buy_opt_legs:
                 lq = round(qty * leg.volume / gcd_opt_vol) if gcd_opt_vol else 0
                 buy_rows.append({"qty": lq, "strike": _fmt_strike(leg.strike),
+                                 "opt_type": leg.option_type or "",
                                  "cp": d["cp"], "house": d["house"],
                                  "bracket": d["bracket"], "is_fut": False,
                                  "new_cp": _new_cp(buy_rows)})
@@ -570,6 +572,7 @@ def _build_broker_sections(fill_cps, sorted_legs, gcd_opt_vol, futures_dicts, is
 
             if fut_side == "BUY" and fq:
                 buy_rows.append({"qty": fq, "strike": "FUT",
+                                 "opt_type": "",
                                  "cp": d["cp"], "house": d["house"],
                                  "bracket": d["bracket"], "is_fut": True,
                                  "new_cp": _new_cp(buy_rows)})
@@ -578,6 +581,7 @@ def _build_broker_sections(fill_cps, sorted_legs, gcd_opt_vol, futures_dicts, is
             for leg in sell_opt_legs:
                 lq = round(qty * leg.volume / gcd_opt_vol) if gcd_opt_vol else 0
                 sell_rows.append({"qty": lq, "strike": _fmt_strike(leg.strike),
+                                  "opt_type": leg.option_type or "",
                                   "cp": d["cp"], "house": d["house"],
                                   "bracket": d["bracket"], "is_fut": False,
                                   "new_cp": _new_cp(sell_rows)})
@@ -585,6 +589,7 @@ def _build_broker_sections(fill_cps, sorted_legs, gcd_opt_vol, futures_dicts, is
 
             if fut_side == "SELL" and fq:
                 sell_rows.append({"qty": fq, "strike": "FUT",
+                                  "opt_type": "",
                                   "cp": d["cp"], "house": d["house"],
                                   "bracket": d["bracket"], "is_fut": True,
                                   "new_cp": _new_cp(sell_rows)})
@@ -607,9 +612,11 @@ def _cp_row_html(row) -> str:
     sep = " cp-cp-sep" if row.get("new_cp") else ""
     st  = ("<td class='cp-strike-fut'>FUT</td>" if row["is_fut"]
            else f"<td class='cp-strike'>{row['strike']}</td>")
+    cp_type = row.get("opt_type", "")  # "C", "P", or "" for futures
     return (f"<tr class='cp-data-row{sep}'>"
             f"<td><span class='cp-chk'></span></td>"
             f"<td class='cp-qty'>{row['qty']:,}</td>{st}"
+            f"<td style='font-weight:700'>{cp_type}</td>"
             f"<td>{row['cp']}</td><td>{row['house']}</td><td>{row['bracket']}</td>"
             f"</tr>\n")
 
@@ -620,7 +627,7 @@ def _cp_leg_half_html(rows, side_label, sub_opt, sub_fut, broker, show_hdr) -> s
         h += f"<div class='cp-half-title'>{side_label}</div>\n"
     h += ("<table class='cp-table cp-table-leg'>\n"
           "<thead><tr><th></th><th>QTY</th><th>STRIKE</th>"
-          "<th>CP</th><th>HOUSE</th><th>BKT</th></tr></thead>\n<tbody>\n")
+          "<th>C/P</th><th>CP</th><th>HOUSE</th><th>BKT</th></tr></thead>\n<tbody>\n")
     for row in rows:
         h += _cp_row_html(row)
     h += "</tbody></table>\n"
@@ -732,14 +739,14 @@ def _new_cps_page(order, page_num, total_pages, fill_label,
     h  = "<div class='ticket'>\n"
     pg_line = f"PAGE {page_num} OF {total_pages}"
     h += (f"<div class='tkt-header'>"
-          f"<span class='tkt-num'>#{order.ticket_display}</span>"
+          f"<span class='tkt-num'></span>"
           f"<span class='tkt-title'>A X I S</span>"
           f"<div class='tkt-meta'>"
           f"{order.trade_date.strftime('%Y/%m/%d') if order.trade_date else ''}<br>"
           f"<span class='tkt-pg'>{pg_line}</span><br>")
     if fill_label:
         h += f"<span class='fill-label'>{fill_label}</span>"
-    h += f"<br>Order: #{order.ticket_display}</div></div>\n"
+    h += f"<br></div></div>\n"
     acct  = order.account or ""
     house = order.house   or ""
     h += (f"<div class='tkt-acct-row'>"
@@ -1064,7 +1071,7 @@ def generate_ticket_with_cps_html(order) -> str:
 def _cps_mini_header(order, broker, page_num, total_pages, fill_label=None) -> str:
     date_str = order.trade_date.strftime("%Y/%m/%d")
     h  = "<div class='tkt-header'>"
-    h += f"<div class='tkt-num'>#{order.ticket_display}</div>"
+    h += "<div class='tkt-num'></div>"
     h += "<div class='tkt-title'>A X I S</div>"
     pg_line = f"PAGE {page_num} OF {total_pages}"
     if fill_label:
@@ -1075,7 +1082,7 @@ def _cps_mini_header(order, broker, page_num, total_pages, fill_label=None) -> s
     h += "<div class='tkt-acct-row'>"
     h += f"<div>Acct: <span>{order.account or ''}</span></div>"
     h += f"<div>House: <span>{order.house or ''}</span></div>"
-    h += f"<div>Order: <span>#{order.ticket_display}</span></div>"
+    h += "<div></div>"
     h += "</div>\n"
     return h
 
