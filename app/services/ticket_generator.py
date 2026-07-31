@@ -487,7 +487,7 @@ _ROWS_CONT    = 12  # CP rows on continuation pages
 # =============================================================================
 
 _ROWS_PAGE_1 = 8    # broker section rows that fit on page 1 (after trade grid)
-_ROWS_CONT   = 15   # broker section rows on continuation pages
+_ROWS_CONT   = 10   # broker section rows on continuation pages
 
 
 def _fmt_strike(val) -> str:
@@ -669,6 +669,62 @@ def _grand_totals_html(sections) -> str:
             f"</div>\n")
 
 
+
+def _split_broker_section(section, max_rows):
+    """
+    Split a broker section that has more rows than max_rows into smaller
+    chunks that each fit on one physical page. Splits at CP boundaries
+    so no counterparty's rows are divided across cards.
+    """
+    chunk_rows = max_rows - 2  # -1 for bar, -1 for subtotal
+    if section["n_rows"] <= max_rows:
+        return [section]
+
+    def _group_by_cp(rows):
+        groups, order, seen = {}, [], set()
+        for r in rows:
+            k = (r["cp"], r["house"])
+            if k not in seen:
+                order.append(k)
+                groups[k] = []
+                seen.add(k)
+            groups[k].append(r)
+        return order, groups
+
+    buy_order,  buy_map  = _group_by_cp(section["buy_rows"])
+    sell_order, sell_map = _group_by_cp(section["sell_rows"])
+    all_cps = list(dict.fromkeys(buy_order + sell_order))
+
+    chunks, cur_b, cur_s, cur_n = [], [], [], 0
+    for cp_key in all_cps:
+        b = buy_map.get(cp_key, [])
+        s = sell_map.get(cp_key, [])
+        n = max(len(b), len(s))
+        if cur_n + n > chunk_rows and (cur_b or cur_s):
+            chunks.append((cur_b[:], cur_s[:]))
+            cur_b, cur_s, cur_n = [], [], 0
+        cur_b.extend(b)
+        cur_s.extend(s)
+        cur_n += n
+    if cur_b or cur_s:
+        chunks.append((cur_b, cur_s))
+
+    result = []
+    for buy_rows, sell_rows in chunks:
+        result.append({
+            "broker":         section["broker"],
+            "fill_qty":       section["fill_qty"],
+            "buy_rows":       buy_rows,
+            "sell_rows":      sell_rows,
+            "buy_opt_total":  sum(r["qty"] for r in buy_rows  if not r["is_fut"]),
+            "buy_fut_total":  sum(r["qty"] for r in buy_rows  if     r["is_fut"]),
+            "sell_opt_total": sum(r["qty"] for r in sell_rows if not r["is_fut"]),
+            "sell_fut_total": sum(r["qty"] for r in sell_rows if     r["is_fut"]),
+            "n_rows": 1 + max(len(buy_rows), len(sell_rows)) + 1,
+        })
+    return result
+
+
 def _new_cps_page(order, page_num, total_pages, fill_label,
                   leg_dicts, ts_html, max_rows,
                   sections_on_page, show_trade_grid,
@@ -826,20 +882,21 @@ def generate_ticket_with_cps_html(order) -> str:
         )
 
         # Paginate broker sections across pages.
-        # Page 1 has less vertical space (trade grid occupies the top).
-        pages = []          # list of lists-of-sections
+        # Large sections are split at CP boundaries so each card fits one page.
+        pages = []
         current_page = []
         current_rows = 0
         budget = _ROWS_PAGE_1
 
         for section in all_sections:
-            if current_rows + section["n_rows"] > budget and current_page:
-                pages.append(current_page)
-                current_page = []
-                current_rows = 0
-                budget = _ROWS_CONT
-            current_page.append(section)
-            current_rows += section["n_rows"]
+            for sub in _split_broker_section(section, budget if not current_page else _ROWS_CONT):
+                eff_budget = budget if not pages and not current_page else _ROWS_CONT
+                if current_rows + sub["n_rows"] > eff_budget and current_page:
+                    pages.append(current_page)
+                    current_page = []
+                    current_rows = 0
+                current_page.append(sub)
+                current_rows += sub["n_rows"]
         if current_page:
             pages.append(current_page)
 
@@ -1426,7 +1483,7 @@ body{{font-family:Arial,Helvetica,sans-serif;background:#e0e0e0;padding:0}}
   body{{background:white;padding:0;margin:0}}
   @page{{size:8in 5.5in;margin:0}}
   .tickets-wrap{{padding:0}}
-  .ticket{{width:8in;page-break-inside:avoid;
+  .ticket{{width:8in;break-after:page;
     -webkit-print-color-adjust:exact;print-color-adjust:exact}}
 }}
 </style></head><body>
