@@ -292,8 +292,28 @@ class Order(TenantMixin, db.Model):
                 f"(allowed: {OrderStatus.TRANSITIONS.get(self.status, set())})"
             )
 
-        # Partial cancel: shrink order to filled amount, become FILLED
+        # Partial cancel: shrink order to filled amount, become FILLED.
+        # Also update raw_input to reflect the filled quantity so the trade
+        # string displays correctly everywhere (e.g. 34/1500 → 34/1000).
         if new_status == OrderStatus.PARTIAL_CANCELLED:
+            filled   = self.filled_quantity
+            original = self.total_quantity
+            if filled != original and original > 0 and self.raw_input:
+                import re as _re
+                orig_s = str(original)
+                fill_s = str(filled)
+                # price/qty format: .../ORIG → .../FILLED
+                updated = _re.sub(
+                    r'(?<=/)\b' + _re.escape(orig_s) + r'\b',
+                    fill_s, self.raw_input, count=1
+                )
+                if updated == self.raw_input:
+                    # qty@price format: ORIG@... → FILLED@...
+                    updated = _re.sub(
+                        r'\b' + _re.escape(orig_s) + r'\b(?=@)',
+                        fill_s, self.raw_input, count=1
+                    )
+                self.raw_input = updated
             self.total_quantity = self.filled_quantity
             self.status = OrderStatus.FILLED
             self.time_out = datetime.now(timezone.utc)
