@@ -486,8 +486,8 @@ _ROWS_CONT    = 12  # CP rows on continuation pages
 # Broker Ticket + CPs Generator
 # =============================================================================
 
-_ROWS_PAGE_1 = 8    # broker section rows that fit on page 1 (after trade grid)
-_ROWS_CONT   = 10   # broker section rows on continuation pages
+_ROWS_PAGE_1 = 12   # broker section rows that fit on page 1 (after trade grid)
+_ROWS_CONT   = 20   # broker section rows on continuation pages
 
 
 def _fmt_strike(val) -> str:
