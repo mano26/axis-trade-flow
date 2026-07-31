@@ -568,7 +568,7 @@ def _build_broker_sections(fill_cps, sorted_legs, gcd_opt_vol, futures_dicts, is
                                  "new_cp": _new_cp(buy_rows)})
                 buy_opt_total += lq
 
-            if fut_side == "B" and fq:
+            if fut_side == "BUY" and fq:
                 buy_rows.append({"qty": fq, "strike": "FUT",
                                  "cp": d["cp"], "house": d["house"],
                                  "bracket": d["bracket"], "is_fut": True,
@@ -583,7 +583,7 @@ def _build_broker_sections(fill_cps, sorted_legs, gcd_opt_vol, futures_dicts, is
                                   "new_cp": _new_cp(sell_rows)})
                 sell_opt_total += lq
 
-            if fut_side == "S" and fq:
+            if fut_side == "SELL" and fq:
                 sell_rows.append({"qty": fq, "strike": "FUT",
                                   "cp": d["cp"], "house": d["house"],
                                   "bracket": d["bracket"], "is_fut": True,
