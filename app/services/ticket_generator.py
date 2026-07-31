@@ -499,8 +499,10 @@ def _fmt_strike(val) -> str:
     return s
 
 
-def _build_broker_sections(fill_cps, sorted_legs, gcd_opt_vol, futures_dicts, is_multi_leg):
+def _build_broker_sections(fill_cps, sorted_legs, gcd_opt_vol, futures_dicts, is_multi_leg, order_total_qty=1):
     fut_side      = futures_dicts[0]["side"] if futures_dicts else None
+    # Total futures lots in the full order — used for proportional auto-calc
+    full_futures_vol = sum(int(d.get("qty", 0) or 0) for d in futures_dicts)
     buy_opt_legs  = sorted([l for l in sorted_legs
                              if l.option_type is not None and l.side == "B"],
                             key=lambda l: float(l.strike or 0))
@@ -549,6 +551,10 @@ def _build_broker_sections(fill_cps, sorted_legs, gcd_opt_vol, futures_dicts, is
             d   = cp_agg[key]
             qty = d["qty"]
             fq  = d["fut_qty"]
+            # Auto-calculate futures proportionally when not explicitly entered.
+            # Formula: cp.quantity / order_total_qty × full_futures_lots
+            if fq == 0 and full_futures_vol > 0 and order_total_qty > 0:
+                fq = round(d["qty"] / order_total_qty * full_futures_vol)
             total_fill_qty += qty
 
             def _new_cp(rows):
@@ -632,11 +638,7 @@ def _cp_leg_half_html(rows, side_label, sub_opt, sub_fut, broker, show_hdr) -> s
 def _broker_section_html(section, show_hdrs=False) -> str:
     bk = section["broker"]
     h  = (f"<div class='broker-bar'><span>{bk}</span>"
-<<<<<<< HEAD
-          f"<span class='broker-bar-qty'>{section['fill_qty']:,} PACKAGES</span></div>\n")
-=======
           f"<span class='broker-bar-qty'>{section['fill_qty']:,} RATIOS</span></div>\n")
->>>>>>> 3e5cc23e1ce3fd119477683161e1b47381ab976e
     h += "<div class='cp-section'>\n"
     h += _cp_leg_half_html(section["buy_rows"], "BUY",
                             section["buy_opt_total"],  section["buy_fut_total"],
@@ -819,7 +821,8 @@ def generate_ticket_with_cps_html(order) -> str:
         # Build all broker sections for this fill (new grouped design)
         all_sections = _build_broker_sections(
             fill.counterparties, sorted_legs, _min_opt_vol_raw,
-            fill_futures_dicts, is_multi_leg
+            fill_futures_dicts, is_multi_leg,
+            order_total_qty=order.total_quantity or 1,
         )
 
         # Paginate broker sections across pages.
