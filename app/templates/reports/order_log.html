@@ -112,7 +112,7 @@
                 data-strategy="{{ order.strategy | upper }}"
                 data-house="{{ (order.house or '') | upper }}"
                 data-account="{{ (order.account or '') | upper }}"
-                data-status="{{ order.status | upper }}"
+                data-status="{{ order.status | upper }}{% if order.status == 'partial_fill' %} OPEN{% endif %}"
                 data-brokers="{{ brokers | join(',') }}"
                 data-cps="{{ cps | join(',') }}"
                 data-search="{{ order.raw_input | upper }}">
@@ -175,7 +175,7 @@ function applyFilters() {
             (!fStrategy || d.strategy.includes(fStrategy))                     &&
             (!fHouse    || d.house.includes(fHouse))                           &&
             (!fAccount  || d.account.includes(fAccount))                       &&
-            (!fStatus   || statusNorm.includes(fStatus) || d.status.includes(fStatus)) &&
+            (!fStatus   || statusNorm.includes(fStatus) || d.status.includes(fStatus) || (fStatus === 'OPEN' && d.status === 'PARTIAL_FILL')) &&
             (!fBroker   || d.brokers.includes(fBroker))                        &&
             (!fCp       || d.cps.includes(fCp))                               &&
             (!fSearch   || d.search.includes(fSearch));

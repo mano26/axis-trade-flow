@@ -97,7 +97,7 @@
                 data-strategy="{{ order.strategy | upper }}{% if order.is_generic %} GEN{% endif %}"
                 data-house="{{ (order.house or '') | upper }}"
                 data-account="{{ (order.account or '') | upper }}"
-                data-status="{{ order.status | upper }}">
+                data-status="{{ order.status | upper }}{% if order.status == 'partial_fill' %} OPEN{% endif %}">
                 <td class="ticket-num">#{{ order.ticket_display }}</td>
                 <td class="direction-{{ order.direction }}">{{ order.direction }}</td>
                 <td>{{ order.strategy | upper }}{% if order.is_generic %} (GEN){% endif %}</td>
@@ -135,7 +135,7 @@ function filterOrders() {
                    (!fStrategy || d.strategy.includes(fStrategy)) &&
                    (!fHouse    || d.house.toUpperCase().includes(fHouse))     &&
                    (!fAccount  || d.account.toUpperCase().includes(fAccount)) &&
-                   (!fStatus   || d.status.replace(/_/g,' ').includes(fStatus) || d.status.includes(fStatus));
+                   (!fStatus   || d.status.replace(/_/g,' ').includes(fStatus) || d.status.includes(fStatus) || (fStatus === 'OPEN' && d.status === 'PARTIAL_FILL'));
         r.style.display = show ? '' : 'none';
         if (show) visible++;
     });
