@@ -471,7 +471,62 @@ def parse_single_leg(tokens: list[str]) -> TradeInput:
             trade.strategy = "single"
             trade.option_types = ["P"]
         else:
-            raise ParseError("Could not determine strategy. No C/P or strategy token found.")
+            raise ParseError(
+            "Unrecognized or missing strategy. "
+            "Valid keywords: IC, CS (call spread), PS (put spread), "
+            "RR (risk reversal), FLY / BUTTERFLY, CONDOR, TREE / XMAS, "
+            "^ (straddle). For a single option include C or P. "
+            "Check for typos in the strategy keyword."
+        )
+
+    # Flag unrecognized alpha tokens that look like strategy keywords.
+    # Known non-strategy alpha tokens that are legitimately ignored or handled elsewhere.
+    _KNOWN_ALPHA = {
+        # C/P and direction tokens
+        "C", "P", "CALLS", "PUTS", "CALL", "PUT",
+        "BUY", "B", "SELL", "S",
+        "(CALLS)", "(PUTS)", "(CALL)", "(PUT)",
+        # Modifier tokens handled by token handler
+        "D", "CVD", "SPRD",
+        # Exchange / contract type tokens
+        "CME", "SR3", "SR1",
+    }
+    _STRATEGY_KEYWORDS = {
+        "IC",
+        "CS", "CALLSPREAD", "CALLSP", "CSPD",
+        "PS", "PUTSPREAD", "PUTSP", "PSPD",
+        "RR", "RISKREV", "RISKREVERSE", "RV",
+        "CONDOR", "CONDORC", "CONC", "CALLCONDOR", "IRON", "IRONCONDOR",
+        "CONDORP", "CONP", "PUTCONDOR", "CON",
+        "BFLY", "BUTTERFLY", "FLY",
+        "BFLYC", "CALLBFLY", "CALLFLY", "BUTTERFLYC",
+        "BFLYP", "PUTBFLY", "BUTTERFLYP",
+        "TREE", "CALLTREE", "CTREE", "TREEC",
+        "XMAS", "CHRISTMAS", "CALLXMAS", "XMASC",
+        "PUTTREE", "PTREE", "TREEP", "PUTXMAS", "PUTCHRISTMAS",
+        "STRADDLE", "STRANGLE", "STUPID", "STRIP",
+        # multi-word/segment markers
+        "WITH", "VS",
+        # CVD and delta modifier
+        "CVD",
+    }
+    unknown = []
+    for tok in tokens:
+        u = tok.upper().strip("()")
+        if (u.isalpha() and len(u) > 1
+                and u not in _KNOWN_ALPHA
+                and u not in _STRATEGY_KEYWORDS
+                and not u.startswith("SFR")
+                and not u.startswith("SR")
+                and not u.startswith("0Q")
+                and not u.startswith("2Q")
+                and not u.startswith("3Q")):
+            unknown.append(tok)
+    if unknown:
+        raise ParseError(
+            f"Unrecognized token(s) in trade string: {', '.join(repr(t) for t in unknown)}. "
+            "Check for typos — valid strategy keywords are IC, CS, PS, RR, FLY, CONDOR, TREE/XMAS."
+        )
 
     # Validate contract codes
     if not trade.contract_codes:
