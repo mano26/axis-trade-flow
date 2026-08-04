@@ -487,7 +487,7 @@ _ROWS_CONT    = 12  # CP rows on continuation pages
 # Broker Ticket + CPs Generator
 # =============================================================================
 
-_ROWS_PAGE_1 = 12   # broker section rows that fit on page 1 (after trade grid)
+_ROWS_PAGE_1 = 10   # broker section rows that fit on page 1 (after trade grid)
 _ROWS_CONT   = 20   # broker section rows on continuation pages
 
 
@@ -1492,6 +1492,7 @@ body{{font-family:Arial,Helvetica,sans-serif;background:#e0e0e0;padding:0}}
   .tickets-wrap{{padding:0}}
   .ticket{{width:8in;break-after:page;
     -webkit-print-color-adjust:exact;print-color-adjust:exact}}
+  .ticket:last-child{{break-after:auto}}
 }}
 </style></head><body>
 <div class='print-nav'>
