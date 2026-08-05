@@ -179,7 +179,7 @@ def generate_ticket_html(order: Order) -> str:
             order.ticket_display, legs, max_rows, brackets_seen, broker_str,
             account, bk_broker, fut_on_buy, fut_on_sell,
             time_in, mod_times, fill_ts, time_out,
-            fill_label=fill_label,
+            fill_label=fill_label, house=order.house or "",
         )
 
     # If the order has no fills at all, print a blank ticket with order prices
@@ -190,6 +190,7 @@ def generate_ticket_html(order: Order) -> str:
             order.ticket_display, base_legs, max_rows, brackets_seen, "",
             account, bk_broker, fut_on_buy, fut_on_sell,
             time_in, mod_times, [], time_out,
+            house=order.house or "",
         )
 
     html += "</div></body></html>"
@@ -215,12 +216,16 @@ body {{ font-family:Arial,Helvetica,sans-serif; background:#e0e0e0; padding:0; }
 .tickets-wrap {{ display:flex; flex-wrap:wrap; gap:0.25in; justify-content:center; padding:0.4in; }}
 .ticket {{ width:8in; height:5.5in; border:1.5px solid #000; background:#fff;
   padding:14px 18px; display:flex; flex-direction:column; page-break-inside:avoid; }}
-.tkt-header {{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:4px; }}
+.tkt-header {{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:1px; }}
 .tkt-num {{ font-size:15px; color:#cc2222; font-weight:700; font-family:monospace; }}
 .tkt-title {{ font-size:{tF}px; font-weight:900; letter-spacing:5px; text-align:center; flex:1; }}
-.tkt-acct {{ text-align:right; font-size:10px; }}
-.tkt-acct-val {{ border:1px solid #888; padding:2px 8px; min-width:80px; font-weight:700; font-size:11px; }}
-.fill-label {{ font-size:8px; font-weight:700; color:#795548; margin-top:2px; }}
+.tkt-bk-meta {{ font-size:11px; font-weight:900; letter-spacing:2px; margin-bottom:2px; }}
+.tkt-house-left {{ font-size:13px; font-weight:900; margin-bottom:1px; }}
+.tkt-house-row {{ font-size:13px; font-weight:900; padding:2px 0; }}
+.tkt-acct {{ text-align:right; font-size:12px; font-weight:600; line-height:1.6; }}
+.tkt-house-cps {{ font-size:13px; font-weight:900; margin-bottom:1px; }}
+.tkt-acct-val {{ font-weight:700; font-size:12px; }}
+.fill-label {{ font-size:10px; font-weight:700; color:#795548; }}
 .tkt-body {{ display:flex; flex:1; gap:0; border-top:1.5px solid #000; }}
 .tkt-side {{ flex:1; display:flex; flex-direction:column; padding:5px 8px; }}
 .tkt-side + .tkt-side {{ border-left:1.5px solid #000; }}
@@ -279,7 +284,7 @@ def _build_ticket(
     brackets: list, broker: str, account: str, bk_broker: str,
     fut_on_buy: bool, fut_on_sell: bool,
     time_in: str, mod_times: list, fill_times: list, time_out: str,
-    fill_label: str = None,
+    fill_label: str = None, house: str = "",
 ) -> str:
     h = "<div class='ticket'>\n"
 
@@ -287,10 +292,12 @@ def _build_ticket(
     h += "<div class='tkt-header'>"
     # ticket number hidden per user request
     h += "<div class='tkt-num'></div>"
+    bk_line_r = f"BK: {bk_broker}<br>" if bk_broker else ""
+    h += f"<div class='tkt-acct-left'>House: {house}<br>Acct: {account}</div>"
     h += "<div class='tkt-title'>A X I S</div>"
-    acct_block = f"Account No.<div class='tkt-acct-val'>{account}</div>"
+    acct_block = f"{bk_line_r}Account No.<br>{account}"
     if fill_label:
-        acct_block += f"<div class='fill-label'>{fill_label}</div>"
+        acct_block += f"<br><span class='fill-label'>{fill_label}</span>"
     h += f"<div class='tkt-acct'>{acct_block}</div>"
     h += "</div>\n"
 
@@ -353,9 +360,7 @@ def _build_side(
     if bk_broker:
         h += f"<div class='bk-info'>BK {bk_broker}</div>\n"
 
-    h += "<div class='con-cxl'>"
-    h += "<div class='con-cxl-label'>CON<br>CXL</div>"
-    h += "<div class='con-cxl-arrow'>&#9655;</div></div>"
+
     h += "</div>\n"
     return h
 
@@ -487,7 +492,7 @@ _ROWS_CONT    = 12  # CP rows on continuation pages
 # Broker Ticket + CPs Generator
 # =============================================================================
 
-_ROWS_PAGE_1 = 10   # broker section rows that fit on page 1 (after trade grid)
+_ROWS_PAGE_1 = 12   # broker section rows that fit on page 1 (after trade grid)
 _ROWS_CONT   = 20   # broker section rows on continuation pages
 
 
@@ -644,8 +649,11 @@ def _cp_leg_half_html(rows, side_label, sub_opt, sub_fut, broker, show_hdr) -> s
 
 def _broker_section_html(section, show_hdrs=False) -> str:
     bk = section["broker"]
-    h  = (f"<div class='broker-bar'><span>{bk}</span>"
-          f"<span class='broker-bar-qty'>{section['fill_qty']:,} PACKAGES</span></div>\n")
+    is_cont = section.get("is_continuation", False)
+    bar_right = "(CONT.)" if is_cont else f"{section['fill_qty']:,} PACKAGES"
+    h  = "<div class='broker-section'>\n"
+    h += (f"<div class='broker-bar'><span>{bk}</span>"
+          f"<span class='broker-bar-qty'>{bar_right}</span></div>\n")
     h += "<div class='cp-section'>\n"
     h += _cp_leg_half_html(section["buy_rows"], "BUY",
                             section["buy_opt_total"],  section["buy_fut_total"],
@@ -654,7 +662,8 @@ def _broker_section_html(section, show_hdrs=False) -> str:
     h += _cp_leg_half_html(section["sell_rows"], "SELL",
                             section["sell_opt_total"], section["sell_fut_total"],
                             bk, show_hdrs)
-    h += "</div>\n"
+    h += "</div>\n"   # cp-section
+    h += "</div>\n"   # broker-section
     return h
 
 
@@ -685,6 +694,8 @@ def _split_broker_section(section, max_rows):
     """
     chunk_rows = max_rows - 2  # -1 for bar, -1 for subtotal
     if section["n_rows"] <= max_rows:
+        if "is_continuation" not in section:
+            section["is_continuation"] = False
         return [section]
 
     def _group_by_cp(rows):
@@ -721,6 +732,7 @@ def _split_broker_section(section, max_rows):
         result.append({
             "broker":         section["broker"],
             "fill_qty":       section["fill_qty"],
+            "is_continuation": len(result) > 0,   # True for 2nd+ chunks
             "buy_rows":       buy_rows,
             "sell_rows":      sell_rows,
             "buy_opt_total":  sum(r["qty"] for r in buy_rows  if not r["is_fut"]),
@@ -738,21 +750,20 @@ def _new_cps_page(order, page_num, total_pages, fill_label,
                   show_grand_totals, all_sections) -> str:
     h  = "<div class='ticket'>\n"
     pg_line = f"PAGE {page_num} OF {total_pages}"
+    bk_val = order.bk_broker or ""
+    acct   = order.account or ""
+    house  = order.house   or ""
+    bk_line = f"BK: {bk_val}<br>" if bk_val else ""
     h += (f"<div class='tkt-header'>"
-          f"<span class='tkt-num'></span>"
+          f"<div class='tkt-acct-left'>House: {house}<br>Acct: {acct}</div>"
           f"<span class='tkt-title'>A X I S</span>"
           f"<div class='tkt-meta'>"
+          f"{bk_line}"
           f"{order.trade_date.strftime('%Y/%m/%d') if order.trade_date else ''}<br>"
-          f"<span class='tkt-pg'>{pg_line}</span><br>")
+          f"<span class='tkt-pg'>{pg_line}</span>")
     if fill_label:
-        h += f"<span class='fill-label'>{fill_label}</span>"
-    h += f"<br></div></div>\n"
-    acct  = order.account or ""
-    house = order.house   or ""
-    h += (f"<div class='tkt-acct-row'>"
-          f"<span>Acct: {acct}</span>"
-          f"<span>House: {house}</span>"
-          f"</div>\n")
+        h += f"<br><span class='fill-label'>{fill_label}</span>"
+    h += f"</div></div>\n"
     if show_trade_grid:
         h += "<div class='tkt-body'>\n"
         h += _build_side(leg_dicts, "BUY",  max_rows, "")
@@ -890,6 +901,10 @@ def generate_ticket_with_cps_html(order) -> str:
 
         # Paginate broker sections across pages.
         # Large sections are split at CP boundaries so each card fits one page.
+        # MIN_BROKER_ROWS: don't start a broker section unless there's room for
+        # the bar + at least 1 CP row + subtotal. Prevents the broker bar from
+        # appearing alone at the bottom of a page with its CPs on the next page.
+        MIN_BROKER_ROWS = 3
         pages = []
         current_page = []
         current_rows = 0
@@ -898,7 +913,14 @@ def generate_ticket_with_cps_html(order) -> str:
         for section in all_sections:
             for sub in _split_broker_section(section, budget if not current_page else _ROWS_CONT):
                 eff_budget = budget if not pages and not current_page else _ROWS_CONT
-                if current_rows + sub["n_rows"] > eff_budget and current_page:
+                remaining  = eff_budget - current_rows
+                # Push to new page if section doesn't fit OR too little room
+                # remains to usefully start a new broker section (orphan guard)
+                needs_new = (
+                    current_rows + sub["n_rows"] > eff_budget or
+                    (current_page and remaining < MIN_BROKER_ROWS)
+                )
+                if needs_new and current_page:
                     pages.append(current_page)
                     current_page = []
                     current_rows = 0
@@ -1422,10 +1444,12 @@ body{{font-family:Arial,Helvetica,sans-serif;background:#e0e0e0;padding:0}}
 .tkt-header{{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px}}
 .tkt-num{{font-size:13px;color:#cc2222;font-weight:700;font-family:monospace}}
 .tkt-title{{font-size:{tF}px;font-weight:900;letter-spacing:5px;text-align:center;flex:1}}
-.tkt-meta{{text-align:right;font-size:9px;font-weight:600;line-height:1.5}}
+.tkt-meta{{text-align:right;font-size:12px;font-weight:600;line-height:1.6}}
+.tkt-acct-left{{font-size:12px;font-weight:600;line-height:1.6;text-align:left}}
 .tkt-pg{{font-size:9px;font-weight:700;color:#555}}
-.fill-label{{font-size:8px;font-weight:700;color:#795548;letter-spacing:0.5px}}
-.tkt-acct-row{{display:flex;justify-content:space-between;font-size:9px;margin-bottom:4px;
+.fill-label{{font-size:10px;font-weight:700;color:#795548}}
+.tkt-house-cps{{font-size:13px;font-weight:900;padding:2px 8px}}
+.tkt-acct-row{{display:none;font-size:9px;margin-bottom:4px;
   padding-bottom:3px;border-bottom:1px solid #ccc}}
 .tkt-acct-row span{{font-weight:700}}
 .tkt-body{{display:flex;flex:0 0 auto;border-top:1.5px solid #000}}
@@ -1453,8 +1477,8 @@ body{{font-family:Arial,Helvetica,sans-serif;background:#e0e0e0;padding:0}}
 .cp-half-title{{font-size:11px;font-weight:900;letter-spacing:3px;text-align:center;
   border-bottom:1px solid #000;padding-bottom:3px;margin-bottom:3px}}
 .cp-range{{font-size:7.5px;font-weight:600;color:#666;text-align:center;margin-bottom:3px}}
-.cp-table{{width:100%;border-collapse:collapse;font-size:10px}}
-.cp-table th{{font-size:8.5px;font-weight:700;text-align:left;padding:2px 3px;
+.cp-table{{width:100%;border-collapse:collapse;font-size:12px}}
+.cp-table th{{font-size:10.5px;font-weight:700;text-align:left;padding:2px 3px;
   color:#444;border-bottom:0.5px solid #888}}
 .cp-table td{{padding:2px 3px;border-bottom:0.5px solid #eee;font-weight:600;vertical-align:middle}}
 .cp-table tr:last-child td{{border-bottom:none}}
@@ -1463,18 +1487,19 @@ body{{font-family:Arial,Helvetica,sans-serif;background:#e0e0e0;padding:0}}
 .cp-total{{font-size:7.5px;font-weight:700;color:#333;text-align:right;margin-top:3px;
   padding-top:2px;border-top:0.5px solid #ccc}}
 /* Broker section bar */
+.broker-section{{break-inside:avoid;page-break-inside:avoid}}
 .broker-bar{{background:#1a1a2e;color:#fff;font-size:10px;font-weight:900;letter-spacing:2px;
   padding:3px 8px;display:flex;justify-content:space-between;align-items:center;
   border-top:1px solid #000}}
 .broker-bar-qty{{font-size:8px;font-weight:400;opacity:.75;letter-spacing:1px}}
 /* Per-leg CP rows */
 .cp-strike{{font-family:monospace}}
-.cp-strike-fut{{font-style:italic;font-weight:900;font-size:9.5px;color:#555}}
+.cp-strike-fut{{font-style:italic;font-weight:900;font-size:11.5px;color:#555}}
 .cp-cp-sep td{{border-top:1px dashed #bbb !important}}
-.cp-broker-sub{{font-size:9px;font-weight:700;display:flex;justify-content:space-between;
+.cp-broker-sub{{font-size:11px;font-weight:700;display:flex;justify-content:space-between;
   padding:2px 5px;background:#f0f0f0;border-top:1px solid #666}}
 .cp-grand-total{{display:flex;border-top:2px solid #000}}
-.cp-grand-half{{flex:1;padding:3px 8px;font-size:9px;font-weight:900}}
+.cp-grand-half{{flex:1;padding:3px 8px;font-size:11px;font-weight:900}}
 .cp-grand-half+.cp-grand-half{{border-left:1.5px solid #000}}
 /* Footer */
 .tkt-footer{{display:flex;justify-content:space-between;align-items:flex-end;
