@@ -1337,7 +1337,7 @@ def modify_balance(order_id):
                              fill_s, order.raw_input, count=1)
             if updated == order.raw_input:
                 # qty@price format: ORIG@... → FILLED@...
-                updated = re.sub(r'' + re.escape(orig_s) + r'(?=@)',
+                updated = re.sub(r'' + re.escape(orig_s) + r'(?=\s*@)',
                                  fill_s, order.raw_input, count=1)
             order.raw_input = updated
 

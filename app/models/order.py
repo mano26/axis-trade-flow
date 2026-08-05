@@ -310,7 +310,7 @@ class Order(TenantMixin, db.Model):
                 if updated == self.raw_input:
                     # qty@price format: ORIG@... → FILLED@...
                     updated = _re.sub(
-                        r'\b' + _re.escape(orig_s) + r'\b(?=@)',
+                        r'\b' + _re.escape(orig_s) + r'\b(?=\s*@)',
                         fill_s, self.raw_input, count=1
                     )
                 self.raw_input = updated
