@@ -253,7 +253,15 @@ def enter_counterparties(fill_id: int):
 
     except ValidationError as e:
         flash(f"Validation failed: {'; '.join(e.errors)}", "danger")
-        return redirect(url_for("fills.enter_counterparties", fill_id=fill.id))
+        # Re-render with submitted values so user doesn't lose their work
+        from app.models.lookup import get_lookup_values, LookupType
+        cp_lookups = get_lookup_values(current_user.tenant_id, LookupType.COUNTERPARTY)
+        return render_template(
+            "orders/counterparty_entry.html", fill=fill, order=order,
+            cp_lookups=cp_lookups,
+            submitted_cps=counterparties,
+            submitted_house=house, submitted_account=account,
+        )
     except Exception as e:
         db.session.rollback()
         flash(f"Error saving counterparties: {e}", "danger")

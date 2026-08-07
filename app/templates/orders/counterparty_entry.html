@@ -75,14 +75,14 @@ function clearHouseIfSymbolCleared(rowIndex) {
             <div class="form-group">
                 <label for="house">House</label>
                 <input type="text" id="house" name="house"
-                       value="{{ order.house or '' }}"
+                       value="{{ submitted_house if submitted_house is defined else (order.house or '') }}"
                        placeholder="e.g., 684"
                        class="text-upper">
             </div>
             <div class="form-group">
                 <label for="account">Account</label>
                 <input type="text" id="account" name="account"
-                       value="{{ order.account or '' }}"
+                       value="{{ submitted_account if submitted_account is defined else (order.account or '') }}"
                        placeholder="Account ID"
                        class="text-upper">
             </div>
@@ -108,7 +108,7 @@ function clearHouseIfSymbolCleared(rowIndex) {
             </thead>
             <tbody>
                 {% for i in range(10) %}
-                {% set cp = fill.counterparties[i] if i < fill.counterparties|length else none %}
+                {% set _cps = submitted_cps if submitted_cps is defined else fill.counterparties|list %}{% set cp = _cps[i] if i < _cps|length else none %}
 
                 {# Resolve initial symbol and house values for re-entry #}
                 {% if cp %}
