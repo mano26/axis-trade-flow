@@ -99,10 +99,11 @@ def generate_ticket_html(order: Order) -> str:
 
             # Scale quantity to this fill's size using leg ratio.
             # For a 1:1 trade all legs show fill_quantity.
-            # For a 1:2 ratio spread the 2x leg shows 2 × fill_quantity.
-            # Futures legs keep their stored volume (delta hedge is fixed).
+            # Scale option legs by fill ratio; also scale futures proportionally.
             if fill_quantity is not None and not is_fut and min_opt_vol:
                 qty_val = round(fill_quantity * leg.volume / min_opt_vol)
+            elif fill_quantity is not None and is_fut and order.total_quantity:
+                qty_val = round(fill_quantity * leg.volume / order.total_quantity)
             else:
                 qty_val = leg.volume
 
@@ -507,8 +508,10 @@ def _fmt_strike(val) -> str:
 
 def _build_broker_sections(fill_cps, sorted_legs, gcd_opt_vol, futures_dicts, is_multi_leg, order_total_qty=1):
     fut_side      = futures_dicts[0]["side"] if futures_dicts else None
-    # Total futures lots in the full order — used for proportional auto-calc
+    # Total futures lots for this fill (fill-scaled) — used for proportional auto-calc
     full_futures_vol = sum(int(d.get("qty", 0) or 0) for d in futures_dicts)
+    # Total CP quantity across all brokers = fill_quantity for this fill
+    grand_cp_qty = sum(cp.quantity or 0 for cp in fill_cps)
     buy_opt_legs  = sorted([l for l in sorted_legs
                              if l.option_type is not None and l.side == "B"],
                             key=lambda l: float(l.strike or 0))
@@ -559,8 +562,8 @@ def _build_broker_sections(fill_cps, sorted_legs, gcd_opt_vol, futures_dicts, is
             fq  = d["fut_qty"]
             # Auto-calculate futures proportionally when not explicitly entered.
             # Formula: cp.quantity / order_total_qty × full_futures_lots
-            if fq == 0 and full_futures_vol > 0 and order_total_qty > 0:
-                fq = round(d["qty"] / order_total_qty * full_futures_vol)
+            if fq == 0 and full_futures_vol > 0 and grand_cp_qty > 0:
+                fq = round(d["qty"] / grand_cp_qty * full_futures_vol)
             total_fill_qty += qty
 
             def _new_cp(rows):
@@ -817,9 +820,11 @@ def generate_ticket_with_cps_html(order) -> str:
             price_str = _fmt_price(fill_price_map[leg.leg_index])
         else:
             price_str = _fmt_price(leg.price)
-        # Scale displayed qty to this fill's size; futures keep stored volume
+        # Scale option legs by fill ratio; also scale futures proportionally.
         if fill_quantity is not None and not is_fut and _min_opt_vol_raw:
             qty_val = round(fill_quantity * leg.volume / _min_opt_vol_raw)
+        elif fill_quantity is not None and is_fut and order.total_quantity:
+            qty_val = round(fill_quantity * leg.volume / order.total_quantity)
         else:
             qty_val = leg.volume
         return {
