@@ -1493,7 +1493,7 @@ body{{font-family:Arial,Helvetica,sans-serif;background:#e0e0e0;padding:0}}
   padding-top:2px;border-top:0.5px solid #ccc}}
 /* Broker section bar */
 .broker-section{{break-inside:avoid;page-break-inside:avoid}}
-.broker-bar{{background:#1a1a2e;color:#fff;font-size:10px;font-weight:900;letter-spacing:2px;
+.broker-bar{{background:#fff;color:#000;border-top:1.5px solid #000;border-bottom:1px solid #000;font-size:10px;font-weight:900;letter-spacing:2px;
   padding:3px 8px;display:flex;justify-content:space-between;align-items:center;
   border-top:1px solid #000}}
 .broker-bar-qty{{font-size:8px;font-weight:400;opacity:.75;letter-spacing:1px}}
