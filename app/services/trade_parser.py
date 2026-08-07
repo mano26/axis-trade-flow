@@ -298,6 +298,12 @@ def set_strategy(trade: TradeInput, token: str, i: int, tokens: list[str]) -> in
             raise ParseError("CVD token at end of input with no price.")
 
     # --- Delta token ---
+    # Flag D25-style (no space) with a helpful message
+    if u.startswith("D") and len(u) > 1 and u[1:].replace(".", "", 1).isdigit():
+        raise ParseError(
+            f"Delta requires a space: use 'D {u[1:]}' not '{u}'. "
+            "Example: CVD 95.965 D 25"
+        )
     if u == "D":
         if i + 1 < len(tokens):
             try:
@@ -345,6 +351,12 @@ def parse_single_leg(tokens: list[str]) -> TradeInput:
             continue
 
         # --- Delta token ---
+        # Flag D25-style (no space) with a helpful message
+        if u.startswith("D") and len(u) > 1 and u[1:].replace(".", "", 1).isdigit():
+            raise ParseError(
+                f"Delta requires a space: use 'D {u[1:]}' not '{u}'. "
+                "Example: CVD 95.965 D 25"
+            )
         if u == "D":
             if i + 1 < len(tokens):
                 d_tok = tokens[i + 1].strip()
