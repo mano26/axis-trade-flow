@@ -463,7 +463,7 @@
             {% endif %}
             <table class="legs-table cp-entry-table">
                 <thead>
-                    <tr><th>Qty</th><th>Filling Broker</th><th>Counterparty</th><th>House</th><th>Bracket</th><th>Notes</th>{% if order.has_futures_legs %}<th>Futures Qty</th>{% endif %}</tr>
+                    <tr><th>Qty</th><th>Filling Broker</th><th>Counterparty</th><th>House</th><th>Bracket</th><th>Notes</th>{% if order.has_futures_legs %}<th>Futures Qty</th>{% endif %}<th></th></tr>
                 </thead>
                 <tbody id="cp-tbody-amend-{{ fill.id }}">
                     {% set initial_rows_a = [10, fill.counterparties|length] | max %}
@@ -537,6 +537,12 @@
                                    min="0" style="width:70px;">
                         </td>
                         {% endif %}
+                        <td>
+                            <button type="button"
+                                    style="background:none;border:none;color:#c62828;font-size:16px;cursor:pointer;padding:0 4px;line-height:1;"
+                                    title="Remove this counterparty"
+                                    onclick="(function(btn){var row=btn.closest('tr');row.querySelectorAll('input,select').forEach(function(el){if(el.type==='number'){el.value='0';}else{el.value='';}});row.style.opacity='0.35';row.style.pointerEvents='none';})(this)">✕</button>
+                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>

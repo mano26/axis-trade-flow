@@ -676,8 +676,11 @@ def amend_fill(order_id, fill_id):
             cp_house = request.form.get(f"cp_house_{i}", "").strip()
             bracket = request.form.get(f"cp_bracket_{i}", "").strip()
             notes   = request.form.get(f"cp_notes_{i}", "").strip()
+            # Skip blank rows OR rows where qty is 0 / empty (user deleted this CP)
             if not any([qty_str, broker, symbol, bracket]):
                 continue
+            if not qty_str or qty_str == "0":
+                continue  # qty=0 means "remove this counterparty"
             fut_qty_str = request.form.get(f"cp_fut_qty_{i}", "").strip()
             fut_qty = int(fut_qty_str) if fut_qty_str else None
             counterparties.append(FillCounterparty(
