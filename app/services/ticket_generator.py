@@ -1487,7 +1487,7 @@ body{{font-family:Arial,Helvetica,sans-serif;background:#e0e0e0;padding:0}}
   color:#444;border-bottom:0.5px solid #888}}
 .cp-table td{{padding:2px 3px;border-bottom:0.5px solid #eee;font-weight:600;vertical-align:middle}}
 .cp-table tr:last-child td{{border-bottom:none}}
-.cp-qty{{text-align:right;font-family:monospace;width:38px;padding-right:6px !important}}
+.cp-qty{{text-align:center;font-family:monospace;width:42px}}
 .cp-chk{{display:inline-block;width:8px;height:8px;border:0.5px solid #666;vertical-align:middle}}
 .cp-total{{font-size:7.5px;font-weight:700;color:#333;text-align:right;margin-top:3px;
   padding-top:2px;border-top:0.5px solid #ccc}}
