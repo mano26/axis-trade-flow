@@ -624,7 +624,7 @@ def _cp_row_html(row) -> str:
     return (f"<tr class='cp-data-row{sep}'>"
             f"<td><span class='cp-chk'></span></td>"
             f"<td class='cp-qty'>{row['qty']:,}</td>{st}"
-            f"<td style='font-weight:700'>{cp_type}</td>"
+            f"<td class='cp-cp-col'>{cp_type}</td>"
             f"<td>{row['cp']}</td><td>{row['house']}</td><td>{row['bracket']}</td>"
             f"</tr>\n")
 
@@ -1482,12 +1482,12 @@ body{{font-family:Arial,Helvetica,sans-serif;background:#e0e0e0;padding:0}}
 .cp-half-title{{font-size:11px;font-weight:900;letter-spacing:3px;text-align:center;
   border-bottom:1px solid #000;padding-bottom:3px;margin-bottom:3px}}
 .cp-range{{font-size:7.5px;font-weight:600;color:#666;text-align:center;margin-bottom:3px}}
-.cp-table{{width:100%;border-collapse:collapse;font-size:12px}}
+.cp-table{{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed}}
 .cp-table th{{font-size:10.5px;font-weight:700;text-align:left;padding:2px 3px;
   color:#444;border-bottom:0.5px solid #888}}
 .cp-table td{{padding:2px 3px;border-bottom:0.5px solid #eee;font-weight:600;vertical-align:middle}}
 .cp-table tr:last-child td{{border-bottom:none}}
-.cp-qty{{text-align:right;font-family:monospace}}
+.cp-qty{{text-align:right;font-family:monospace;width:38px;padding-right:6px !important}}
 .cp-chk{{display:inline-block;width:8px;height:8px;border:0.5px solid #666;vertical-align:middle}}
 .cp-total{{font-size:7.5px;font-weight:700;color:#333;text-align:right;margin-top:3px;
   padding-top:2px;border-top:0.5px solid #ccc}}
@@ -1498,7 +1498,8 @@ body{{font-family:Arial,Helvetica,sans-serif;background:#e0e0e0;padding:0}}
   border-top:1px solid #000}}
 .broker-bar-qty{{font-size:8px;font-weight:400;opacity:.75;letter-spacing:1px}}
 /* Per-leg CP rows */
-.cp-strike{{font-family:monospace}}
+.cp-strike{{font-family:monospace;width:52px}}
+.cp-cp-col{{width:20px;text-align:center}}
 .cp-strike-fut{{font-style:italic;font-weight:900;font-size:11.5px;color:#555}}
 .cp-cp-sep td{{border-top:1px dashed #bbb !important}}
 .cp-broker-sub{{font-size:11px;font-weight:700;display:flex;justify-content:space-between;
