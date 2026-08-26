@@ -578,16 +578,23 @@ def _build_broker_sections(fill_cps, sorted_legs, gcd_opt_vol, futures_dicts, is
                                  "new_cp": _new_cp(buy_rows)})
                 buy_opt_total += lq
 
-            if fut_side == "BUY" and fq:
+            if fut_side == "BUY" and (fq or full_futures_vol):
                 for fd in futures_dicts:
                     leg_vol = int(fd.get("qty", 0) or 0)
                     if not leg_vol:
                         continue
-                    leg_fq = round(fq * leg_vol / full_futures_vol) if full_futures_vol else 0
+                    # Compute each leg independently from CP's allocation ratio
+                    # so multi-CVD legs each get their correct qty (not split from total)
+                    leg_fq = round(d["qty"] / grand_cp_qty * leg_vol) if grand_cp_qty else 0
                     if not leg_fq:
                         continue
-                    strike = fd.get("mo", "").upper() if len(futures_dicts) > 1 else "FUT"
-                    buy_rows.append({"qty": leg_fq, "strike": strike or "FUT",
+                    # Strike: use contract code, then futures price, then "FUT"
+                    if len(futures_dicts) > 1:
+                        strike = (fd.get("mo", "").upper() or
+                                  fd.get("price", "") or "FUT")
+                    else:
+                        strike = "FUT"
+                    buy_rows.append({"qty": leg_fq, "strike": strike,
                                      "opt_type": "",
                                      "cp": d["cp"], "house": d["house"],
                                      "bracket": d["bracket"], "is_fut": True,
@@ -603,16 +610,20 @@ def _build_broker_sections(fill_cps, sorted_legs, gcd_opt_vol, futures_dicts, is
                                   "new_cp": _new_cp(sell_rows)})
                 sell_opt_total += lq
 
-            if fut_side == "SELL" and fq:
+            if fut_side == "SELL" and (fq or full_futures_vol):
                 for fd in futures_dicts:
                     leg_vol = int(fd.get("qty", 0) or 0)
                     if not leg_vol:
                         continue
-                    leg_fq = round(fq * leg_vol / full_futures_vol) if full_futures_vol else 0
+                    leg_fq = round(d["qty"] / grand_cp_qty * leg_vol) if grand_cp_qty else 0
                     if not leg_fq:
                         continue
-                    strike = fd.get("mo", "").upper() if len(futures_dicts) > 1 else "FUT"
-                    sell_rows.append({"qty": leg_fq, "strike": strike or "FUT",
+                    if len(futures_dicts) > 1:
+                        strike = (fd.get("mo", "").upper() or
+                                  fd.get("price", "") or "FUT")
+                    else:
+                        strike = "FUT"
+                    sell_rows.append({"qty": leg_fq, "strike": strike,
                                       "opt_type": "",
                                       "cp": d["cp"], "house": d["house"],
                                       "bracket": d["bracket"], "is_fut": True,
