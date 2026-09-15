@@ -107,7 +107,7 @@ function clearHouseIfSymbolCleared(rowIndex) {
                 </tr>
             </thead>
             <tbody>
-                {% for i in range(10) %}
+                {% for i in range(50) %}
                 {% set _cps = submitted_cps if submitted_cps is defined else fill.counterparties|list %}{% set cp = _cps[i] if i < _cps|length else none %}
 
                 {# Resolve initial symbol and house values for re-entry #}

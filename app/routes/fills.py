@@ -202,7 +202,7 @@ def enter_counterparties(fill_id: int):
 
         counterparties = []
         # Read counterparty rows from form (up to 20 rows)
-        for i in range(20):
+        for i in range(50):
             qty_str = request.form.get(f"cp_qty_{i}", "").strip()
             broker = request.form.get(f"cp_broker_{i}", "").strip()
             symbol = request.form.get(f"cp_symbol_{i}", "").strip()

@@ -542,7 +542,7 @@ def save_counterparties(order_id):
         order.bk_broker = bk_broker if bk_broker else order.bk_broker
 
         counterparties = []
-        for i in range(20):
+        for i in range(50):
             qty_str = request.form.get(f"cp_qty_{i}", "").strip()
             broker = request.form.get(f"cp_broker_{i}", "").strip()
             symbol = request.form.get(f"cp_symbol_{i}", "").strip()
@@ -669,7 +669,7 @@ def amend_fill(order_id, fill_id):
             for cp in fill.counterparties
         ]
         counterparties = []
-        for i in range(20):
+        for i in range(50):
             qty_str = request.form.get(f"cp_qty_{i}", "").strip()
             broker  = request.form.get(f"cp_broker_{i}", "").strip()
             symbol  = request.form.get(f"cp_symbol_{i}", "").strip()
@@ -765,7 +765,7 @@ def amend_fill_counterparties(order_id, fill_id):
             order.bk_broker = bk_broker
 
         counterparties = []
-        for i in range(20):
+        for i in range(50):
             qty_str = request.form.get(f"cp_qty_{i}", "").strip()
             broker = request.form.get(f"cp_broker_{i}", "").strip()
             symbol = request.form.get(f"cp_symbol_{i}", "").strip()
