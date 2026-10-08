@@ -1008,7 +1008,8 @@ def generate_ticket_with_cps_html(order, layout=None) -> str:
     is_multi_leg = len(option_dicts) > 1 or bool(futures_dicts)  # bracket+6 for spreads and CVD
 
     total_fills = len(fills_with_cps)
-    html = _ticket_html_header_cps(max_rows)
+    eff_layout  = layout or TICKET_LAYOUT
+    html = _ticket_html_header_cps(max_rows, layout=eff_layout)
 
     for fill_num, fill in enumerate(fills_with_cps, 1):
         fill_price_map = {lp.leg_index: lp.price for lp in fill.leg_prices} \
@@ -1043,8 +1044,6 @@ def generate_ticket_with_cps_html(order, layout=None) -> str:
             leg_price_map=leg_price_map,
         )
 
-        eff_layout = layout or TICKET_LAYOUT
-
         if eff_layout == "linear":
             # Linear layout: one header, all broker sections flow continuously —
             # no pagination, no repeated headers.
@@ -1053,7 +1052,7 @@ def generate_ticket_with_cps_html(order, layout=None) -> str:
             house   = order.house or ""
             bk_line = f"BK: {bk_val}<br>" if bk_val else ""
             pg_line = "PAGE 1 OF 1"
-            page_h  = "<div class='ticket'>\n"
+            page_h  = "<div class='ln-ticket'>\n"
             page_h += (f"<div class='tkt-header'>"
                        f"<div class='tkt-acct-left'>House: {house}<br>Acct: {acct}</div>"
                        f"<span class='tkt-title'>A X I S</span>"
@@ -1602,7 +1601,7 @@ def _cps_futures_page(order, broker, cps, futures_dicts,
     return h
 
 
-def _ticket_html_header_cps(max_rows: int) -> str:
+def _ticket_html_header_cps(max_rows: int, layout=None) -> str:
     sizes = {1: (14, 24, 20, 13), 2: (12, 22, 18, 12), 3: (10, 20, 16, 11)}
     cF, tF, sF, lF = sizes.get(max_rows, (9, 18, 15, 10))
     return f"""<!DOCTYPE html><html><head><meta charset='utf-8'>
@@ -1712,14 +1711,16 @@ body{{font-family:Arial,Helvetica,sans-serif;background:#e0e0e0;padding:0}}
 .broker-box-label{{font-size:7px;font-weight:700;color:#666;text-align:center;
   letter-spacing:1px;margin-top:2px}}
 .bk-info{{font-size:9px;font-weight:700;color:#333}}
+/* Linear layout ticket wrapper — no min-height, no flex, portrait page */
+.ln-ticket{{width:100%;border:1.5px solid #000;background:#fff;
+  padding:10px 14px;display:block}}
 @media print{{
   .print-nav{{display:none !important}}
   body{{background:white;padding:0;margin:0}}
-  @page{{size:8in 5.5in;margin:0}}
   .tickets-wrap{{padding:0}}
-  .ticket{{width:8in;break-after:page;
-    -webkit-print-color-adjust:exact;print-color-adjust:exact}}
-  .ticket:last-child{{break-after:auto}}
+  {"@page{size:8.5in 11in;margin:0.3in}" if layout == "linear" else "@page{size:8in 5.5in;margin:0}"}
+  {"" if layout == "linear" else ".ticket{width:8in;break-after:page;-webkit-print-color-adjust:exact;print-color-adjust:exact} .ticket:last-child{break-after:auto}"}
+  .ln-ticket{{break-after:auto;-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 }}
 </style></head><body>
 <div class='print-nav'>
