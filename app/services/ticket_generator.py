@@ -15,6 +15,11 @@ from app.models.order import Order
 # Set to True to re-enable timestamp rows on printed tickets.
 SHOW_TIMESTAMPS = False
 
+# Layout toggle — flip to 'linear' for paper-ticket style (no redeploy needed)
+# 'split'  : current side-by-side BUY/SELL broker table (default)
+# 'linear' : one row per leg per CP, options first, then futures
+TICKET_LAYOUT = 'split'
+
 try:
     from zoneinfo import ZoneInfo
     _EXCHANGE_TZ = ZoneInfo("America/Chicago")
@@ -506,7 +511,7 @@ def _fmt_strike(val) -> str:
     return s
 
 
-def _build_broker_sections(fill_cps, sorted_legs, gcd_opt_vol, futures_dicts, is_multi_leg, order_total_qty=1):
+def _build_broker_sections(fill_cps, sorted_legs, gcd_opt_vol, futures_dicts, is_multi_leg, order_total_qty=1, leg_price_map=None):
     # Total futures lots for this fill (fill-scaled) — used for proportional auto-calc
     full_futures_vol = sum(int(d.get("qty", 0) or 0) for d in futures_dicts)
     # Total CP quantity across all brokers = fill_quantity for this fill
@@ -570,8 +575,11 @@ def _build_broker_sections(fill_cps, sorted_legs, gcd_opt_vol, futures_dicts, is
 
             for leg in buy_opt_legs:
                 lq = round(qty * leg.volume / gcd_opt_vol) if gcd_opt_vol else 0
+                _lprice = (leg_price_map.get(leg.leg_index) if leg_price_map else None) or _fmt_price(leg.price)
                 buy_rows.append({"qty": lq, "strike": _fmt_strike(leg.strike),
                                  "opt_type": leg.option_type or "",
+                                 "mo": (leg.mo_card_code or leg.expiry or "").upper(),
+                                 "price": _lprice,
                                  "cp": d["cp"], "house": d["house"],
                                  "bracket": d["bracket"], "is_fut": False,
                                  "new_cp": _new_cp(buy_rows)})
@@ -599,6 +607,8 @@ def _build_broker_sections(fill_cps, sorted_legs, gcd_opt_vol, futures_dicts, is
                     if fd_side == "BUY":
                         buy_rows.append({"qty": leg_fq, "strike": strike,
                                          "opt_type": "",
+                                         "mo": fd.get("mo", "").upper(),
+                                         "price": fd.get("price", ""),
                                          "cp": d["cp"], "house": d["house"],
                                          "bracket": d["bracket"], "is_fut": True,
                                          "new_cp": _new_cp(buy_rows)})
@@ -606,6 +616,8 @@ def _build_broker_sections(fill_cps, sorted_legs, gcd_opt_vol, futures_dicts, is
                     else:
                         sell_rows.append({"qty": leg_fq, "strike": strike,
                                           "opt_type": "",
+                                          "mo": fd.get("mo", "").upper(),
+                                          "price": fd.get("price", ""),
                                           "cp": d["cp"], "house": d["house"],
                                           "bracket": d["bracket"], "is_fut": True,
                                           "new_cp": _new_cp(sell_rows)})
@@ -613,8 +625,11 @@ def _build_broker_sections(fill_cps, sorted_legs, gcd_opt_vol, futures_dicts, is
 
             for leg in sell_opt_legs:
                 lq = round(qty * leg.volume / gcd_opt_vol) if gcd_opt_vol else 0
+                _lprice = (leg_price_map.get(leg.leg_index) if leg_price_map else None) or _fmt_price(leg.price)
                 sell_rows.append({"qty": lq, "strike": _fmt_strike(leg.strike),
                                   "opt_type": leg.option_type or "",
+                                  "mo": (leg.mo_card_code or leg.expiry or "").upper(),
+                                  "price": _lprice,
                                   "cp": d["cp"], "house": d["house"],
                                   "bracket": d["bracket"], "is_fut": False,
                                   "new_cp": _new_cp(sell_rows)})
@@ -664,6 +679,89 @@ def _cp_leg_half_html(rows, side_label, sub_opt, sub_fut, broker, show_hdr) -> s
               f"<span>{broker} {side_label}</span>"
               f"<span>{' · '.join(parts)}</span></div>\n")
     h += "</div>\n"
+    return h
+
+
+def _linear_broker_section_html(section: dict) -> str:
+    """Render one broker's allocation as a flat linear table.
+
+    Order: buy options → sell options → buy futures → sell futures.
+    Columns mirror the split table: [chk] SIDE QTY CONTRACT STRIKE TYPE PRICE CP HOUSE BKT
+    C/P renamed to TYPE per Mike's 2026-10-08 request.
+    """
+    bk = section["broker"]
+    is_cont = section.get("is_continuation", False)
+    bar_right = "(CONT.)" if is_cont else f"{section['fill_qty']:,} PACKAGES"
+
+    buy_opts  = [r for r in section["buy_rows"]  if not r["is_fut"]]
+    sell_opts = [r for r in section["sell_rows"] if not r["is_fut"]]
+    buy_futs  = [r for r in section["buy_rows"]  if     r["is_fut"]]
+    sell_futs = [r for r in section["sell_rows"] if     r["is_fut"]]
+
+    ordered = (
+        [("BUY",  r) for r in buy_opts]  +
+        [("SELL", r) for r in sell_opts] +
+        [("BUY",  r) for r in buy_futs]  +
+        [("SELL", r) for r in sell_futs]
+    )
+
+    h  = "<div class='ln-broker-section'>\n"
+    h += (f"<div class='broker-bar'><span>{bk}</span>"
+          f"<span class='broker-bar-qty'>{bar_right}</span></div>\n")
+    h += ("<table class='ln-table'>\n"
+          "<thead><tr>"
+          "<th></th><th>SIDE</th><th>QTY</th><th>CONTRACT</th>"
+          "<th>STRIKE</th><th>TYPE</th><th>PRICE</th>"
+          "<th>CP</th><th>HOUSE</th><th>BKT</th>"
+          "</tr></thead>\n<tbody>\n")
+
+    for side, row in ordered:
+        is_fut    = row["is_fut"]
+        contract  = row.get("mo", "")
+        strike    = "" if is_fut else row.get("strike", "")
+        if is_fut:
+            type_disp = "FUT"
+        elif row.get("opt_type") == "C":
+            type_disp = "CALL"
+        elif row.get("opt_type") == "P":
+            type_disp = "PUT"
+        else:
+            type_disp = ""
+        price     = row.get("price", "")
+        cp        = row.get("cp", "")
+        house     = row.get("house", "")
+        bkt       = row.get("bracket", "")
+        qty       = row.get("qty", 0)
+        side_cls  = "ln-buy-txt" if side == "BUY" else "ln-sell-txt"
+        h += (f"<tr>"
+              f"<td><span class='cp-chk'></span></td>"
+              f"<td class='ln-side {side_cls}'>{side}</td>"
+              f"<td class='ln-qty'>{qty:,}</td>"
+              f"<td class='ln-contract'>{contract}</td>"
+              f"<td class='ln-strike'>{strike}</td>"
+              f"<td class='ln-type'>{type_disp}</td>"
+              f"<td class='ln-price'>{price}</td>"
+              f"<td class='ln-cp'>{cp}</td>"
+              f"<td class='ln-house'>{house}</td>"
+              f"<td class='ln-bkt'>{bkt}</td>"
+              f"</tr>\n")
+
+    # Per-broker subtotals (no f-string backslash to stay <3.12 safe)
+    b_opt = section["buy_opt_total"]
+    b_fut = section["buy_fut_total"]
+    s_opt = section["sell_opt_total"]
+    s_fut = section["sell_fut_total"]
+    dot   = " · "
+    buy_p  = ([f"{b_opt:,} OPT"] if b_opt else []) + ([f"{b_fut:,} FUT"] if b_fut else [])
+    sell_p = ([f"{s_opt:,} OPT"] if s_opt else []) + ([f"{s_fut:,} FUT"] if s_fut else [])
+    parts  = []
+    if buy_p:  parts.append("BUY: " + dot.join(buy_p))
+    if sell_p: parts.append("SELL: " + dot.join(sell_p))
+    if parts:
+        sub_txt = " &nbsp;|&nbsp; ".join(parts)
+        h += f"<tr><td colspan='10' class='ln-subtotal'>{sub_txt}</td></tr>\n"
+
+    h += "</tbody></table>\n</div>\n"
     return h
 
 
@@ -767,7 +865,8 @@ def _split_broker_section(section, max_rows):
 def _new_cps_page(order, page_num, total_pages, fill_label,
                   leg_dicts, ts_html, max_rows,
                   sections_on_page, show_trade_grid,
-                  show_grand_totals, all_sections) -> str:
+                  show_grand_totals, all_sections,
+                  layout=None) -> str:
     h  = "<div class='ticket'>\n"
     pg_line = f"PAGE {page_num} OF {total_pages}"
     bk_val = order.bk_broker or ""
@@ -790,17 +889,21 @@ def _new_cps_page(order, page_num, total_pages, fill_label,
         h += _build_side(leg_dicts, "SELL", max_rows, "")
         h += "</div>\n"
         h += ts_html
+    eff_layout = layout or TICKET_LAYOUT
     for i, section in enumerate(sections_on_page):
         # Show BUY/SELL column headers: always on cont pages, on 2nd+ section of page 1
         show_hdrs = (not show_trade_grid) or (i > 0)
-        h += _broker_section_html(section, show_hdrs=show_hdrs)
+        if eff_layout == "linear":
+            h += _linear_broker_section_html(section)
+        else:
+            h += _broker_section_html(section, show_hdrs=show_hdrs)
     if show_grand_totals:
         h += _grand_totals_html(all_sections)
     h += "</div>\n"
     return h
 
 
-def generate_ticket_with_cps_html(order) -> str:
+def generate_ticket_with_cps_html(order, layout=None) -> str:
     """Generate per-broker broker cards with CP allocations.
 
     Each fill that has counterparties gets its own set of cards.
@@ -914,11 +1017,17 @@ def generate_ticket_with_cps_html(order) -> str:
         fill_label = (f"FILL {fill_num} OF {total_fills} — {fill.fill_quantity:,} LOTS"
                       if total_fills > 1 else None)
 
+        # Build leg_price_map: leg_index → fill-specific price string
+        # Used by linear format to show price per row without a separate grid.
+        leg_price_map = {l.leg_index: d["price"]
+                         for l, d in zip(sorted_legs, all_leg_dicts)}
+
         # Build all broker sections for this fill (new grouped design)
         all_sections = _build_broker_sections(
             fill.counterparties, sorted_legs, _min_opt_vol_raw,
             fill_futures_dicts, is_multi_leg,
             order_total_qty=order.total_quantity or 1,
+            leg_price_map=leg_price_map,
         )
 
         # Paginate broker sections across pages.
@@ -961,7 +1070,8 @@ def generate_ticket_with_cps_html(order) -> str:
                 order, page_num, total_pages, fill_label,
                 all_leg_dicts, ts_html, max_rows,
                 sections_on_page, show_trade_grid,
-                is_last_page, all_sections
+                is_last_page, all_sections,
+                layout=layout,
             )
 
     html += "</div></body></html>"
@@ -1524,6 +1634,26 @@ body{{font-family:Arial,Helvetica,sans-serif;background:#e0e0e0;padding:0}}
 .cp-grand-total{{display:flex;border-top:2px solid #000}}
 .cp-grand-half{{flex:1;padding:3px 8px;font-size:11px;font-weight:900}}
 .cp-grand-half+.cp-grand-half{{border-left:1.5px solid #000}}
+/* Linear layout (TICKET_LAYOUT = 'linear') */
+.ln-broker-section{{break-inside:avoid;page-break-inside:avoid}}
+.ln-table{{width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed}}
+.ln-table th{{font-size:9.5px;font-weight:700;text-align:left;padding:2px 3px;
+  color:#444;border-bottom:0.5px solid #888}}
+.ln-table td{{padding:2px 3px;border-bottom:0.5px solid #eee;font-weight:600;vertical-align:middle}}
+.ln-table tr:last-child td{{border-bottom:none}}
+.ln-side{{font-weight:900;font-size:11px;width:36px;text-align:center}}
+.ln-buy-txt{{color:#0a3d62}}
+.ln-sell-txt{{color:#c0392b}}
+.ln-qty{{text-align:right;font-family:monospace;width:44px}}
+.ln-contract{{font-family:monospace;width:58px;font-weight:700}}
+.ln-strike{{font-family:monospace;width:58px}}
+.ln-type{{width:38px;text-align:center;font-style:italic}}
+.ln-price{{font-family:monospace;width:52px;text-align:right}}
+.ln-cp{{width:38px}}
+.ln-house{{width:38px}}
+.ln-bkt{{width:52px}}
+.ln-subtotal{{font-size:10px;font-weight:700;text-align:right;
+  background:#f0f0f0;border-top:1px solid #666;padding:2px 6px}}
 /* Footer */
 .tkt-footer{{display:flex;justify-content:space-between;align-items:flex-end;
   margin-top:6px;padding-top:4px;border-top:1px solid #ccc}}

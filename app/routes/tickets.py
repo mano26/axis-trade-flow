@@ -77,3 +77,35 @@ def generate_with_cps(order_id):
     response = make_response(html)
     response.headers["Content-Type"] = "text/html"
     return response
+
+
+@tickets_bp.route("/order/<int:order_id>/generate-with-cps-linear")
+@login_required
+def generate_with_cps_linear(order_id):
+    """Generate per-broker ticket cards with CP allocations — linear (flat) layout."""
+    order = Order.query.filter_by(
+        id=order_id, tenant_id=current_user.tenant_id,
+    ).first_or_404()
+
+    try:
+        validate_before_generate(order)
+    except ValidationError as e:
+        flash(f"Cannot generate ticket: {'; '.join(e.errors)}", "danger")
+        return redirect(url_for("orders.detail", order_id=order.id))
+
+    snapshot = build_ticket_data_snapshot(order)
+    print_event = PrintEvent(
+        tenant_id=current_user.tenant_id,
+        order_id=order.id,
+        event_type=PrintEventType.TICKET,
+        printed_by_id=current_user.id,
+        data_snapshot=snapshot,
+    )
+    db.session.add(print_event)
+    audit_service.log_print_event(order, current_user.tenant_id, "ticket_with_cps_linear")
+    db.session.commit()
+
+    html = generate_ticket_with_cps_html(order, layout="linear")
+    response = make_response(html)
+    response.headers["Content-Type"] = "text/html"
+    return response
