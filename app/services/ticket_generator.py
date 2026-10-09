@@ -504,8 +504,8 @@ _ROWS_CONT   = 20   # broker section rows on continuation pages
 # Linear layout: flat data-row counts per page.
 # Each CP allocation produces N rows (one per leg); overhead adds ~3 rows per
 # broker section (label + thead + subtotal).  Tune these to match printed output.
-_LN_ROWS_PAGE_1 = 18   # data rows on page 1 (A5: header+grid consume ~⅓ of page)
-_LN_ROWS_CONT   = 32   # data rows on A5 continuation pages (no header overhead)
+_LN_ROWS_PAGE_1 = 28   # data rows on page 1 (A5 portrait: header+grid ≈ 38mm, ~160mm left)
+_LN_ROWS_CONT   = 44   # data rows on A5 continuation pages (≈198mm usable)
 _LN_SECTION_OH  = 3    # overhead rows per broker section (label + header + subtotal)
 
 
@@ -1793,18 +1793,19 @@ body{{font-family:Arial,Helvetica,sans-serif;background:#e0e0e0;padding:0}}
 .bk-info{{font-size:9px;font-weight:700;color:#333}}
 /* Linear layout — page wrapper and ticket header */
 .ln-ticket{{width:100%;background:#fff;padding:10px 14px;display:block}}
-.ln-page{{width:100%;border:1.5px solid #000;background:#fff;
-  padding:10px 14px;display:block;margin-bottom:0.25in}}
+.ln-page{{width:148mm;height:210mm;box-sizing:border-box;overflow:hidden;
+  border:1px solid #bbb;background:#fff;padding:6mm 8mm;
+  display:block;margin:0 auto 10px}}
 .ln-cont-bar{{font-size:9px;font-weight:700;color:#555;letter-spacing:1px;
   text-align:right;padding:2px 0 4px;border-bottom:1px solid #ccc;margin-bottom:4px}}
 @media print{{
   .print-nav{{display:none !important}}
   body{{background:white;padding:0;margin:0}}
   .tickets-wrap{{padding:0}}
-  {"@page{size:148mm 210mm;margin:7mm}" if layout == "linear" else "@page{size:8in 5.5in;margin:0}"}
+  {"@page{size:148mm 210mm;margin:0}" if layout == "linear" else "@page{size:8in 5.5in;margin:0}"}
   {"" if layout == "linear" else ".ticket{width:8in;break-after:page;-webkit-print-color-adjust:exact;print-color-adjust:exact} .ticket:last-child{break-after:auto}"}
   .ln-ticket{{break-after:auto;-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-  {".ln-page{{break-after:page;-webkit-print-color-adjust:exact;print-color-adjust:exact}} .ln-page:last-child{{break-after:auto}}" if layout == "linear" else ""}
+  {".ln-page{{width:148mm;height:210mm;box-sizing:border-box;padding:6mm 8mm;border:none;margin:0;break-after:page;-webkit-print-color-adjust:exact;print-color-adjust:exact}} .ln-page:last-child{{break-after:auto}}" if layout == "linear" else ""}
 }}
 </style></head><body>
 <div class='print-nav'>
