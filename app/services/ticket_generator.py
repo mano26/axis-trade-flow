@@ -832,7 +832,7 @@ def _linear_broker_section_html(section: dict) -> str:
     if sell_p: parts.append("SELL: " + dot.join(sell_p))
     if parts:
         sub_txt = " &nbsp;|&nbsp; ".join(parts)
-        h += f"<tr><td colspan='11' class='ln-subtotal'>{sub_txt}</td></tr>\n"
+        h += f"<tr><td colspan='10' class='ln-subtotal'>{sub_txt}</td></tr>\n"
 
     h += "</tbody></table>\n</div>\n"
     return h
@@ -1627,18 +1627,18 @@ body{{font-family:Arial,Helvetica,sans-serif;background:#e0e0e0;padding:0}}
 .ln-table td{{padding:2px 3px;border-bottom:0.5px solid #eee;font-weight:600;vertical-align:middle;
   overflow:hidden;white-space:nowrap;text-overflow:ellipsis}}
 .ln-table tr:last-child td{{border-bottom:none}}
-.ln-broker-col{{font-weight:900;font-size:10px;width:46px;letter-spacing:1px}}
-.ln-side{{font-weight:900;font-size:11px;width:36px;text-align:center}}
+.ln-broker-col{{font-weight:900;font-size:10px;letter-spacing:1px}}
+.ln-side{{font-weight:900;font-size:11px;text-align:center}}
 .ln-buy-txt{{color:#0a3d62}}
 .ln-sell-txt{{color:#c0392b}}
-.ln-qty{{text-align:center;font-family:monospace;width:48px}}
-.ln-contract{{font-family:monospace;width:62px;font-weight:700;text-align:center}}
-.ln-strike{{font-family:monospace;width:54px}}
-.ln-type{{width:36px;text-align:center;font-style:italic}}
-.ln-price{{font-family:monospace;width:52px;text-align:right}}
-.ln-cp{{width:38px}}
-.ln-house{{width:38px}}
-.ln-bkt{{width:52px}}
+.ln-qty{{text-align:center;font-family:monospace}}
+.ln-contract{{font-family:monospace;font-weight:700;text-align:center}}
+.ln-strike{{font-family:monospace}}
+.ln-type{{text-align:center;font-style:italic}}
+.ln-price{{font-family:monospace;text-align:right}}
+.ln-cp{{}}
+.ln-house{{}}
+.ln-bkt{{}}
 .ln-subtotal{{font-size:10px;font-weight:700;text-align:right;
   background:#f0f0f0;border-top:1px solid #666;padding:2px 6px}}
 /* Footer */
@@ -1652,8 +1652,8 @@ body{{font-family:Arial,Helvetica,sans-serif;background:#e0e0e0;padding:0}}
 .bk-info{{font-size:9px;font-weight:700;color:#333}}
 /* Linear layout — page wrapper and ticket header */
 .ln-ticket{{width:100%;background:#e0e0e0;padding:16px;display:block}}
-/* Screen: A5 paper preview boxes */
-.ln-page{{width:148mm;min-height:210mm;background:#fff;padding:5mm;
+/* Screen: full-width preview (print overrides with width:auto at A5) */
+.ln-page{{width:min(960px,calc(100% - 32px));min-height:0;background:#fff;padding:14px 20px;
   margin:0 auto 16px auto;box-shadow:0 2px 8px rgba(0,0,0,.2);
   box-sizing:border-box;display:block}}
 .ln-cont-bar{{font-size:9px;font-weight:700;color:#555;letter-spacing:1px;
