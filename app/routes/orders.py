@@ -541,6 +541,13 @@ def save_counterparties(order_id):
             order.account = account
         order.bk_broker = bk_broker if bk_broker else order.bk_broker
 
+        stamp_time_in = request.form.get("stamp_time_in", "").strip()
+        stamp_time_out = request.form.get("stamp_time_out", "").strip()
+        if stamp_time_in:
+            fill.stamp_time_in = stamp_time_in
+        if stamp_time_out:
+            fill.stamp_time_out = stamp_time_out
+
         counterparties = []
         for i in range(50):
             qty_str = request.form.get(f"cp_qty_{i}", "").strip()

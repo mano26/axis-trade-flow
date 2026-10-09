@@ -618,6 +618,22 @@
         <p class="form-help" style="margin-bottom: 8px;">
             Fill #{{ fill_num }} — Allocate {{ fill.fill_quantity }} contracts. Quantities must sum to {{ fill.fill_quantity }}.
         </p>
+        <div style="display:flex; gap:16px; margin-bottom:12px;">
+            <div class="form-group" style="margin:0;">
+                <label for="stamp_time_in_{{ fill.id }}" style="display:block; font-size:0.85em; margin-bottom:3px;">Time In <span style="font-weight:normal;color:#888;">(HHMMSS)</span></label>
+                <input type="text" id="stamp_time_in_{{ fill.id }}" name="stamp_time_in"
+                       value="{{ fill.stamp_time_in or '' }}"
+                       placeholder="093000" maxlength="6" pattern="[0-9]{6}"
+                       title="6-digit time HHMMSS e.g. 093000" style="width:90px;">
+            </div>
+            <div class="form-group" style="margin:0;">
+                <label for="stamp_time_out_{{ fill.id }}" style="display:block; font-size:0.85em; margin-bottom:3px;">Time Out <span style="font-weight:normal;color:#888;">(HHMMSS)</span></label>
+                <input type="text" id="stamp_time_out_{{ fill.id }}" name="stamp_time_out"
+                       value="{{ fill.stamp_time_out or '' }}"
+                       placeholder="093005" maxlength="6" pattern="[0-9]{6}"
+                       title="6-digit time HHMMSS e.g. 093005" style="width:90px;">
+            </div>
+        </div>
         {% if order.has_futures_legs %}
         {# Pre-compute per-counterparty fractional futures for the warning display #}
         {# delta_pct = futures_leg.volume / order.total_quantity * 100 #}
