@@ -1760,7 +1760,7 @@ body{{font-family:Arial,Helvetica,sans-serif;background:#e0e0e0;padding:0}}
 .cp-grand-half{{flex:1;padding:3px 8px;font-size:11px;font-weight:900}}
 .cp-grand-half+.cp-grand-half{{border-left:1.5px solid #000}}
 /* Linear layout (TICKET_LAYOUT = 'linear') */
-.ln-broker-section{{break-inside:avoid;page-break-inside:avoid;margin-bottom:4px}}
+.ln-broker-section{{margin-bottom:4px}}
 .ln-broker-label{{font-size:8px;font-weight:700;color:#666;letter-spacing:1px;
   text-align:right;padding:1px 3px;border-top:1px solid #ccc;margin-bottom:1px}}
 .ln-table{{width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed}}
@@ -1793,19 +1793,19 @@ body{{font-family:Arial,Helvetica,sans-serif;background:#e0e0e0;padding:0}}
 .bk-info{{font-size:9px;font-weight:700;color:#333}}
 /* Linear layout — page wrapper and ticket header */
 .ln-ticket{{width:100%;background:#fff;padding:10px 14px;display:block}}
-.ln-page{{width:148mm;height:210mm;box-sizing:border-box;overflow:hidden;
-  border:1px solid #bbb;background:#fff;padding:6mm 8mm;
-  display:block;margin:0 auto 10px}}
+/* Screen: variable-height pages separated by a dashed rule */
+.ln-page{{background:#fff;padding:6mm 8mm;display:block;max-width:148mm;margin:0 auto}}
+.ln-page+.ln-page{{border-top:2px dashed #aaa;margin-top:12px;padding-top:6mm}}
 .ln-cont-bar{{font-size:9px;font-weight:700;color:#555;letter-spacing:1px;
   text-align:right;padding:2px 0 4px;border-bottom:1px solid #ccc;margin-bottom:4px}}
 @media print{{
   .print-nav{{display:none !important}}
   body{{background:white;padding:0;margin:0}}
   .tickets-wrap{{padding:0}}
-  {"@page{size:148mm 210mm;margin:0}" if layout == "linear" else "@page{size:8in 5.5in;margin:0}"}
+  {"@page{size:148mm 210mm;margin:7mm}" if layout == "linear" else "@page{size:8in 5.5in;margin:0}"}
   {"" if layout == "linear" else ".ticket{width:8in;break-after:page;-webkit-print-color-adjust:exact;print-color-adjust:exact} .ticket:last-child{break-after:auto}"}
   .ln-ticket{{break-after:auto;-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-  {".ln-page{{width:148mm;height:210mm;box-sizing:border-box;padding:6mm 8mm;border:none;margin:0;break-after:page;-webkit-print-color-adjust:exact;print-color-adjust:exact}} .ln-page:last-child{{break-after:auto}}" if layout == "linear" else ""}
+  {".ln-page+.ln-page{{break-before:page;border-top:none;margin-top:0;padding-top:6mm}} .ln-page{{-webkit-print-color-adjust:exact;print-color-adjust:exact}} .ln-broker-section{{break-inside:auto;page-break-inside:auto}}" if layout == "linear" else ""}
 }}
 </style></head><body>
 <div class='print-nav'>
