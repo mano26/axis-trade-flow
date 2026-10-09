@@ -501,6 +501,13 @@ _ROWS_CONT    = 12  # CP rows on continuation pages
 _ROWS_PAGE_1 = 12   # broker section rows that fit on page 1 (after trade grid)
 _ROWS_CONT   = 20   # broker section rows on continuation pages
 
+# Linear layout: flat data-row counts per page.
+# Each CP allocation produces N rows (one per leg); overhead adds ~3 rows per
+# broker section (label + thead + subtotal).  Tune these to match printed output.
+_LN_ROWS_PAGE_1 = 18   # data rows on page 1 (A5: header+grid consume ~⅓ of page)
+_LN_ROWS_CONT   = 32   # data rows on A5 continuation pages (no header overhead)
+_LN_SECTION_OH  = 3    # overhead rows per broker section (label + header + subtotal)
+
 
 def _fmt_strike(val) -> str:
     if val is None: return ""
@@ -682,6 +689,59 @@ def _cp_leg_half_html(rows, side_label, sub_opt, sub_fut, broker, show_hdr) -> s
     return h
 
 
+def _ln_paginate_sections(all_sections, rows_page_1, rows_cont):
+    """Split linear broker sections across pages.
+
+    Returns a list of pages; each page is a list of section dicts.
+    Sections that are larger than a full page budget are split into
+    sub-sections so no page overflows.
+    """
+    def _section_data_rows(sec):
+        return len(sec.get("buy_rows", [])) + len(sec.get("sell_rows", []))
+
+    def _split_section(sec, chunk_size):
+        """Yield sub-section dicts each with at most chunk_size data rows."""
+        buy_r  = list(sec.get("buy_rows",  []))
+        sell_r = list(sec.get("sell_rows", []))
+        all_r  = buy_r + sell_r
+        for i in range(0, max(len(all_r), 1), chunk_size):
+            chunk = all_r[i:i + chunk_size]
+            sub = dict(sec)
+            sub["buy_rows"]        = [r for r in chunk if not r["is_fut"] and r.get("_side") == "BUY"
+                                       or not r["is_fut"] and r in buy_r and r in chunk]
+            # Preserve original buy/sell split:
+            sub["buy_rows"]  = [r for r in buy_r  if r in chunk]
+            sub["sell_rows"] = [r for r in sell_r if r in chunk]
+            sub["is_continuation"] = (i > 0)
+            yield sub
+
+    pages          = []
+    current_page   = []
+    current_rows   = 0
+    budget         = rows_page_1
+
+    for section in all_sections:
+        data_rows = _section_data_rows(section)
+        # If this single section is bigger than a whole continuation page, split it
+        max_chunk = max(budget - _LN_SECTION_OH, rows_cont - _LN_SECTION_OH, 1)
+        chunks = list(_split_section(section, max_chunk))
+
+        for chunk in chunks:
+            chunk_rows = _section_data_rows(chunk) + _LN_SECTION_OH
+            eff_budget = budget if not pages and not current_page else rows_cont
+            if current_rows + chunk_rows > eff_budget and current_page:
+                pages.append(current_page)
+                current_page = []
+                current_rows = 0
+            current_page.append(chunk)
+            current_rows += chunk_rows
+
+    if current_page:
+        pages.append(current_page)
+
+    return pages if pages else [[]]
+
+
 def _linear_broker_section_html(section: dict) -> str:
     """Render one broker's allocation as a flat linear table.
 
@@ -709,17 +769,17 @@ def _linear_broker_section_html(section: dict) -> str:
     h += f"<div class='ln-broker-label'>{bar_right}</div>\n"
     h += ("<table class='ln-table'>\n"
           "<colgroup>"
-          "<col style='width:18px'>"   # chk
-          "<col style='width:46px'>"   # BROKER
-          "<col style='width:38px'>"   # SIDE
-          "<col style='width:48px'>"   # QTY
-          "<col style='width:62px'>"   # CONTRACT
-          "<col style='width:54px'>"   # STRIKE
-          "<col style='width:36px'>"   # TYPE
-          "<col style='width:52px'>"   # PRICE
-          "<col style='width:38px'>"   # CP
-          "<col style='width:38px'>"   # HOUSE
-          "<col>"                      # BKT (auto)
+          "<col style='width:2%'>"    # chk
+          "<col style='width:7%'>"    # BROKER
+          "<col style='width:6%'>"    # SIDE
+          "<col style='width:8%'>"    # QTY
+          "<col style='width:10%'>"   # CONTRACT
+          "<col style='width:10%'>"   # STRIKE
+          "<col style='width:6%'>"    # TYPE
+          "<col style='width:9%'>"    # PRICE
+          "<col style='width:8%'>"    # CP
+          "<col style='width:8%'>"    # HOUSE
+          "<col style='width:26%'>"   # BKT
           "</colgroup>\n"
           "<thead><tr>"
           "<th></th><th>BROKER</th><th>SIDE</th><th>QTY</th><th>CONTRACT</th>"
@@ -1045,35 +1105,55 @@ def generate_ticket_with_cps_html(order, layout=None) -> str:
         )
 
         if eff_layout == "linear":
-            # Linear layout: one header, all broker sections flow continuously —
-            # no pagination, no repeated headers.
+            # Linear layout: paginate broker sections across A5 pages.
+            # Page 1 has full AXIS header + trade grid + CPs that fit.
+            # Continuation pages have only a thin page-N-of-M bar + CPs.
             bk_val  = order.bk_broker or ""
             acct    = order.account or ""
             house   = order.house or ""
             bk_line = f"BK: {bk_val}<br>" if bk_val else ""
-            pg_line = "PAGE 1 OF 1"
-            page_h  = "<div class='ln-ticket'>\n"
-            page_h += (f"<div class='tkt-header'>"
-                       f"<div class='tkt-acct-left'>House: {house}<br>Acct: {acct}</div>"
-                       f"<span class='tkt-title'>A X I S</span>"
-                       f"<div class='tkt-meta'>"
-                       f"{bk_line}"
-                       f"{order.trade_date.strftime('%Y/%m/%d') if order.trade_date else ''}<br>"
-                       f"<span class='tkt-pg'>{pg_line}</span>")
-            if fill_label:
-                page_h += f"<br><span class='fill-label'>{fill_label}</span>"
-            page_h += "</div></div>\n"
-            page_h += "<div class='tkt-body'>\n"
-            page_h += _build_side(all_leg_dicts, "BUY",  max_rows, "")
-            page_h += _build_side(all_leg_dicts, "SELL", max_rows, "")
-            page_h += "</div>\n"
-            page_h += ts_html
-            for section in all_sections:
-                page_h += _linear_broker_section_html(section)
-            if len(all_sections) >= 2:
-                page_h += _grand_totals_html(all_sections)
-            page_h += "</div>\n"
-            html += page_h
+
+            pages       = _ln_paginate_sections(all_sections, _LN_ROWS_PAGE_1, _LN_ROWS_CONT)
+            total_pages = len(pages)
+
+            for page_idx, sections_on_page in enumerate(pages):
+                page_num = page_idx + 1
+                is_last  = (page_idx == total_pages - 1)
+                pg_line  = f"PAGE {page_num} OF {total_pages}"
+
+                page_h = "<div class='ln-page'>\n"
+
+                if page_idx == 0:
+                    # Page 1: full AXIS header + trade grid
+                    page_h += (f"<div class='tkt-header'>"
+                               f"<div class='tkt-acct-left'>House: {house}<br>Acct: {acct}</div>"
+                               f"<span class='tkt-title'>A X I S</span>"
+                               f"<div class='tkt-meta'>"
+                               f"{bk_line}"
+                               f"{order.trade_date.strftime('%Y/%m/%d') if order.trade_date else ''}<br>"
+                               f"<span class='tkt-pg'>{pg_line}</span>")
+                    if fill_label:
+                        page_h += f"<br><span class='fill-label'>{fill_label}</span>"
+                    page_h += "</div></div>\n"
+                    page_h += "<div class='tkt-body'>\n"
+                    page_h += _build_side(all_leg_dicts, "BUY",  max_rows, "")
+                    page_h += _build_side(all_leg_dicts, "SELL", max_rows, "")
+                    page_h += "</div>\n"
+                    page_h += ts_html
+                else:
+                    # Continuation pages: thin identification bar only
+                    page_h += (f"<div class='ln-cont-bar'>"
+                               f"AXIS &nbsp;·&nbsp; {acct} &nbsp;·&nbsp; {pg_line}"
+                               f"</div>\n")
+
+                for section in sections_on_page:
+                    page_h += _linear_broker_section_html(section)
+
+                if is_last and len(all_sections) >= 2:
+                    page_h += _grand_totals_html(all_sections)
+
+                page_h += "</div>\n"
+                html += page_h
         else:
             # Split layout: paginate broker sections across pages.
             # Large sections are split at CP boundaries so each card fits one page.
@@ -1711,16 +1791,20 @@ body{{font-family:Arial,Helvetica,sans-serif;background:#e0e0e0;padding:0}}
 .broker-box-label{{font-size:7px;font-weight:700;color:#666;text-align:center;
   letter-spacing:1px;margin-top:2px}}
 .bk-info{{font-size:9px;font-weight:700;color:#333}}
-/* Linear layout ticket wrapper — no min-height, no flex, portrait page */
-.ln-ticket{{width:100%;border:1.5px solid #000;background:#fff;
-  padding:10px 14px;display:block}}
+/* Linear layout — page wrapper and ticket header */
+.ln-ticket{{width:100%;background:#fff;padding:10px 14px;display:block}}
+.ln-page{{width:100%;border:1.5px solid #000;background:#fff;
+  padding:10px 14px;display:block;margin-bottom:0.25in}}
+.ln-cont-bar{{font-size:9px;font-weight:700;color:#555;letter-spacing:1px;
+  text-align:right;padding:2px 0 4px;border-bottom:1px solid #ccc;margin-bottom:4px}}
 @media print{{
   .print-nav{{display:none !important}}
   body{{background:white;padding:0;margin:0}}
   .tickets-wrap{{padding:0}}
-  {"@page{size:8.5in 11in;margin:0.3in}" if layout == "linear" else "@page{size:8in 5.5in;margin:0}"}
+  {"@page{size:148mm 210mm;margin:7mm}" if layout == "linear" else "@page{size:8in 5.5in;margin:0}"}
   {"" if layout == "linear" else ".ticket{width:8in;break-after:page;-webkit-print-color-adjust:exact;print-color-adjust:exact} .ticket:last-child{break-after:auto}"}
   .ln-ticket{{break-after:auto;-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+  {".ln-page{{break-after:page;-webkit-print-color-adjust:exact;print-color-adjust:exact}} .ln-page:last-child{{break-after:auto}}" if layout == "linear" else ""}
 }}
 </style></head><body>
 <div class='print-nav'>
