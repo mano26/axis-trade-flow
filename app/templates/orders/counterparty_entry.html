@@ -86,6 +86,26 @@ function clearHouseIfSymbolCleared(rowIndex) {
                        placeholder="Account ID"
                        class="text-upper">
             </div>
+            <div class="form-group">
+                <label for="stamp_time_in">Time In <span style="font-weight:normal;font-size:0.85em;color:#888;">(HHMMSS)</span></label>
+                <input type="text" id="stamp_time_in" name="stamp_time_in"
+                       value="{{ submitted_time_in if submitted_time_in is defined else (fill.stamp_time_in or '') }}"
+                       placeholder="093000"
+                       maxlength="6"
+                       pattern="[0-9]{6}"
+                       title="6-digit time HHMMSS e.g. 093000"
+                       style="width:90px;">
+            </div>
+            <div class="form-group">
+                <label for="stamp_time_out">Time Out <span style="font-weight:normal;font-size:0.85em;color:#888;">(HHMMSS)</span></label>
+                <input type="text" id="stamp_time_out" name="stamp_time_out"
+                       value="{{ submitted_time_out if submitted_time_out is defined else (fill.stamp_time_out or '') }}"
+                       placeholder="093005"
+                       maxlength="6"
+                       pattern="[0-9]{6}"
+                       title="6-digit time HHMMSS e.g. 093005"
+                       style="width:90px;">
+            </div>
         </div>
 
         <h2>Counterparty Allocations</h2>

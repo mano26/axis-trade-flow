@@ -752,6 +752,10 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-primary" onclick="return confirm('Submit to exchange?')">Send to Exchange</button>
         </form>
+        <a href="{{ url_for('orders.download_keypunch_csv', order_id=order.id) }}"
+           class="btn" title="Download keypunch CSV for clearing system">
+            Download Keypunch CSV
+        </a>
         {% endif %}
         {% if current_user.is_super() and order.status in ('filled', 'amended', 'partial_fill', 'partial_cancelled') and not order.is_generic %}
         <a href="{{ url_for('orders.correct_trade_string_page', order_id=order.id) }}"

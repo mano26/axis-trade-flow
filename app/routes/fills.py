@@ -200,6 +200,14 @@ def enter_counterparties(fill_id: int):
         if account:
             order.account = account
 
+        # Save physical stamp times onto the fill
+        stamp_time_in = request.form.get("stamp_time_in", "").strip()
+        stamp_time_out = request.form.get("stamp_time_out", "").strip()
+        if stamp_time_in:
+            fill.stamp_time_in = stamp_time_in
+        if stamp_time_out:
+            fill.stamp_time_out = stamp_time_out
+
         counterparties = []
         # Read counterparty rows from form (up to 20 rows)
         for i in range(50):
@@ -261,6 +269,7 @@ def enter_counterparties(fill_id: int):
             cp_lookups=cp_lookups,
             submitted_cps=counterparties,
             submitted_house=house, submitted_account=account,
+            submitted_time_in=stamp_time_in, submitted_time_out=stamp_time_out,
         )
     except Exception as e:
         db.session.rollback()

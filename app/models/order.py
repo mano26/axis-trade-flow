@@ -170,6 +170,13 @@ class Order(TenantMixin, db.Model):
         doc="BK Broker for trades with futures legs attached. Optional but "
             "prompted on counterparty save if futures legs are present."
     )
+    keypunch_order_override = db.Column(
+        db.String(50),
+        nullable=True,
+        doc="Optional override for the Order Number field in the keypunch CSV. "
+            "When set, this value is used instead of the AXIS ticket_display. "
+            "Allows the desk to match the exchange's own order numbering scheme."
+    )
 
     # --- Status ---
     status = db.Column(

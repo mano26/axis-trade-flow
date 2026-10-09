@@ -80,6 +80,22 @@ class Fill(TenantMixin, db.Model):
             "Card/ticket generation requires ALLOCATED status on all fills."
     )
 
+    # --- Keypunch Stamp Times ---
+    stamp_time_in = db.Column(
+        db.String(10),
+        nullable=True,
+        doc="Physical ticket stamp time-in as HHMMSS string (e.g. '093000'). "
+            "Entered by the user at counterparty allocation time. Separate from "
+            "the system fill_timestamp — regulators require the physical ticket "
+            "time, not the system time."
+    )
+    stamp_time_out = db.Column(
+        db.String(10),
+        nullable=True,
+        doc="Physical ticket stamp time-out as HHMMSS string (e.g. '093005'). "
+            "Entered by the user at counterparty allocation time."
+    )
+
     # --- User Tracking ---
     created_by_id = db.Column(
         db.Integer,
