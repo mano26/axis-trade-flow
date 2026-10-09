@@ -189,7 +189,7 @@ class TestGenerateKeypunchCsv:
         assert len(rows) == 1
         row = rows[0]
 
-        assert row["Trade Date"] == "03/15/2026"
+        assert row["Trade Date"] == "20260315"
         assert row["Firm"] == "GFI"
         assert row["Product"] == "SR3"
         assert row["Contract"] == "202603"

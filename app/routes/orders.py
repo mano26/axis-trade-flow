@@ -1643,25 +1643,27 @@ def cancel_balance(order_id):
 
 
 # =========================================================================
-# Keypunch CSV Download
+# Keypunch Excel Download
 # =========================================================================
 
-@orders_bp.route("/<int:order_id>/keypunch.csv")
+@orders_bp.route("/<int:order_id>/keypunch.xlsx")
 @login_required
 def download_keypunch_csv(order_id: int):
     """
-    Generate and stream a keypunch CSV for the given order.
+    Generate and stream a keypunch Excel workbook for the given order.
 
-    The CSV is formatted for the third-party clearing system and contains
-    one row per fill × leg × counterparty allocation.  The file is returned
-    as an attachment so the browser downloads it immediately.
+    The .xlsx file is formatted for the third-party clearing system and
+    contains one row per fill × leg × counterparty allocation.  Cells are
+    centered horizontally and vertically; the header row is bold with a
+    light-grey fill.  The file is returned as an attachment so the browser
+    downloads it immediately.
 
     Only orders that have at least one allocated fill are available for
     download; attempting to download for an order with no fills returns a
     flash + redirect.
     """
     from flask import make_response
-    from app.services.keypunch_generator import generate_keypunch_csv
+    from app.services.keypunch_generator import generate_keypunch_xlsx
 
     order = _get_order_or_404(order_id)
 
@@ -1669,11 +1671,13 @@ def download_keypunch_csv(order_id: int):
         flash("No fills recorded — nothing to export.", "warning")
         return redirect(url_for("orders.detail", order_id=order_id))
 
-    csv_text = generate_keypunch_csv(order)
+    xlsx_bytes = generate_keypunch_xlsx(order)
 
-    filename = f"keypunch_{order.ticket_display}_{order.trade_date.strftime('%Y%m%d')}.csv"
-    response = make_response(csv_text)
-    response.headers["Content-Type"] = "text/csv"
+    filename = f"keypunch_{order.ticket_display}_{order.trade_date.strftime('%Y%m%d')}.xlsx"
+    response = make_response(xlsx_bytes)
+    response.headers["Content-Type"] = (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
     response.headers["Content-Disposition"] = f"attachment; filename={filename}"
     return response
 
