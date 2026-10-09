@@ -1792,20 +1792,21 @@ body{{font-family:Arial,Helvetica,sans-serif;background:#e0e0e0;padding:0}}
   letter-spacing:1px;margin-top:2px}}
 .bk-info{{font-size:9px;font-weight:700;color:#333}}
 /* Linear layout — page wrapper and ticket header */
-.ln-ticket{{width:100%;background:#fff;padding:10px 14px;display:block}}
-/* Screen: variable-height pages separated by a dashed rule */
-.ln-page{{background:#fff;padding:6mm 8mm;display:block;max-width:148mm;margin:0 auto}}
-.ln-page+.ln-page{{border-top:2px dashed #aaa;margin-top:12px;padding-top:6mm}}
+.ln-ticket{{width:100%;background:#e0e0e0;padding:16px;display:block}}
+/* Screen: A5 paper preview boxes */
+.ln-page{{width:148mm;min-height:210mm;background:#fff;padding:7mm;
+  margin:0 auto 16px auto;box-shadow:0 2px 8px rgba(0,0,0,.2);
+  box-sizing:border-box;display:block}}
 .ln-cont-bar{{font-size:9px;font-weight:700;color:#555;letter-spacing:1px;
   text-align:right;padding:2px 0 4px;border-bottom:1px solid #ccc;margin-bottom:4px}}
+{"@page{size:148mm 210mm;margin:7mm}" if layout == "linear" else "@page{size:8in 5.5in;margin:0}"}
 @media print{{
   .print-nav{{display:none !important}}
   body{{background:white;padding:0;margin:0}}
   .tickets-wrap{{padding:0}}
-  {"@page{size:148mm 210mm;margin:7mm}" if layout == "linear" else "@page{size:8in 5.5in;margin:0}"}
   {"" if layout == "linear" else ".ticket{width:8in;break-after:page;-webkit-print-color-adjust:exact;print-color-adjust:exact} .ticket:last-child{break-after:auto}"}
-  .ln-ticket{{break-after:auto;-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-  {".ln-page+.ln-page{{break-before:page;border-top:none;margin-top:0;padding-top:6mm}} .ln-page{{-webkit-print-color-adjust:exact;print-color-adjust:exact}} .ln-broker-section{{break-inside:auto;page-break-inside:auto}}" if layout == "linear" else ""}
+  .ln-ticket{{background:white;-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+  {".ln-page{box-shadow:none;margin:0;padding:0;min-height:0;width:auto;-webkit-print-color-adjust:exact;print-color-adjust:exact} .ln-page+.ln-page{break-before:page;page-break-before:always} .ln-broker-section{break-inside:auto;page-break-inside:auto}" if layout == "linear" else ""}
 }}
 </style></head><body>
 <div class='print-nav'>
