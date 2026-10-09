@@ -504,9 +504,9 @@ _ROWS_CONT   = 20   # broker section rows on continuation pages
 # Linear layout: flat data-row counts per page.
 # Each CP allocation produces N rows (one per leg); overhead adds ~3 rows per
 # broker section (label + thead + subtotal).  Tune these to match printed output.
-_LN_ROWS_PAGE_1 = 28   # data rows on page 1 (A5 portrait: header+grid ≈ 38mm, ~160mm left)
-_LN_ROWS_CONT   = 44   # data rows on A5 continuation pages (≈198mm usable)
-_LN_SECTION_OH  = 3    # overhead rows per broker section (label + header + subtotal)
+_LN_ROWS_PAGE_1 = 16   # data rows on page 1 (A5: header+grid eat ~110mm, ~16 rows remain)
+_LN_ROWS_CONT   = 26   # data rows on A5 continuation pages (cont-bar ~6mm, ~26 rows fit)
+_LN_SECTION_OH  = 2    # overhead rows per broker section (label + thead; subtotal in count)
 
 
 def _fmt_strike(val) -> str:
@@ -770,16 +770,16 @@ def _linear_broker_section_html(section: dict) -> str:
     h += ("<table class='ln-table'>\n"
           "<colgroup>"
           "<col style='width:2%'>"    # chk
-          "<col style='width:7%'>"    # BROKER
-          "<col style='width:6%'>"    # SIDE
+          "<col style='width:9%'>"    # BROKER  (was 7%  — "OPUS" needs room)
+          "<col style='width:8%'>"    # SIDE    (was 6%  — "SELL" needs room)
           "<col style='width:8%'>"    # QTY
-          "<col style='width:10%'>"   # CONTRACT
+          "<col style='width:13%'>"   # CONTRACT (was 10% — "SFRZ9" needs room)
           "<col style='width:10%'>"   # STRIKE
-          "<col style='width:6%'>"    # TYPE
+          "<col style='width:7%'>"    # TYPE    (was 6%)
           "<col style='width:9%'>"    # PRICE
           "<col style='width:8%'>"    # CP
           "<col style='width:8%'>"    # HOUSE
-          "<col style='width:26%'>"   # BKT
+          "<col style='width:18%'>"   # BKT     (was 26% — "690M6" only 5 chars)
           "</colgroup>\n"
           "<thead><tr>"
           "<th></th><th>BROKER</th><th>SIDE</th><th>QTY</th><th>CONTRACT</th>"
@@ -1202,149 +1202,6 @@ def generate_ticket_with_cps_html(order, layout=None) -> str:
     html += "</div></body></html>"
     return html
 
-    # ── Classify legs ─────────────────────────────────────────────────
-    sorted_legs = sorted(order.legs, key=lambda l: l.leg_index)
-
-    def _leg_dict(leg):
-        is_fut = leg.option_type is None and leg.strike is None
-        opt_type = "FUT" if is_fut else ("CALL" if leg.option_type == "C" else "PUT")
-        side = "BUY" if leg.side == "B" else "SELL"
-        s = str(leg.strike) if leg.strike else ""
-        if s:
-            if "." not in s: s += ".00"
-            elif len(s) - s.index(".") < 3: s += "0"
-        return {
-            "side": side, "opt_type": opt_type,
-            "qty": str(leg.volume),
-            "mo": (leg.mo_card_code or leg.expiry or "").upper(),
-            "strike": s,
-            "price": _fmt_price(leg.price),
-            "is_fut": is_fut, "volume": leg.volume,
-        }
-
-    all_leg_dicts = [_leg_dict(l) for l in sorted_legs]
-    option_dicts  = [d for d in all_leg_dicts if not d["is_fut"]]
-    futures_dicts = [d for d in all_leg_dicts if d["is_fut"]]
-
-    _buy_opt  = [d for d in option_dicts if d["side"] == "BUY"]
-    _sell_opt = [d for d in option_dicts if d["side"] == "SELL"]
-
-    # Use AVERAGE per-leg volume per side, normalised to the minimum option
-    # leg volume.  This prevents overcounting on multi-leg structures like
-    # a STUPID iron condor (4 buy legs × 100 summing to 400 when the correct
-    # per-side qty is 100), and also handles GENERIC orders where legs are
-    # entered at fill level rather than full order size.
-    _all_opt_vols = [d["volume"] for d in option_dicts] or [1]
-    _min_opt_vol  = min(_all_opt_vols)
-
-    buy_vol  = (sum(d["volume"] for d in _buy_opt)  / len(_buy_opt))  if _buy_opt  else 0
-    sell_vol = (sum(d["volume"] for d in _sell_opt) / len(_sell_opt)) if _sell_opt else 0
-
-    # ── CVD mode detection ────────────────────────────────────────────
-    # Simple CVD: all option legs on one side + a futures hedge.
-    # e.g. SELL CALL + BUY FUT.  One card suffices; fold futures qty
-    # into the CP table alongside the option qty.
-    #
-    # Spread CVD: options on BOTH sides + futures (e.g. PS + CVD).
-    # Generates a separate futures card per broker.
-    has_buy_options  = buy_vol  > 0
-    has_sell_options = sell_vol > 0
-    is_simple_cvd    = bool(futures_dicts) and not (has_buy_options and has_sell_options)
-    needs_futures_card = bool(futures_dicts) and not is_simple_cvd
-
-    # For simple CVD, identify which side carries options vs futures
-    if is_simple_cvd and futures_dicts:
-        _fut_side = futures_dicts[0]["side"]          # "BUY" or "SELL"
-        _opt_side = "SELL" if _fut_side == "BUY" else "BUY"
-        _opt_vol  = sell_vol if _opt_side == "SELL" else buy_vol
-    else:
-        _fut_side = _opt_side = _opt_vol = None
-
-    max_rows = 1
-    for side in ("BUY", "SELL"):
-        for typ in ("CALL", "PUT", "FUT"):
-            cnt = sum(1 for d in all_leg_dicts if d["side"] == side and d["opt_type"] == typ)
-            max_rows = max(max_rows, cnt)
-    max_rows = min(max_rows, 4)
-
-    # Timestamps
-    time_in   = _fmt_ts(order.time_in)
-    time_out  = _fmt_ts(order.time_out)
-    fill_times = [_fmt_ts(f.fill_timestamp) for f in order.fills if f.fill_timestamp]
-    mod_times  = []
-    if order.modification_timestamps:
-        from datetime import datetime, timezone
-        for ts in order.modification_timestamps:
-            try:
-                dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-                mod_times.append(_fmt_ts(dt))
-            except Exception:
-                mod_times.append(ts[:8])
-
-    ts_parts = []
-    if time_in: ts_parts.append(f"IN: {time_in}")
-    for ft in fill_times:
-        if ft and ft != time_in: ts_parts.append(f"FILL: {ft}")
-    for mt in mod_times:
-        if mt: ts_parts.append(f"MOD: {mt}")
-    if time_out: ts_parts.append(f"OUT: {time_out}")
-    ts_html = (f"<div class='timestamps'>{'&nbsp;&nbsp; '.join(ts_parts)}</div>\n"
-               if ts_parts and SHOW_TIMESTAMPS else "")
-
-    bk_broker = order.bk_broker or ""
-    total_qty = _min_opt_vol  # normalise to base leg, not raw order.total_quantity
-
-    html = _ticket_html_header_cps(max_rows)
-
-    for broker, cps in broker_cps.items():
-        n_cps = len(cps)
-        option_pages = 1 + max(0, (n_cps - _ROWS_PAGE_1 + _ROWS_CONT - 1) // _ROWS_CONT
-                               if n_cps > _ROWS_PAGE_1 else 0)
-        futures_pages = 1 if needs_futures_card else 0
-        total_pages   = option_pages + futures_pages
-
-        page_num = 1
-
-        # Page 1
-        batch = cps[:_ROWS_PAGE_1]
-        more  = n_cps > _ROWS_PAGE_1
-        rng   = f"1\u2013{len(batch)} of {n_cps}" if more else None
-        html += _cps_page1(order, broker, batch, rng, all_leg_dicts,
-                           futures_dicts, buy_vol, sell_vol, ts_html,
-                           page_num, total_pages, not more, max_rows, total_qty,
-                           is_simple_cvd=is_simple_cvd,
-                           simple_cvd_opt_side=_opt_side,
-                           simple_cvd_opt_vol=_opt_vol,
-                           simple_cvd_fut_side=_fut_side,
-                           bk_broker=bk_broker)
-        page_num += 1
-
-        # Continuation pages
-        offset = _ROWS_PAGE_1
-        while offset < n_cps:
-            batch = cps[offset: offset + _ROWS_CONT]
-            start, end = offset + 1, offset + len(batch)
-            is_last = end >= n_cps
-            html += _cps_cont_page(order, broker, batch,
-                                   f"{start}\u2013{end} of {n_cps}",
-                                   buy_vol, sell_vol,
-                                   page_num, total_pages, is_last, total_qty,
-                                   is_simple_cvd=is_simple_cvd,
-                                   simple_cvd_opt_side=_opt_side,
-                                   simple_cvd_opt_vol=_opt_vol,
-                                   simple_cvd_fut_side=_fut_side)
-            page_num += 1
-            offset   += _ROWS_CONT
-
-        # Futures card — spread CVD only
-        if needs_futures_card:
-            html += _cps_futures_page(order, broker, cps, futures_dicts,
-                                      page_num, total_pages, total_qty, bk_broker)
-
-    html += "</div></body></html>"
-    return html
-
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _cps_mini_header(order, broker, page_num, total_pages, fill_label=None) -> str:
@@ -1765,8 +1622,10 @@ body{{font-family:Arial,Helvetica,sans-serif;background:#e0e0e0;padding:0}}
   text-align:right;padding:1px 3px;border-top:1px solid #ccc;margin-bottom:1px}}
 .ln-table{{width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed}}
 .ln-table th{{font-size:9.5px;font-weight:700;text-align:left;padding:2px 3px;
-  color:#444;border-bottom:0.5px solid #888}}
-.ln-table td{{padding:2px 3px;border-bottom:0.5px solid #eee;font-weight:600;vertical-align:middle}}
+  color:#444;border-bottom:0.5px solid #888;
+  overflow:hidden;white-space:nowrap;text-overflow:ellipsis}}
+.ln-table td{{padding:2px 3px;border-bottom:0.5px solid #eee;font-weight:600;vertical-align:middle;
+  overflow:hidden;white-space:nowrap;text-overflow:ellipsis}}
 .ln-table tr:last-child td{{border-bottom:none}}
 .ln-broker-col{{font-weight:900;font-size:10px;width:46px;letter-spacing:1px}}
 .ln-side{{font-weight:900;font-size:11px;width:36px;text-align:center}}
@@ -1803,10 +1662,10 @@ body{{font-family:Arial,Helvetica,sans-serif;background:#e0e0e0;padding:0}}
 @media print{{
   .print-nav{{display:none !important}}
   body{{background:white;padding:0;margin:0}}
-  .tickets-wrap{{padding:0}}
+  .tickets-wrap{{padding:0;{" display:block;" if layout == "linear" else ""}}}
   {"" if layout == "linear" else ".ticket{width:8in;break-after:page;-webkit-print-color-adjust:exact;print-color-adjust:exact} .ticket:last-child{break-after:auto}"}
   .ln-ticket{{background:white;-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-  {".ln-page{box-shadow:none;margin:0;padding:0;min-height:0;width:auto;-webkit-print-color-adjust:exact;print-color-adjust:exact} .ln-page+.ln-page{break-before:page;page-break-before:always} .ln-broker-section{break-inside:auto;page-break-inside:auto}" if layout == "linear" else ""}
+  {".ln-page{display:block;box-shadow:none;margin:0;padding:0;min-height:0;max-height:196mm;overflow:hidden;width:auto;-webkit-print-color-adjust:exact;print-color-adjust:exact;break-inside:avoid;page-break-inside:avoid;break-after:page;page-break-after:always} .ln-page:last-child{break-after:auto;page-break-after:auto} .ln-broker-section{break-inside:avoid;page-break-inside:avoid}" if layout == "linear" else ""}
 }}
 </style></head><body>
 <div class='print-nav'>
