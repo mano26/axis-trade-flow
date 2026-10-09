@@ -3,6 +3,7 @@
 # =============================================================================
 from flask import Blueprint, render_template, redirect, url_for, flash, make_response
 from flask_login import login_required, current_user
+from app.tenancy import active_tenant_id
 from app.extensions import db
 from app.models.order import Order
 from app.models.print_event import PrintEvent, PrintEventType
@@ -19,7 +20,7 @@ tickets_bp = Blueprint("tickets", __name__)
 @login_required
 def generate(order_id):
     order = Order.query.filter_by(
-        id=order_id, tenant_id=current_user.tenant_id,
+        id=order_id, tenant_id=active_tenant_id(),
     ).first_or_404()
 
     try:
@@ -31,14 +32,14 @@ def generate(order_id):
     # Create print event
     snapshot = build_ticket_data_snapshot(order)
     print_event = PrintEvent(
-        tenant_id=current_user.tenant_id,
+        tenant_id=active_tenant_id(),
         order_id=order.id,
         event_type=PrintEventType.TICKET,
         printed_by_id=current_user.id,
         data_snapshot=snapshot,
     )
     db.session.add(print_event)
-    audit_service.log_print_event(order, current_user.tenant_id, "ticket")
+    audit_service.log_print_event(order, active_tenant_id(), "ticket")
     db.session.commit()
 
     # Generate and return HTML
@@ -52,7 +53,7 @@ def generate(order_id):
 def generate_with_cps(order_id):
     """Generate per-broker ticket cards with CP allocations."""
     order = Order.query.filter_by(
-        id=order_id, tenant_id=current_user.tenant_id,
+        id=order_id, tenant_id=active_tenant_id(),
     ).first_or_404()
 
     try:
@@ -63,14 +64,14 @@ def generate_with_cps(order_id):
 
     snapshot = build_ticket_data_snapshot(order)
     print_event = PrintEvent(
-        tenant_id=current_user.tenant_id,
+        tenant_id=active_tenant_id(),
         order_id=order.id,
         event_type=PrintEventType.TICKET,
         printed_by_id=current_user.id,
         data_snapshot=snapshot,
     )
     db.session.add(print_event)
-    audit_service.log_print_event(order, current_user.tenant_id, "ticket_with_cps")
+    audit_service.log_print_event(order, active_tenant_id(), "ticket_with_cps")
     db.session.commit()
 
     html = generate_ticket_with_cps_html(order)
@@ -84,7 +85,7 @@ def generate_with_cps(order_id):
 def generate_with_cps_linear(order_id):
     """Generate per-broker ticket cards with CP allocations — linear (flat) layout."""
     order = Order.query.filter_by(
-        id=order_id, tenant_id=current_user.tenant_id,
+        id=order_id, tenant_id=active_tenant_id(),
     ).first_or_404()
 
     try:
@@ -95,14 +96,14 @@ def generate_with_cps_linear(order_id):
 
     snapshot = build_ticket_data_snapshot(order)
     print_event = PrintEvent(
-        tenant_id=current_user.tenant_id,
+        tenant_id=active_tenant_id(),
         order_id=order.id,
         event_type=PrintEventType.TICKET,
         printed_by_id=current_user.id,
         data_snapshot=snapshot,
     )
     db.session.add(print_event)
-    audit_service.log_print_event(order, current_user.tenant_id, "ticket_with_cps_linear")
+    audit_service.log_print_event(order, active_tenant_id(), "ticket_with_cps_linear")
     db.session.commit()
 
     html = generate_ticket_with_cps_html(order, layout="linear")

@@ -13,6 +13,7 @@ from flask import (
     request, jsonify,
 )
 from flask_login import login_required, current_user
+from app.tenancy import active_tenant_id
 from app.extensions import db
 from app.models.order import Order, OrderLeg, OrderStatus
 from app.models.fill import Fill, FillLegPrice, FillCounterparty, AllocationStatus
@@ -36,14 +37,14 @@ def index():
     today = date.today()
     orders = (
         Order.query
-        .filter_by(tenant_id=current_user.tenant_id, trade_date=today)
+        .filter_by(tenant_id=active_tenant_id(), trade_date=today)
         .filter(Order.deleted_at.is_(None))
         .order_by(Order.ticket_number.desc())
         .all()
     )
     from app.models.lookup import get_lookup_values, LookupType
     lookups = {
-        lt: get_lookup_values(current_user.tenant_id, lt)
+        lt: get_lookup_values(active_tenant_id(), lt)
         for lt in LookupType.ALL
     }
     return render_template("orders/index.html", orders=orders, today=today, lookups=lookups)
@@ -79,7 +80,7 @@ def create():
 
         existing = db.session.execute(
             db.select(Order.id)
-            .where(Order.tenant_id == current_user.tenant_id)
+            .where(Order.tenant_id == active_tenant_id())
             .where(Order.trade_date == date.today())
             .where(Order.ticket_number == forced_ticket_num)
         ).first()
@@ -103,15 +104,15 @@ def create():
 
         if forced_ticket_num is not None:
             ticket_num = forced_ticket_num
-            tenant = db.session.get(Tenant, current_user.tenant_id)
+            tenant = db.session.get(Tenant, active_tenant_id())
             tenant.current_ticket_number = forced_ticket_num
         else:
-            ticket_num = _get_next_ticket_number(current_user.tenant_id)
+            ticket_num = _get_next_ticket_number(active_tenant_id())
 
         if is_generic:
             # Generic mode: store trade string, blank legs
             order = Order(
-                tenant_id=current_user.tenant_id,
+                tenant_id=active_tenant_id(),
                 ticket_number=ticket_num,
                 ticket_display=f"{ticket_num:04d}",
                 trade_date=date.today(),
@@ -128,7 +129,7 @@ def create():
             )
             db.session.add(order)
             db.session.flush()
-            audit_service.log_order_created(order, current_user.tenant_id)
+            audit_service.log_order_created(order, active_tenant_id())
             db.session.commit()
             flash(f"Generic order #{order.ticket_display} created. Enter legs manually.", "success")
             return redirect(url_for("orders.detail", order_id=order.id))
@@ -152,7 +153,7 @@ def create():
                 all_legs.extend(legs)
 
             order = Order(
-                tenant_id=current_user.tenant_id,
+                tenant_id=active_tenant_id(),
                 ticket_number=ticket_num,
                 ticket_display=f"{ticket_num:04d}",
                 trade_date=date.today(),
@@ -189,7 +190,7 @@ def create():
                 )
                 db.session.add(leg)
 
-            audit_service.log_order_created(order, current_user.tenant_id)
+            audit_service.log_order_created(order, active_tenant_id())
             db.session.commit()
             flash(f"Order #{order.ticket_display} created — {len(all_legs)} leg(s).", "success")
             return redirect(url_for("orders.detail", order_id=order.id))
@@ -210,7 +211,7 @@ def detail(order_id):
     latest_fill = order.fills[-1] if order.fills else None
     from app.models.lookup import get_lookup_values, LookupType
     lookups = {
-        lt: get_lookup_values(current_user.tenant_id, lt)
+        lt: get_lookup_values(active_tenant_id(), lt)
         for lt in LookupType.ALL
     }
 
@@ -295,7 +296,7 @@ def record_fill(order_id):
             flash(f"Fill qty ({fill_qty}) exceeds remaining ({order.remaining_quantity}).", "warning")
             return redirect(url_for("orders.detail", order_id=order.id))
         fill = Fill(
-            tenant_id=current_user.tenant_id,
+            tenant_id=active_tenant_id(),
             order_id=order.id,
             fill_quantity=fill_qty,
             allocation_status=AllocationStatus.PENDING,
@@ -309,10 +310,10 @@ def record_fill(order_id):
         elif order.status == OrderStatus.OPEN:
             order.transition_to(OrderStatus.PARTIAL_FILL)
         db.session.flush()
-        audit_service.log_fill_created(fill, current_user.tenant_id)
+        audit_service.log_fill_created(fill, active_tenant_id())
         if order.status != old_status:
             audit_service.log_order_status_change(
-                order, current_user.tenant_id, old_status, order.status,
+                order, active_tenant_id(), old_status, order.status,
             )
         db.session.commit()
         flash(f"Fill recorded: {fill_qty} contracts. Remaining: {order.remaining_quantity}.", "success")
@@ -430,7 +431,7 @@ def toggle_leg_side(order_id, leg_index):
             action="leg_side_toggled",
             entity_type="order",
             entity_id=order.id,
-            tenant_id=current_user.tenant_id,
+            tenant_id=active_tenant_id(),
             user_id=current_user.id,
             before_value={"leg_index": leg_index, "side": old_side},
             after_value={"leg_index": leg_index, "side": new_side},
@@ -478,7 +479,7 @@ def save_prices(order_id):
                     action="price_reconciliation_overridden",
                     entity_type="fill",
                     entity_id=fill.id,
-                    tenant_id=current_user.tenant_id,
+                    tenant_id=active_tenant_id(),
                     user_id=current_user.id,
                     notes=(
                         f"Order #{order.ticket_display}: trader confirmed odd-lot "
@@ -633,7 +634,7 @@ def amend_fill(order_id, fill_id):
                         action="price_reconciliation_overridden",
                         entity_type="fill",
                         entity_id=fill.id,
-                        tenant_id=current_user.tenant_id,
+                        tenant_id=active_tenant_id(),
                         user_id=current_user.id,
                         notes=(
                             f"Order #{order.ticket_display}: trader confirmed odd-lot "
@@ -655,7 +656,7 @@ def amend_fill(order_id, fill_id):
 
             after_prices = {lp.leg_index: lp.price for lp in leg_prices}
             audit_service.log_fill_price_amended(
-                fill, current_user.tenant_id, before_prices, after_prices,
+                fill, active_tenant_id(), before_prices, after_prices,
             )
 
         # ── House / Account / BK Broker ──
@@ -715,7 +716,7 @@ def amend_fill(order_id, fill_id):
             audit_service.log_action(
                 action=AuditAction.COUNTERPARTY_MODIFIED,
                 entity_type="fill", entity_id=fill.id,
-                tenant_id=current_user.tenant_id,
+                tenant_id=active_tenant_id(),
                 user_id=current_user.id,
                 before_value={"counterparties": before_cp},
                 after_value={"counterparties": after_cp},
@@ -813,7 +814,7 @@ def amend_fill_counterparties(order_id, fill_id):
             action=AuditAction.COUNTERPARTY_MODIFIED,
             entity_type="fill",
             entity_id=fill.id,
-            tenant_id=current_user.tenant_id,
+            tenant_id=active_tenant_id(),
             user_id=current_user.id,
             before_value={"counterparties": before},
             after_value={"counterparties": after},
@@ -865,7 +866,7 @@ def amend_fill_prices(order_id, fill_id):
                     action="price_reconciliation_overridden",
                     entity_type="fill",
                     entity_id=fill.id,
-                    tenant_id=current_user.tenant_id,
+                    tenant_id=active_tenant_id(),
                     user_id=current_user.id,
                     notes=(
                         f"Order #{order.ticket_display}: trader confirmed odd-lot "
@@ -889,7 +890,7 @@ def amend_fill_prices(order_id, fill_id):
         after_prices = {lp.leg_index: lp.price for lp in leg_prices}
 
         audit_service.log_fill_price_amended(
-            fill, current_user.tenant_id, before_prices, after_prices,
+            fill, active_tenant_id(), before_prices, after_prices,
         )
 
         # The order stays in its current filled state — price correction is
@@ -931,7 +932,7 @@ def cancel(order_id):
             flash(f"Cannot cancel an order in '{order.status}' status.", "warning")
             return redirect(url_for("orders.detail", order_id=order.id))
         audit_service.log_order_status_change(
-            order, current_user.tenant_id, old_status, order.status,
+            order, active_tenant_id(), old_status, order.status,
             notes="Order cancelled by user.",
         )
         db.session.commit()
@@ -957,7 +958,7 @@ def bulk_delete():
     now = datetime.now(_tz.utc)
     for oid in order_ids:
         order = Order.query.filter_by(
-            id=int(oid), tenant_id=current_user.tenant_id
+            id=int(oid), tenant_id=active_tenant_id()
         ).first()
         if order and order.deleted_at is None:
             order.deleted_at = now
@@ -965,7 +966,7 @@ def bulk_delete():
                 action="order_deleted",
                 entity_type="order",
                 entity_id=order.id,
-                tenant_id=current_user.tenant_id,
+                tenant_id=active_tenant_id(),
                 user_id=current_user.id,
                 notes=f"Order #{order.ticket_display} bulk-deleted by super admin.",
             )
@@ -995,7 +996,7 @@ def delete(order_id):
         action="order_hard_deleted",
         entity_type="order",
         entity_id=order.id,
-        tenant_id=current_user.tenant_id,
+        tenant_id=active_tenant_id(),
         user_id=current_user.id,
         notes=(
             f"Order #{ticket_display} hard-deleted by super admin "
@@ -1009,7 +1010,7 @@ def delete(order_id):
     # Walk the counter back so the freed number is the next candidate.
     # _get_next_ticket_number's gap-fill loop handles any collision with
     # other still-active orders on the same day.
-    tenant = db.session.get(Tenant, current_user.tenant_id)
+    tenant = db.session.get(Tenant, active_tenant_id())
     if ticket_num <= tenant.current_ticket_number:
         tenant.current_ticket_number = ticket_num - 1
 
@@ -1054,7 +1055,7 @@ def cancel_duplicate(order_id):
         action="order_cancelled_duplicate",
         entity_type="order",
         entity_id=order.id,
-        tenant_id=current_user.tenant_id,
+        tenant_id=active_tenant_id(),
         user_id=current_user.id,
         notes=(
             f"Order #{order.ticket_display} marked CANCELLED DUPLICATE by super admin. "
@@ -1213,7 +1214,7 @@ def amend_trade_string(order_id):
             action=AuditAction.TRADE_STRING_CORRECTED,
             entity_type="order",
             entity_id=order.id,
-            tenant_id=current_user.tenant_id,
+            tenant_id=active_tenant_id(),
             before_value={"raw_input": old_raw_input},
             after_value={"raw_input": new_input},
             notes=(
@@ -1291,7 +1292,7 @@ def modify(order_id):
         mods = list(order.modification_timestamps)
         mods.append(datetime.now(timezone.utc).isoformat())
         order.modification_timestamps = mods
-        audit_service.log_order_modified(order, current_user.tenant_id, before, after)
+        audit_service.log_order_modified(order, active_tenant_id(), before, after)
         db.session.commit()
         flash(f"Order #{order.ticket_display} modified.", "success")
     except ParseError as e:
@@ -1365,14 +1366,14 @@ def modify_balance(order_id):
         order.transition_to(OrderStatus.PARTIAL_CANCELLED)
 
         audit_service.log_order_status_change(
-            order, current_user.tenant_id, old_status, order.status,
+            order, active_tenant_id(), old_status, order.status,
             notes=f"Balance modified — new ticket opened for {new_volume} contracts.",
         )
 
         # ── Open new order for the balance ────────────────────────────────
-        ticket_num = _get_next_ticket_number(current_user.tenant_id)
+        ticket_num = _get_next_ticket_number(active_tenant_id())
         new_order = Order(
-            tenant_id=current_user.tenant_id,
+            tenant_id=active_tenant_id(),
             ticket_number=ticket_num,
             ticket_display=f"{ticket_num:04d}",
             trade_date=date.today(),
@@ -1409,7 +1410,7 @@ def modify_balance(order_id):
             )
             db.session.add(leg)
 
-        audit_service.log_order_created(new_order, current_user.tenant_id)
+        audit_service.log_order_created(new_order, active_tenant_id())
         db.session.commit()
 
         flash(
@@ -1472,14 +1473,14 @@ def cancel_balance(order_id):
         order.transition_to(OrderStatus.PARTIAL_CANCELLED)
 
         audit_service.log_order_status_change(
-            order, current_user.tenant_id, old_status, order.status,
+            order, active_tenant_id(), old_status, order.status,
             notes=f"Balance cancelled — new ticket will open for {new_volume} contracts.",
         )
 
         # Open new order for the balance
-        ticket_num = _get_next_ticket_number(current_user.tenant_id)
+        ticket_num = _get_next_ticket_number(active_tenant_id())
         new_order = Order(
-            tenant_id=current_user.tenant_id,
+            tenant_id=active_tenant_id(),
             ticket_number=ticket_num,
             ticket_display=f"{ticket_num:04d}",
             trade_date=date.today(),
@@ -1516,7 +1517,7 @@ def cancel_balance(order_id):
             )
             db.session.add(leg)
 
-        audit_service.log_order_created(new_order, current_user.tenant_id)
+        audit_service.log_order_created(new_order, active_tenant_id())
         db.session.commit()
 
         flash(
@@ -1591,14 +1592,14 @@ def cancel_balance(order_id):
         # and sets status to FILLED internally.
 
         audit_service.log_order_status_change(
-            order, current_user.tenant_id, old_status, order.status,
+            order, active_tenant_id(), old_status, order.status,
             notes=f"Balance modified — new ticket will be opened for {new_volume} contracts.",
         )
 
         # ── Open new order for the balance ──
-        ticket_num = _get_next_ticket_number(current_user.tenant_id)
+        ticket_num = _get_next_ticket_number(active_tenant_id())
         new_order = Order(
-            tenant_id=current_user.tenant_id,
+            tenant_id=active_tenant_id(),
             ticket_number=ticket_num,
             ticket_display=f"{ticket_num:04d}",
             trade_date=date.today(),
@@ -1635,7 +1636,7 @@ def cancel_balance(order_id):
             )
             db.session.add(leg)
 
-        audit_service.log_order_created(new_order, current_user.tenant_id)
+        audit_service.log_order_created(new_order, active_tenant_id())
         db.session.commit()
 
         flash(
@@ -1727,7 +1728,7 @@ def download_keypunch_xlsx(order_id: int):
 
 def _get_order_or_404(order_id):
     return Order.query.filter_by(
-        id=order_id, tenant_id=current_user.tenant_id,
+        id=order_id, tenant_id=active_tenant_id(),
     ).first_or_404()
 
 

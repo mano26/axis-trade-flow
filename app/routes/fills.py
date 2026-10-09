@@ -18,6 +18,7 @@
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
+from app.tenancy import active_tenant_id
 from app.extensions import db
 from app.models.order import Order, OrderStatus
 from app.models.fill import Fill, FillLegPrice, FillCounterparty, AllocationStatus
@@ -69,7 +70,7 @@ def create(order_id: int):
 
         # Create the fill
         fill = Fill(
-            tenant_id=current_user.tenant_id,
+            tenant_id=active_tenant_id(),
             order_id=order.id,
             fill_quantity=fill_qty,
             allocation_status=AllocationStatus.PENDING,
@@ -90,10 +91,10 @@ def create(order_id: int):
         db.session.flush()
 
         # Audit trail
-        audit_service.log_fill_created(fill, current_user.tenant_id)
+        audit_service.log_fill_created(fill, active_tenant_id())
         if order.status != old_status:
             audit_service.log_order_status_change(
-                order, current_user.tenant_id, old_status, order.status,
+                order, active_tenant_id(), old_status, order.status,
             )
 
         db.session.commit()
@@ -184,7 +185,7 @@ def enter_counterparties(fill_id: int):
 
     if request.method == "GET":
         from app.models.lookup import get_lookup_values, LookupType
-        cp_lookups = get_lookup_values(current_user.tenant_id, LookupType.COUNTERPARTY)
+        cp_lookups = get_lookup_values(active_tenant_id(), LookupType.COUNTERPARTY)
         return render_template(
             "orders/counterparty_entry.html", fill=fill, order=order,
             cp_lookups=cp_lookups,
@@ -263,7 +264,7 @@ def enter_counterparties(fill_id: int):
         flash(f"Validation failed: {'; '.join(e.errors)}", "danger")
         # Re-render with submitted values so user doesn't lose their work
         from app.models.lookup import get_lookup_values, LookupType
-        cp_lookups = get_lookup_values(current_user.tenant_id, LookupType.COUNTERPARTY)
+        cp_lookups = get_lookup_values(active_tenant_id(), LookupType.COUNTERPARTY)
         return render_template(
             "orders/counterparty_entry.html", fill=fill, order=order,
             cp_lookups=cp_lookups,
@@ -284,12 +285,12 @@ def enter_counterparties(fill_id: int):
 def _get_order_or_404(order_id: int) -> Order:
     """Fetch an order scoped to the current user's tenant."""
     return Order.query.filter_by(
-        id=order_id, tenant_id=current_user.tenant_id,
+        id=order_id, tenant_id=active_tenant_id(),
     ).first_or_404()
 
 
 def _get_fill_or_404(fill_id: int) -> Fill:
     """Fetch a fill scoped to the current user's tenant."""
     return Fill.query.filter_by(
-        id=fill_id, tenant_id=current_user.tenant_id,
+        id=fill_id, tenant_id=active_tenant_id(),
     ).first_or_404()

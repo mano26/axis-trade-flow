@@ -5,6 +5,7 @@
 from datetime import date, timedelta
 from flask import Blueprint, render_template, request
 from flask_login import login_required, current_user
+from app.tenancy import active_tenant_id
 from sqlalchemy import func
 from app.extensions import db
 from app.models.order import Order, OrderLeg
@@ -27,7 +28,7 @@ def order_log():
 
     query = (
         Order.query
-        .filter_by(tenant_id=current_user.tenant_id)
+        .filter_by(tenant_id=active_tenant_id())
         .filter(Order.deleted_at.is_(None))
         .filter(Order.trade_date >= date_from)
         .filter(Order.trade_date <= date_to)
@@ -94,7 +95,7 @@ def eod_summary():
 
     all_orders = (
         Order.query
-        .filter_by(tenant_id=current_user.tenant_id, trade_date=report_date)
+        .filter_by(tenant_id=active_tenant_id(), trade_date=report_date)
         .filter(Order.deleted_at.is_(None))
         .order_by(Order.ticket_number)
         .all()

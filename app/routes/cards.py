@@ -3,6 +3,7 @@
 # =============================================================================
 from flask import Blueprint, render_template, redirect, url_for, flash, make_response
 from flask_login import login_required, current_user
+from app.tenancy import active_tenant_id
 from app.extensions import db
 from app.models.order import Order
 from app.models.print_event import PrintEvent, PrintEventType
@@ -17,7 +18,7 @@ cards_bp = Blueprint("cards", __name__)
 @login_required
 def generate(order_id):
     order = Order.query.filter_by(
-        id=order_id, tenant_id=current_user.tenant_id,
+        id=order_id, tenant_id=active_tenant_id(),
     ).first_or_404()
 
     try:
@@ -29,14 +30,14 @@ def generate(order_id):
     # Create print event
     snapshot = build_card_data_snapshot(order)
     print_event = PrintEvent(
-        tenant_id=current_user.tenant_id,
+        tenant_id=active_tenant_id(),
         order_id=order.id,
         event_type=PrintEventType.CARD,
         printed_by_id=current_user.id,
         data_snapshot=snapshot,
     )
     db.session.add(print_event)
-    audit_service.log_print_event(order, current_user.tenant_id, "card")
+    audit_service.log_print_event(order, active_tenant_id(), "card")
     db.session.commit()
 
     # Generate and return HTML

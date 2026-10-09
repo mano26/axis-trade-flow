@@ -7,6 +7,7 @@
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
+from app.tenancy import active_tenant_id
 from app.extensions import db
 from app.models.user import User, UserRole
 from app.models.lookup import LookupValue, LookupType
@@ -29,7 +30,7 @@ def require_admin():
 
 @admin_bp.route("/users")
 def user_list():
-    users = User.query.filter_by(tenant_id=current_user.tenant_id).all()
+    users = User.query.filter_by(tenant_id=active_tenant_id()).all()
     return render_template("auth/user_list.html", users=users)
 
 
@@ -48,7 +49,7 @@ def create_user():
         flash("A user with that email already exists.", "warning")
         return redirect(url_for("admin.create_user"))
     user = User(
-        tenant_id=current_user.tenant_id,
+        tenant_id=active_tenant_id(),
         email=email,
         display_name=display_name,
         role=role if role in UserRole.ALL else UserRole.USER,
@@ -58,7 +59,7 @@ def create_user():
     db.session.flush()
     audit_service.log_action(
         action="user_created", entity_type="user",
-        entity_id=user.id, tenant_id=current_user.tenant_id,
+        entity_id=user.id, tenant_id=active_tenant_id(),
         after_value={"email": email, "role": role, "display_name": display_name},
     )
     db.session.commit()
@@ -69,7 +70,7 @@ def create_user():
 @admin_bp.route("/users/<int:user_id>/deactivate", methods=["POST"])
 def deactivate_user(user_id):
     user = User.query.filter_by(
-        id=user_id, tenant_id=current_user.tenant_id,
+        id=user_id, tenant_id=active_tenant_id(),
     ).first_or_404()
     if user.id == current_user.id:
         flash("You cannot deactivate your own account.", "warning")
@@ -77,7 +78,7 @@ def deactivate_user(user_id):
     user.is_active_user = False
     audit_service.log_action(
         action="user_deactivated", entity_type="user",
-        entity_id=user.id, tenant_id=current_user.tenant_id,
+        entity_id=user.id, tenant_id=active_tenant_id(),
         before_value={"is_active": True}, after_value={"is_active": False},
     )
     db.session.commit()
@@ -88,12 +89,12 @@ def deactivate_user(user_id):
 @admin_bp.route("/users/<int:user_id>/reactivate", methods=["POST"])
 def reactivate_user(user_id):
     user = User.query.filter_by(
-        id=user_id, tenant_id=current_user.tenant_id,
+        id=user_id, tenant_id=active_tenant_id(),
     ).first_or_404()
     user.is_active_user = True
     audit_service.log_action(
         action="user_reactivated", entity_type="user",
-        entity_id=user.id, tenant_id=current_user.tenant_id,
+        entity_id=user.id, tenant_id=active_tenant_id(),
         before_value={"is_active": False}, after_value={"is_active": True},
     )
     db.session.commit()
@@ -104,7 +105,7 @@ def reactivate_user(user_id):
 @admin_bp.route("/users/<int:user_id>/reset-password", methods=["GET", "POST"])
 def reset_password(user_id):
     user = User.query.filter_by(
-        id=user_id, tenant_id=current_user.tenant_id,
+        id=user_id, tenant_id=active_tenant_id(),
     ).first_or_404()
     if request.method == "GET":
         return render_template("auth/reset_password.html", user=user)
@@ -119,7 +120,7 @@ def reset_password(user_id):
     user.set_password(new_password)
     audit_service.log_action(
         action="password_reset", entity_type="user",
-        entity_id=user.id, tenant_id=current_user.tenant_id,
+        entity_id=user.id, tenant_id=active_tenant_id(),
     )
     db.session.commit()
     flash(f"Password reset for '{user.display_name}'.", "success")
@@ -137,7 +138,7 @@ def lookup_list():
     for lt in LookupType.ALL:
         lookups[lt] = (
             LookupValue.query
-            .filter_by(tenant_id=current_user.tenant_id, lookup_type=lt)
+            .filter_by(tenant_id=active_tenant_id(), lookup_type=lt)
             .order_by(LookupValue.sort_order, LookupValue.value)
             .all()
         )
@@ -169,12 +170,12 @@ def lookup_add():
     skipped = []
 
     max_sort = db.session.query(db.func.max(LookupValue.sort_order)).filter_by(
-        tenant_id=current_user.tenant_id, lookup_type=lookup_type,
+        tenant_id=active_tenant_id(), lookup_type=lookup_type,
     ).scalar() or 0
 
     for value in values:
         existing = LookupValue.query.filter_by(
-            tenant_id=current_user.tenant_id,
+            tenant_id=active_tenant_id(),
             lookup_type=lookup_type,
             value=value,
         ).first()
@@ -188,7 +189,7 @@ def lookup_add():
 
         max_sort += 1
         lv = LookupValue(
-            tenant_id=current_user.tenant_id,
+            tenant_id=active_tenant_id(),
             lookup_type=lookup_type,
             value=value,
             sort_order=max_sort,
@@ -214,7 +215,7 @@ def lookup_add():
 def lookup_deactivate(lookup_id):
     """Deactivate a lookup value (hide from dropdowns, keep for history)."""
     lv = LookupValue.query.filter_by(
-        id=lookup_id, tenant_id=current_user.tenant_id,
+        id=lookup_id, tenant_id=active_tenant_id(),
     ).first_or_404()
     lv.is_active = False
     db.session.commit()
@@ -226,7 +227,7 @@ def lookup_deactivate(lookup_id):
 def lookup_activate(lookup_id):
     """Reactivate a previously deactivated lookup value."""
     lv = LookupValue.query.filter_by(
-        id=lookup_id, tenant_id=current_user.tenant_id,
+        id=lookup_id, tenant_id=active_tenant_id(),
     ).first_or_404()
     lv.is_active = True
     db.session.commit()

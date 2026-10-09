@@ -81,6 +81,24 @@ def create_app(config_name: str | None = None) -> Flask:
     _register_user_loader()
 
     # -----------------------------------------------------------------
+    # Tenant context: resolve the active company before any blueprint's
+    # own before_request runs, guard ORM queries, expose to templates.
+    # -----------------------------------------------------------------
+    from .tenancy import resolve_active_tenant, install_tenant_guard
+    app.before_request_funcs.setdefault(None, []).insert(0, resolve_active_tenant)
+    install_tenant_guard(app)
+
+    @app.context_processor
+    def inject_tenant_context():
+        from flask import g
+        from flask_login import current_user
+        ctx = {"active_tenant": g.get("tenant"), "switchable_tenants": []}
+        if current_user.is_authenticated and current_user.is_super():
+            from .models.tenant import Tenant
+            ctx["switchable_tenants"] = Tenant.query.order_by(Tenant.name).all()
+        return ctx
+
+    # -----------------------------------------------------------------
     # Health check endpoint (used by Railway for deployment readiness)
     # -----------------------------------------------------------------
     @app.route("/health")
@@ -114,6 +132,7 @@ def _register_blueprints(app: Flask) -> None:
     from .routes.reports import reports_bp
     from .routes.exchange import exchange_bp
     from .routes.admin import admin_bp
+    from .routes.companies import companies_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(orders_bp, url_prefix="/orders")
@@ -123,6 +142,7 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(reports_bp, url_prefix="/reports")
     app.register_blueprint(exchange_bp, url_prefix="/exchange")
     app.register_blueprint(admin_bp, url_prefix="/admin")
+    app.register_blueprint(companies_bp, url_prefix="/companies")
 
 
 def _register_user_loader() -> None:
