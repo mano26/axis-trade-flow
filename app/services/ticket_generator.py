@@ -769,20 +769,19 @@ def _linear_broker_section_html(section: dict) -> str:
     h += f"<div class='ln-broker-label'>{bar_right}</div>\n"
     h += ("<table class='ln-table'>\n"
           "<colgroup>"
-          "<col style='width:2%'>"    # chk
-          "<col style='width:9%'>"    # BROKER  (was 7%  — "OPUS" needs room)
-          "<col style='width:8%'>"    # SIDE    (was 6%  — "SELL" needs room)
-          "<col style='width:8%'>"    # QTY
-          "<col style='width:13%'>"   # CONTRACT (was 10% — "SFRZ9" needs room)
-          "<col style='width:10%'>"   # STRIKE
-          "<col style='width:7%'>"    # TYPE    (was 6%)
-          "<col style='width:9%'>"    # PRICE
-          "<col style='width:8%'>"    # CP
-          "<col style='width:8%'>"    # HOUSE
-          "<col style='width:18%'>"   # BKT     (was 26% — "690M6" only 5 chars)
+          "<col style='width:10%'>"   # BROKER
+          "<col style='width:9%'>"    # SIDE
+          "<col style='width:9%'>"    # QTY
+          "<col style='width:14%'>"   # CONTRACT
+          "<col style='width:11%'>"   # STRIKE
+          "<col style='width:8%'>"    # TYPE
+          "<col style='width:10%'>"   # PRICE
+          "<col style='width:9%'>"    # CP
+          "<col style='width:9%'>"    # HOUSE
+          "<col style='width:11%'>"   # BKT
           "</colgroup>\n"
           "<thead><tr>"
-          "<th></th><th>BROKER</th><th>SIDE</th><th>QTY</th><th>CONTRACT</th>"
+          "<th>BROKER</th><th>SIDE</th><th>QTY</th><th>CONTRACT</th>"
           "<th>STRIKE</th><th>TYPE</th><th>PRICE</th>"
           "<th>CP</th><th>HOUSE</th><th>BKT</th>"
           "</tr></thead>\n<tbody>\n")
@@ -806,7 +805,6 @@ def _linear_broker_section_html(section: dict) -> str:
         qty       = row.get("qty", 0)
         side_cls  = "ln-buy-txt" if side == "BUY" else "ln-sell-txt"
         h += (f"<tr>"
-              f"<td><span class='cp-chk'></span></td>"
               f"<td class='ln-broker-col'>{bk}</td>"
               f"<td class='ln-side {side_cls}'>{side}</td>"
               f"<td class='ln-qty'>{qty:,}</td>"
@@ -1620,7 +1618,7 @@ body{{font-family:Arial,Helvetica,sans-serif;background:#e0e0e0;padding:0}}
 .ln-broker-section{{margin-bottom:4px}}
 .ln-broker-label{{font-size:8px;font-weight:700;color:#666;letter-spacing:1px;
   text-align:right;padding:1px 3px;border-top:1px solid #ccc;margin-bottom:1px}}
-.ln-table{{width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed}}
+.ln-table{{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed}}
 .ln-table th{{font-size:9.5px;font-weight:700;text-align:left;padding:2px 3px;
   color:#444;border-bottom:0.5px solid #888;
   overflow:hidden;white-space:nowrap;text-overflow:ellipsis}}
@@ -1653,19 +1651,19 @@ body{{font-family:Arial,Helvetica,sans-serif;background:#e0e0e0;padding:0}}
 /* Linear layout — page wrapper and ticket header */
 .ln-ticket{{width:100%;background:#e0e0e0;padding:16px;display:block}}
 /* Screen: A5 paper preview boxes */
-.ln-page{{width:148mm;min-height:210mm;background:#fff;padding:7mm;
+.ln-page{{width:148mm;min-height:210mm;background:#fff;padding:5mm;
   margin:0 auto 16px auto;box-shadow:0 2px 8px rgba(0,0,0,.2);
   box-sizing:border-box;display:block}}
 .ln-cont-bar{{font-size:9px;font-weight:700;color:#555;letter-spacing:1px;
   text-align:right;padding:2px 0 4px;border-bottom:1px solid #ccc;margin-bottom:4px}}
-{"@page{size:148mm 210mm;margin:7mm}" if layout == "linear" else "@page{size:8in 5.5in;margin:0}"}
+{"@page{size:148mm 210mm;margin:5mm}" if layout == "linear" else "@page{size:8in 5.5in;margin:0}"}
 @media print{{
   .print-nav{{display:none !important}}
   body{{background:white;padding:0;margin:0}}
   .tickets-wrap{{padding:0;{" display:block;" if layout == "linear" else ""}}}
   {"" if layout == "linear" else ".ticket{width:8in;break-after:page;-webkit-print-color-adjust:exact;print-color-adjust:exact} .ticket:last-child{break-after:auto}"}
   .ln-ticket{{background:white;-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-  {".ln-page{display:block;box-shadow:none;margin:0;padding:0;min-height:0;max-height:196mm;overflow:hidden;width:auto;-webkit-print-color-adjust:exact;print-color-adjust:exact;break-inside:avoid;page-break-inside:avoid;break-after:page;page-break-after:always} .ln-page:last-child{break-after:auto;page-break-after:auto} .ln-broker-section{break-inside:avoid;page-break-inside:avoid}" if layout == "linear" else ""}
+  {".ln-page{display:block;box-shadow:none;margin:0;padding:0;min-height:0;max-height:200mm;overflow:hidden;width:auto;-webkit-print-color-adjust:exact;print-color-adjust:exact;break-inside:avoid;page-break-inside:avoid;break-after:page;page-break-after:always} .ln-page:last-child{break-after:auto;page-break-after:auto} .ln-broker-section{break-inside:avoid;page-break-inside:avoid}" if layout == "linear" else ""}
 }}
 </style></head><body>
 <div class='print-nav'>
