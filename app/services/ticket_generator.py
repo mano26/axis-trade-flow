@@ -781,7 +781,9 @@ def _linear_broker_section_html(section: dict) -> str:
           "<col style='width:11%'>"   # BKT
           "</colgroup>\n"
           "<thead><tr>"
-          "<th>BROKER</th><th>SIDE</th><th>QTY</th><th>CONTRACT</th>"
+          "<th>BROKER</th><th>SIDE</th>"
+          "<th style='text-align:center'>QTY</th>"
+          "<th style='text-align:center'>CONTRACT</th>"
           "<th>STRIKE</th><th>TYPE</th><th>PRICE</th>"
           "<th>CP</th><th>HOUSE</th><th>BKT</th>"
           "</tr></thead>\n<tbody>\n")
@@ -1629,8 +1631,8 @@ body{{font-family:Arial,Helvetica,sans-serif;background:#e0e0e0;padding:0}}
 .ln-side{{font-weight:900;font-size:11px;width:36px;text-align:center}}
 .ln-buy-txt{{color:#0a3d62}}
 .ln-sell-txt{{color:#c0392b}}
-.ln-qty{{text-align:right;font-family:monospace;width:48px}}
-.ln-contract{{font-family:monospace;width:62px;font-weight:700}}
+.ln-qty{{text-align:center;font-family:monospace;width:48px}}
+.ln-contract{{font-family:monospace;width:62px;font-weight:700;text-align:center}}
 .ln-strike{{font-family:monospace;width:54px}}
 .ln-type{{width:36px;text-align:center;font-style:italic}}
 .ln-price{{font-family:monospace;width:52px;text-align:right}}
