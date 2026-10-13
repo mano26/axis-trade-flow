@@ -689,6 +689,33 @@ def _cp_leg_half_html(rows, side_label, sub_opt, sub_fut, broker, show_hdr) -> s
     return h
 
 
+def _ln_interleave_by_cp(buy_rows, sell_rows):
+    """Return all rows ordered by first-seen (cp, house), each CP's buy rows
+    immediately followed by its sell rows.  Slicing this list into page chunks
+    keeps both legs of a spread for a given counterparty consecutive."""
+    cp_order: list = []
+    buy_by_cp: dict = {}
+    sell_by_cp: dict = {}
+    for r in buy_rows:
+        k = (r.get("cp", ""), r.get("house", ""))
+        if k not in buy_by_cp:
+            cp_order.append(k)
+            buy_by_cp[k] = []
+        buy_by_cp[k].append(r)
+    for r in sell_rows:
+        k = (r.get("cp", ""), r.get("house", ""))
+        if k not in sell_by_cp:
+            if k not in buy_by_cp:   # CP appears in sell side only
+                cp_order.append(k)
+            sell_by_cp[k] = []
+        sell_by_cp[k].append(r)
+    result: list = []
+    for k in cp_order:
+        result.extend(buy_by_cp.get(k, []))
+        result.extend(sell_by_cp.get(k, []))
+    return result
+
+
 def _ln_paginate_sections(all_sections, rows_page_1, rows_cont):
     """Split linear broker sections across pages.
 
@@ -700,18 +727,23 @@ def _ln_paginate_sections(all_sections, rows_page_1, rows_cont):
         return len(sec.get("buy_rows", [])) + len(sec.get("sell_rows", []))
 
     def _split_section(sec, chunk_size):
-        """Yield sub-section dicts each with at most chunk_size data rows."""
+        """Yield sub-section dicts each with at most chunk_size data rows.
+
+        Rows are sliced in CP-interleaved order so each chunk contains
+        complete counterparty groups (all legs for a CP together) rather
+        than all buys first then all sells.
+        """
         buy_r  = list(sec.get("buy_rows",  []))
         sell_r = list(sec.get("sell_rows", []))
-        all_r  = buy_r + sell_r
+        # Build interleaved order: CP1 buys+sells, CP2 buys+sells, …
+        all_r  = _ln_interleave_by_cp(buy_r, sell_r)
         for i in range(0, max(len(all_r), 1), chunk_size):
             chunk = all_r[i:i + chunk_size]
             sub = dict(sec)
-            sub["buy_rows"]        = [r for r in chunk if not r["is_fut"] and r.get("_side") == "BUY"
-                                       or not r["is_fut"] and r in buy_r and r in chunk]
-            # Preserve original buy/sell split:
-            sub["buy_rows"]  = [r for r in buy_r  if r in chunk]
-            sub["sell_rows"] = [r for r in sell_r if r in chunk]
+            # Preserve the buy/sell split within this chunk using identity
+            chunk_ids = {id(r) for r in chunk}
+            sub["buy_rows"]  = [r for r in buy_r  if id(r) in chunk_ids]
+            sub["sell_rows"] = [r for r in sell_r if id(r) in chunk_ids]
             sub["is_continuation"] = (i > 0)
             yield sub
 
