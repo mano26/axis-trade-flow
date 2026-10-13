@@ -758,12 +758,31 @@ def _linear_broker_section_html(section: dict) -> str:
     buy_futs  = [r for r in section["buy_rows"]  if     r["is_fut"]]
     sell_futs = [r for r in section["sell_rows"] if     r["is_fut"]]
 
-    ordered = (
-        [("BUY",  r) for r in buy_opts]  +
-        [("SELL", r) for r in sell_opts] +
-        [("BUY",  r) for r in buy_futs]  +
-        [("SELL", r) for r in sell_futs]
-    )
+    # Build ordered rows grouped by counterparty so all legs for a given
+    # CP appear consecutively (buy opts → sell opts → buy futs → sell futs
+    # within each CP), rather than all buys then all sells across all CPs.
+    _cp_order: list = []
+    _seen_cps: set  = set()
+    for _r in buy_opts + sell_opts + buy_futs + sell_futs:
+        _k = (_r.get("cp", ""), _r.get("house", ""))
+        if _k not in _seen_cps:
+            _cp_order.append(_k)
+            _seen_cps.add(_k)
+
+    ordered = []
+    for _k in _cp_order:
+        for r in buy_opts:
+            if (r.get("cp", ""), r.get("house", "")) == _k:
+                ordered.append(("BUY",  r))
+        for r in sell_opts:
+            if (r.get("cp", ""), r.get("house", "")) == _k:
+                ordered.append(("SELL", r))
+        for r in buy_futs:
+            if (r.get("cp", ""), r.get("house", "")) == _k:
+                ordered.append(("BUY",  r))
+        for r in sell_futs:
+            if (r.get("cp", ""), r.get("house", "")) == _k:
+                ordered.append(("SELL", r))
 
     h  = "<div class='ln-broker-section'>\n"
     h += f"<div class='ln-broker-label'>{bar_right}</div>\n"
