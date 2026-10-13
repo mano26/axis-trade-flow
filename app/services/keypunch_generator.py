@@ -181,7 +181,8 @@ def generate_keypunch_xlsx(order) -> bytes:
 
 def _iter_rows(order):
     """
-    Yield one list of cell values per fill × leg × counterparty.
+    Yield one list of cell values per fill × counterparty × leg.
+    Grouping by counterparty first keeps all legs for a given CP consecutive.
     All text identifier fields are uppercased here.
     """
     trade_date_str = (
@@ -202,18 +203,18 @@ def _iter_rows(order):
         stamp_out = fill.stamp_time_out or ""
         bk_broker = (order.bk_broker or "").upper()
 
-        for leg in order.legs:
-            leg_price = next(
-                (lp.price for lp in fill.leg_prices
-                 if lp.leg_index == leg.leg_index),
-                leg.price,
-            )
+        for cp in fill.counterparties:
+            for leg in order.legs:
+                leg_price = next(
+                    (lp.price for lp in fill.leg_prices
+                     if lp.leg_index == leg.leg_index),
+                    leg.price,
+                )
 
-            contract_yyyymm = _expiry_to_yyyymm(leg.expiry)
-            pc     = leg.option_type or ""
-            strike = f"{leg.strike:.4f}" if leg.strike is not None else ""
+                contract_yyyymm = _expiry_to_yyyymm(leg.expiry)
+                pc     = leg.option_type or ""
+                strike = f"{leg.strike:.4f}" if leg.strike is not None else ""
 
-            for cp in fill.counterparties:
                 if (
                     leg.option_type is None
                     and cp.futures_quantity is not None
