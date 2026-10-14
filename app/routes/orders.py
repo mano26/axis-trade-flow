@@ -1261,10 +1261,15 @@ def modify(order_id):
             all_legs.extend(build_legs(part))
         for leg in order.legs:
             db.session.delete(leg)
+        # Use _extract_price_info for total_quantity and package_premium so they
+        # reflect the package count from the price token (e.g. "1000@4" → 1000),
+        # not the first segment's leg volume which is already scaled by (NX)
+        # multipliers (e.g. 0QM7 (3X) segment volume = 3000 ≠ 1000 packages).
+        _mod_dir, _mod_qty, _mod_prem = _extract_price_info(new_input)
         order.raw_input = new_input
-        order.direction = trade_parts[0].direction_side
-        order.total_quantity = trade_parts[0].volume
-        order.package_premium = trade_parts[0].premium
+        order.direction = _mod_dir
+        order.total_quantity = _mod_qty
+        order.package_premium = _mod_prem
         order.strategy = trade_parts[0].strategy
         for idx, leg_data in enumerate(all_legs):
             leg = OrderLeg(
