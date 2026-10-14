@@ -716,6 +716,116 @@ def _ln_interleave_by_cp(buy_rows, sell_rows):
     return result
 
 
+def _ln_group_by_strike_broker(all_sections, sorted_legs):
+    """For the linear layout, reorganize broker sections so rows appear in
+    strike-first order, with brokers ordered within each strike.
+
+    Input:  all_sections — per-broker sections from _build_broker_sections
+    Output: new list of (strike, broker) section dicts in display order:
+              96.25C → GKX CPs, SPNC CPs
+              96.50C → GKX CPs, SPNC CPs
+              96.75C → GKX CPs, SPNC CPs
+            Futures rows (is_fut=True) are appended last, one section per broker.
+    """
+    if not all_sections:
+        return all_sections
+
+    # Build canonical leg order (strike_str, opt_type, side) from sorted_legs,
+    # in leg_index order, skipping futures.
+    leg_order: list = []
+    seen_legs: set  = set()
+    for leg in sorted_legs:
+        is_fut = leg.option_type is None and leg.strike is None
+        if is_fut:
+            continue
+        strike_str = _fmt_strike(leg.strike)
+        opt_type   = leg.option_type or ""
+        side       = "BUY" if leg.side == "B" else "SELL"
+        k = (strike_str, opt_type, side)
+        if k not in seen_legs:
+            leg_order.append(k)
+            seen_legs.add(k)
+
+    # Preserve fill order for brokers.
+    broker_order = [sec["broker"] for sec in all_sections]
+
+    # Per-broker row index: bk -> (strike, opt_type, side) -> [rows]
+    by_broker_leg: dict = {}
+    broker_meta:   dict = {}
+    for sec in all_sections:
+        bk = sec["broker"]
+        by_broker_leg[bk] = {}
+        broker_meta[bk] = {
+            k: sec[k] for k in
+            ("fill_qty", "buy_opt_total", "buy_fut_total",
+             "sell_opt_total", "sell_fut_total")
+        }
+        for r in sec.get("buy_rows", []):
+            if not r["is_fut"]:
+                lk = (r.get("strike", ""), r.get("opt_type", ""), "BUY")
+                by_broker_leg[bk].setdefault(lk, []).append(r)
+        for r in sec.get("sell_rows", []):
+            if not r["is_fut"]:
+                lk = (r.get("strike", ""), r.get("opt_type", ""), "SELL")
+                by_broker_leg[bk].setdefault(lk, []).append(r)
+
+    new_sections: list = []
+
+    for (strike_str, opt_type, side) in leg_order:
+        leg_k       = (strike_str, opt_type, side)
+        strike_lbl  = f"{strike_str} {opt_type}"
+        first_for_s = True
+
+        for bk in broker_order:
+            rows = by_broker_leg.get(bk, {}).get(leg_k, [])
+            if not rows:
+                continue
+            opt_total = sum(r.get("qty", 0) for r in rows)
+            if side == "BUY":
+                new_sections.append({
+                    "broker": bk, "strike_label": strike_lbl, "side": side,
+                    "fill_qty": broker_meta[bk]["fill_qty"],
+                    "buy_rows": rows, "sell_rows": [],
+                    "buy_opt_total": opt_total, "buy_fut_total": 0,
+                    "sell_opt_total": 0,         "sell_fut_total": 0,
+                    "is_continuation": False,
+                    "is_first_broker_for_strike": first_for_s,
+                    "n_rows": 1 + len(rows) + 1,
+                })
+            else:
+                new_sections.append({
+                    "broker": bk, "strike_label": strike_lbl, "side": side,
+                    "fill_qty": broker_meta[bk]["fill_qty"],
+                    "buy_rows": [], "sell_rows": rows,
+                    "buy_opt_total": 0,         "buy_fut_total": 0,
+                    "sell_opt_total": opt_total, "sell_fut_total": 0,
+                    "is_continuation": False,
+                    "is_first_broker_for_strike": first_for_s,
+                    "n_rows": 1 + len(rows) + 1,
+                })
+            first_for_s = False
+
+    # Tack futures rows at the end, one section per broker.
+    for sec in all_sections:
+        bk       = sec["broker"]
+        fut_buy  = [r for r in sec.get("buy_rows",  []) if r["is_fut"]]
+        fut_sell = [r for r in sec.get("sell_rows", []) if r["is_fut"]]
+        if not (fut_buy or fut_sell):
+            continue
+        new_sections.append({
+            "broker": bk, "strike_label": "FUT", "side": "",
+            "fill_qty": broker_meta[bk]["fill_qty"],
+            "buy_rows": fut_buy,  "sell_rows": fut_sell,
+            "buy_opt_total": 0,  "buy_fut_total": broker_meta[bk]["buy_fut_total"],
+            "sell_opt_total": 0, "sell_fut_total": broker_meta[bk]["sell_fut_total"],
+            "is_continuation": False,
+            "is_first_broker_for_strike": True,
+            "n_rows": 1 + len(fut_buy) + len(fut_sell) + 1,
+        })
+
+    return new_sections if new_sections else all_sections
+
+
 def _ln_paginate_sections(all_sections, rows_page_1, rows_cont):
     """Split linear broker sections across pages.
 
@@ -781,9 +891,19 @@ def _linear_broker_section_html(section: dict) -> str:
     Columns mirror the split table: [chk] SIDE QTY CONTRACT STRIKE TYPE PRICE CP HOUSE BKT
     C/P renamed to TYPE per Mike's 2026-10-08 request.
     """
-    bk = section["broker"]
+    bk      = section["broker"]
     is_cont = section.get("is_continuation", False)
-    bar_right = "(CONT.)" if is_cont else f"{section['fill_qty']:,} PACKAGES"
+    s_lbl   = section.get("strike_label")          # present in strike-grouped layout
+    # Show a strike header the first time a new strike appears (not on continuations)
+    show_strike_hdr = (
+        bool(s_lbl)
+        and section.get("is_first_broker_for_strike")
+        and not is_cont
+    )
+    if s_lbl:
+        bar_content = f"{bk}{' (CONT.)' if is_cont else ''}"
+    else:
+        bar_content = "(CONT.)" if is_cont else f"{section['fill_qty']:,} PACKAGES"
 
     buy_opts  = [r for r in section["buy_rows"]  if not r["is_fut"]]
     sell_opts = [r for r in section["sell_rows"] if not r["is_fut"]]
@@ -816,8 +936,13 @@ def _linear_broker_section_html(section: dict) -> str:
             if (r.get("cp", ""), r.get("house", "")) == _k:
                 ordered.append(("SELL", r))
 
-    h  = "<div class='ln-broker-section'>\n"
-    h += f"<div class='ln-broker-label'>{bar_right}</div>\n"
+    h  = ""
+    if show_strike_hdr:
+        side_txt = section.get("side", "")
+        s_disp   = f"{s_lbl}{' &nbsp;·&nbsp; ' + side_txt if side_txt else ''}"
+        h += f"<div class='ln-strike-header'>{s_disp}</div>\n"
+    h += "<div class='ln-broker-section'>\n"
+    h += f"<div class='ln-broker-label'>{bar_content}</div>\n"
     h += ("<table class='ln-table'>\n"
           "<colgroup>"
           "<col style='width:10%'>"   # BROKER
@@ -1164,7 +1289,10 @@ def generate_ticket_with_cps_html(order, layout=None) -> str:
             house   = order.house or ""
             bk_line = f"BK: {bk_val}<br>" if bk_val else ""
 
-            pages       = _ln_paginate_sections(all_sections, _LN_ROWS_PAGE_1, _LN_ROWS_CONT)
+            # Regroup: strike first, then broker within each strike.
+            # all_sections (broker-level) is kept for _grand_totals_html below.
+            ln_sections = _ln_group_by_strike_broker(all_sections, sorted_legs)
+            pages       = _ln_paginate_sections(ln_sections, _LN_ROWS_PAGE_1, _LN_ROWS_CONT)
             total_pages = len(pages)
 
             for page_idx, sections_on_page in enumerate(pages):
@@ -1671,6 +1799,8 @@ body{{font-family:Arial,Helvetica,sans-serif;background:#e0e0e0;padding:0}}
 .ln-broker-section{{margin-bottom:4px}}
 .ln-broker-label{{font-size:8px;font-weight:700;color:#666;letter-spacing:1px;
   text-align:right;padding:1px 3px;border-top:1px solid #ccc;margin-bottom:1px}}
+.ln-strike-header{{font-size:9.5px;font-weight:900;letter-spacing:1px;
+  padding:3px 3px 1px;border-top:2px solid #333;margin-top:6px;text-transform:uppercase}}
 .ln-table{{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed}}
 .ln-table th{{font-size:9.5px;font-weight:700;text-align:left;padding:2px 3px;
   color:#444;border-bottom:0.5px solid #888;
