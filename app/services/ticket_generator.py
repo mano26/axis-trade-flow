@@ -1709,7 +1709,7 @@ body{{font-family:Arial,Helvetica,sans-serif;background:#e0e0e0;padding:0}}
   box-sizing:border-box;display:block}}
 .ln-cont-bar{{font-size:9px;font-weight:700;color:#555;letter-spacing:1px;
   text-align:right;padding:2px 0 4px;border-bottom:1px solid #ccc;margin-bottom:4px}}
-{"@page{size:148mm 210mm;margin:5mm}" if layout == "linear" else "@page{size:8in 5.5in;margin:0}"}
+{"@page{size:210mm 148mm;margin:5mm}" if layout == "linear" else "@page{size:8in 5.5in;margin:0}"}
 @media print{{
   .print-nav{{display:none !important}}
   body{{background:white;padding:0;margin:0}}
