@@ -1690,6 +1690,37 @@ def download_keypunch_csv(order_id: int):
     return response
 
 
+@orders_bp.route("/<int:order_id>/keypunch.xlsx")
+@login_required
+def download_keypunch_xlsx(order_id: int):
+    """
+    Generate and stream a keypunch Excel workbook for the given order.
+
+    Identical data to the CSV download but served as .xlsx so that Excel
+    preserves leading zeros on fields like house codes (e.g. "004" stays
+    "004" rather than being coerced to 4).  All cells use number_format="@"
+    (text) in the workbook.
+    """
+    from flask import make_response
+    from app.services.keypunch_generator import generate_keypunch_xlsx
+
+    order = _get_order_or_404(order_id)
+
+    if not order.fills:
+        flash("No fills recorded — nothing to export.", "warning")
+        return redirect(url_for("orders.detail", order_id=order_id))
+
+    xlsx_bytes = generate_keypunch_xlsx(order)
+
+    filename = f"keypunch_{order.ticket_display}_{order.trade_date.strftime('%Y%m%d')}.xlsx"
+    response = make_response(xlsx_bytes)
+    response.headers["Content-Type"] = (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    response.headers["Content-Disposition"] = f"attachment; filename={filename}"
+    return response
+
+
 # =========================================================================
 # Helpers
 # =========================================================================
