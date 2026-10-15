@@ -504,9 +504,9 @@ _ROWS_CONT   = 20   # broker section rows on continuation pages
 # Linear layout: flat data-row counts per page.
 # Each CP allocation produces N rows (one per leg); overhead adds ~3 rows per
 # broker section (label + thead + subtotal).  Tune these to match printed output.
-_LN_ROWS_PAGE_1 = 16   # data rows on page 1 (A5: header+grid eat ~110mm, ~16 rows remain)
-_LN_ROWS_CONT   = 26   # data rows on A5 continuation pages (cont-bar ~6mm, ~26 rows fit)
-_LN_SECTION_OH  = 2    # overhead rows per broker section (label + thead; subtotal in count)
+_LN_ROWS_PAGE_1 = 12   # data rows on page 1 (A5: header+grid eat ~110mm, ~12 rows remain)
+_LN_ROWS_CONT   = 24   # data rows on A5 continuation pages (cont-bar ~6mm, ~24 rows fit)
+_LN_SECTION_OH  = 3    # overhead rows per broker section (label + thead + subtotal)
 
 
 def _fmt_strike(val) -> str:
@@ -870,7 +870,16 @@ def _ln_paginate_sections(all_sections, rows_page_1, rows_cont):
 
         for chunk in chunks:
             chunk_rows = _section_data_rows(chunk) + _LN_SECTION_OH
-            eff_budget = budget if not pages and not current_page else rows_cont
+            # .ln-strike-header adds one visual row the first time a strike appears
+            if (chunk.get("is_first_broker_for_strike")
+                    and not chunk.get("is_continuation")
+                    and chunk.get("strike_label")):
+                chunk_rows += 1
+            # Use page-1 budget while still on page 1 (no completed pages yet);
+            # switch to continuation budget as soon as the first page is closed.
+            # BUG WAS: `budget if not pages and not current_page else rows_cont`
+            # which switched to rows_cont as soon as the first section was placed.
+            eff_budget = budget if not pages else rows_cont
             if current_rows + chunk_rows > eff_budget and current_page:
                 pages.append(current_page)
                 current_page = []
@@ -1846,7 +1855,7 @@ body{{font-family:Arial,Helvetica,sans-serif;background:#e0e0e0;padding:0}}
   .tickets-wrap{{padding:0;{" display:block;" if layout == "linear" else ""}}}
   {"" if layout == "linear" else ".ticket{width:8in;break-after:page;-webkit-print-color-adjust:exact;print-color-adjust:exact} .ticket:last-child{break-after:auto}"}
   .ln-ticket{{background:white;-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-  {".ln-page{display:block;box-shadow:none;margin:0;padding:0;min-height:0;max-height:200mm;overflow:hidden;width:auto;-webkit-print-color-adjust:exact;print-color-adjust:exact;break-inside:avoid;page-break-inside:avoid;break-after:page;page-break-after:always} .ln-page:last-child{break-after:auto;page-break-after:auto}" if layout == "linear" else ""}
+  {".ln-page{display:block;box-shadow:none;margin:0;padding:0;min-height:0;max-height:138mm;overflow:hidden;width:auto;-webkit-print-color-adjust:exact;print-color-adjust:exact;break-inside:avoid;page-break-inside:avoid;break-after:page;page-break-after:always} .ln-page:last-child{break-after:auto;page-break-after:auto}" if layout == "linear" else ""}
 }}
 </style></head><body>
 <div class='print-nav'>
