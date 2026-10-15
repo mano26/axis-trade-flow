@@ -105,12 +105,21 @@ def generate_keypunch_csv(order) -> str:
         "Exec Time", "Exec Ind", "Out Time", "Out Time Ind",
     ]
 
+    # Columns that must stay as plain numbers so Excel renders them numerically.
+    # All other non-empty cells are wrapped with ="..." so Excel treats them as
+    # text and preserves any leading zeros (e.g. house code "004", account "0042").
+    _NUMERIC_COLS = {7, 10, 11}  # Strike Price, QTY, Price
+
     buf = io.StringIO()
     writer = _csv.writer(buf)
     writer.writerow(headers)
 
     for row in _iter_rows(order):
-        writer.writerow(row)
+        csv_row = [
+            f'="{v}"' if (i not in _NUMERIC_COLS and v) else v
+            for i, v in enumerate(row)
+        ]
+        writer.writerow(csv_row)
 
     return buf.getvalue()
 

@@ -150,9 +150,16 @@ def _make_cp(qty=500, broker="GKX", symbol="SPNC", cp_house="590",
     return cp
 
 
+def _unwrap_xl(v: str) -> str:
+    """Strip Excel formula-text wrapper ="..." added to preserve leading zeros."""
+    if v.startswith('="') and v.endswith('"'):
+        return v[2:-1]
+    return v
+
+
 def _parse_csv(csv_text):
     reader = csv.DictReader(io.StringIO(csv_text))
-    return list(reader)
+    return [{k: _unwrap_xl(val) for k, val in row.items()} for row in reader]
 
 
 class TestGenerateKeypunchCsv:
@@ -386,6 +393,45 @@ class TestGenerateKeypunchCsv:
         assert row["Exec Ind"] == ""
         assert row["Out Time Ind"] == ""
         assert row["Undly"] == ""
+
+    def test_leading_zeros_preserved_in_raw_csv(self):
+        """Identifier columns must be wrapped with =".." so Excel preserves leading zeros.
+
+        csv.writer quotes values containing double-quotes, so the value ="004"
+        is stored in the raw text as the escaped form with doubled inner quotes.
+        We verify by parsing with plain csv.DictReader (no _unwrap_xl) and
+        checking the raw cell value equals the Excel formula string.
+        """
+        leg = _make_leg(option_type="C", strike=96.0, volume=100)
+        leg.leg_index = 0
+        leg.side = "B"
+        leg.contract_type = "SR3"
+        cp = _make_cp(qty=100, broker="GKX", symbol="NB", cp_house="004")
+        fill = _make_fill(fill_qty=100, counterparties=[cp])
+        fill.leg_prices = [_make_fill_leg_price(0, 0.05)]
+        order = _make_order(
+            total_quantity=100,
+            legs=[leg],
+            fills=[fill],
+            house="031",     # leading-zero firm code
+            account="0042",  # leading-zero account
+        )
+        csv_text = generate_keypunch_csv(order)
+        # Parse WITHOUT unwrapping to see the raw cell values
+        raw_rows = list(csv.DictReader(io.StringIO(csv_text)))
+        raw = raw_rows[0]
+        # Identifier columns must carry the Excel formula wrapper
+        assert raw["Opp Firm"] == '="004"', "Opp Firm must be wrapped to preserve leading zero"
+        assert raw["Firm"] == '="031"', "Firm must be wrapped to preserve leading zero"
+        assert raw["Account"] == '="0042"', "Account must be wrapped to preserve leading zero"
+        # Numeric columns must NOT be wrapped
+        assert raw["QTY"] == "100", "QTY must remain a plain number"
+        assert raw["Strike Price"] == "96.0000", "Strike Price must remain a plain number"
+        # After unwrapping, values are still correct
+        rows = _parse_csv(csv_text)
+        assert rows[0]["Opp Firm"] == "004"
+        assert rows[0]["Firm"] == "031"
+        assert rows[0]["Account"] == "0042"
 
     def test_no_fills_returns_header_only(self):
         """An order with no fills should return a CSV with only the header."""

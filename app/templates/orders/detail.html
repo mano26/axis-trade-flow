@@ -768,7 +768,7 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-primary" onclick="return confirm('Submit to exchange?')">Send to Exchange</button>
         </form>
-        <a href="{{ url_for('orders.download_keypunch_xlsx', order_id=order.id) }}"
+        <a href="{{ url_for('orders.download_keypunch_csv', order_id=order.id) }}"
            class="btn" title="Download keypunch Excel file for clearing system">
             Download Keypunch
         </a>
