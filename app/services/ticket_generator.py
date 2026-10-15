@@ -1846,7 +1846,7 @@ body{{font-family:Arial,Helvetica,sans-serif;background:#e0e0e0;padding:0}}
   .tickets-wrap{{padding:0;{" display:block;" if layout == "linear" else ""}}}
   {"" if layout == "linear" else ".ticket{width:8in;break-after:page;-webkit-print-color-adjust:exact;print-color-adjust:exact} .ticket:last-child{break-after:auto}"}
   .ln-ticket{{background:white;-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-  {".ln-page{display:block;box-shadow:none;margin:0;padding:0;min-height:0;max-height:200mm;overflow:hidden;width:auto;-webkit-print-color-adjust:exact;print-color-adjust:exact;break-inside:avoid;page-break-inside:avoid;break-after:page;page-break-after:always} .ln-page:last-child{break-after:auto;page-break-after:auto} .ln-broker-section{break-inside:avoid;page-break-inside:avoid}" if layout == "linear" else ""}
+  {".ln-page{display:block;box-shadow:none;margin:0;padding:0;min-height:0;max-height:200mm;overflow:hidden;width:auto;-webkit-print-color-adjust:exact;print-color-adjust:exact;break-inside:avoid;page-break-inside:avoid;break-after:page;page-break-after:always} .ln-page:last-child{break-after:auto;page-break-after:auto}" if layout == "linear" else ""}
 }}
 </style></head><body>
 <div class='print-nav'>
