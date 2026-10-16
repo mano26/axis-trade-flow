@@ -374,7 +374,7 @@ def _build_side(
 def _build_type_section(legs: list, side_name: str, type_name: str, max_rows: int) -> str:
     # Collect matching legs
     matched = [l for l in legs if l["side"] == side_name and l["opt_type"] == type_name]
-    n = max(max_rows, 1)
+    n = len(matched) if matched else 1
 
     h = "<div class='opt-section'>"
     h += f"<div class='opt-label'>{type_name}</div>"
