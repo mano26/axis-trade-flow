@@ -14,9 +14,11 @@ from app.services.ticket_generator import (
     _ln_interleave_by_cp,
     _ln_group_by_strike_broker,
     _ln_paginate_sections,
+    _ln_compute_page1_rows,
     _LN_ROWS_PAGE_1,
     _LN_ROWS_CONT,
     _LN_SECTION_OH,
+    _LN_ROWS_HEADER_CALIB,
 )
 
 
@@ -590,3 +592,150 @@ class TestLnPaginateSections:
         for chunk in all_chunks[1:]:
             assert chunk.get("is_continuation"), \
                 f"Subsequent chunk must be marked is_continuation=True: {chunk}"
+
+
+# =============================================================================
+# _ln_compute_page1_rows tests
+# =============================================================================
+
+class FakeLeg:
+    """Minimal leg-like object for _ln_compute_page1_rows tests."""
+    def __init__(self, side: str, option_type=None):
+        self.side        = side   # 'B' or 'S'
+        self.option_type = option_type   # 'P', 'C', or None for futures
+
+
+class TestLnComputePage1Rows:
+    """Tests for the dynamic page-1 row budget.
+
+    Calibration: a reference header with 3 content rows (≈ 2 buy-opt + FUT  vs
+    2 sell-opt) yields exactly _LN_ROWS_PAGE_1 = 12 section rows on page 1.
+    Each header content row above the calibration baseline costs 2 section rows.
+    """
+
+    def _legs(self, buy_opt=0, sell_opt=0, buy_fut=0, sell_fut=0):
+        """Helper: build a list of FakeLeg objects."""
+        legs = []
+        legs += [FakeLeg('B', 'P') for _ in range(buy_opt)]
+        legs += [FakeLeg('S', 'P') for _ in range(sell_opt)]
+        legs += [FakeLeg('B', None) for _ in range(buy_fut)]
+        legs += [FakeLeg('S', None) for _ in range(sell_fut)]
+        return legs
+
+    def test_calibration_case_unchanged(self):
+        """2 buy-opt + 1 FUT vs 2 sell-opt → header_content=3 → budget=12 (calibrated)."""
+        legs = self._legs(buy_opt=2, sell_opt=2, buy_fut=1)
+        assert _ln_compute_page1_rows(legs) == _LN_ROWS_PAGE_1
+
+    def test_simple_outright_unchanged(self):
+        """Single buy outright → header_content=1 → budget=12 (capped at calibration)."""
+        legs = self._legs(buy_opt=1)
+        assert _ln_compute_page1_rows(legs) == _LN_ROWS_PAGE_1
+
+    def test_order_1554_six_leg_put_spread(self):
+        """Regression: order 1554 — 4 buy-opt + FUT vs 2 sell-opt → budget=8.
+
+        This is the bug that caused the TMX row to be placed on page 1 in the
+        HTML but clipped by CSS, making it invisible in both page 1 and page 2.
+        The dynamic budget (8 instead of 12) ensures the second 6-row section
+        starts on page 2 where it renders in full.
+
+        header_content_rows = max(4+1, 2) = 5
+        extra = 5 − 3 = 2
+        rows_page_1 = 12 − 2×2 = 8
+        """
+        legs = self._legs(buy_opt=4, sell_opt=2, buy_fut=1)
+        assert _ln_compute_page1_rows(legs) == 8
+
+    def test_order_1554_pagination_tmx_not_clipped(self):
+        """Regression: with budget=8, the 95.875 P BUY section (EDE+TMX) lands on
+        page 2 — not page 1 — so TMX renders in full print output.
+
+        Simulates the order-1554 section layout (6 option legs + futures, 1 broker
+        GKX, 2 CPs EDE and TMX).  Section order as observed in the linear ticket:
+          96.0000 P SELL, 95.8750 P BUY, 96.1250 P SELL, 95.6250 P BUY,
+          95.9375 P BUY, 95.7500 P BUY, FUT.
+
+        Bug: with budget=12, sections SELL-96.000 (6 rows) + BUY-95.875 (6 rows) =
+        12 fill page 1, CSS clips TMX.  With budget=8, only SELL-96.000 fits and
+        BUY-95.875 (with TMX) starts on page 2.
+        """
+        def _row(cp, house, side, is_fut=False):
+            return {"cp": cp, "house": house, "side": side,
+                    "qty": 500, "is_fut": is_fut}
+
+        def _sec(label, side, buy_rows, sell_rows, first=True):
+            return {
+                "broker": "GKX", "strike_label": label, "side": side,
+                "buy_rows": buy_rows, "sell_rows": sell_rows,
+                "buy_opt_total": sum(r["qty"] for r in buy_rows),
+                "sell_opt_total": sum(r["qty"] for r in sell_rows),
+                "buy_fut_total": 0, "sell_fut_total": 0,
+                "is_continuation": False,
+                "is_first_broker_for_strike": first,
+            }
+
+        ede = lambda s: _row("EDE", "365", s)
+        tmx = lambda s: _row("TMX", "125", s)
+
+        sections = [
+            _sec("96.0000 P", "SELL", [],                      [ede("SELL"), tmx("SELL")]),
+            _sec("95.8750 P", "BUY",  [ede("BUY"), tmx("BUY")], []),
+            _sec("96.1250 P", "SELL", [],                      [ede("SELL"), tmx("SELL")]),
+            _sec("95.6250 P", "BUY",  [ede("BUY"), tmx("BUY")], []),
+            _sec("95.9375 P", "BUY",  [ede("BUY"), tmx("BUY")], []),
+            _sec("95.7500 P", "BUY",  [ede("BUY"), tmx("BUY")], []),
+            {
+                "broker": "GKX", "strike_label": "FUT", "side": "",
+                "buy_rows": [_row("EDE","365","BUY",True), _row("TMX","125","BUY",True)],
+                "sell_rows": [], "buy_opt_total": 0, "buy_fut_total": 480,
+                "sell_opt_total": 0, "sell_fut_total": 0,
+                "is_continuation": False, "is_first_broker_for_strike": True,
+            },
+        ]
+
+        legs = self._legs(buy_opt=4, sell_opt=2, buy_fut=1)  # order-1554 leg structure
+        rows_p1 = _ln_compute_page1_rows(legs)
+        assert rows_p1 == 8, f"Expected budget=8 for this header, got {rows_p1}"
+
+        pages = _ln_paginate_sections(sections, rows_p1, _LN_ROWS_CONT)
+
+        # 95.8750 P BUY must NOT be on page 1
+        page1_labels = {s["strike_label"] for s in pages[0]}
+        assert "95.8750 P" not in page1_labels, (
+            f"95.8750 P BUY (with TMX row) must not be on page 1; "
+            f"page 1 has: {page1_labels}"
+        )
+
+        # 95.8750 P BUY must appear on some page beyond page 1
+        found_on = [
+            i + 1 for i, page in enumerate(pages)
+            if any(s["strike_label"] == "95.8750 P" for s in page)
+        ]
+        assert found_on and found_on[0] > 1, (
+            "95.8750 P BUY section (containing TMX) not found on any page after page 1"
+        )
+
+        # All rows must be preserved (no clipping)
+        total_data_rows = sum(
+            len(s.get("buy_rows", [])) + len(s.get("sell_rows", []))
+            for page in pages for s in page
+        )
+        expected = sum(
+            len(s.get("buy_rows", [])) + len(s.get("sell_rows", []))
+            for s in sections
+        )
+        assert total_data_rows == expected, (
+            f"Row count mismatch: {total_data_rows} in pages vs {expected} in input"
+        )
+
+    def test_minimum_budget_floor(self):
+        """Very large header (6 buy-opt + FUT vs 6 sell-opt) is floored at 6."""
+        legs = self._legs(buy_opt=6, sell_opt=6, buy_fut=1)
+        result = _ln_compute_page1_rows(legs)
+        assert result >= 6, f"Budget must never drop below 6, got {result}"
+
+    def test_cvd_single_leg_unchanged(self):
+        """CVD: 1 buy-opt + 1 buy-FUT → header_content=2 → budget=12 (no penalty)."""
+        legs = self._legs(buy_opt=1, buy_fut=1)
+        assert _ln_compute_page1_rows(legs) == _LN_ROWS_PAGE_1

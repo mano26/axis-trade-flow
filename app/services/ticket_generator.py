@@ -504,9 +504,38 @@ _ROWS_CONT   = 20   # broker section rows on continuation pages
 # Linear layout: flat data-row counts per page.
 # Each CP allocation produces N rows (one per leg); overhead adds ~3 rows per
 # broker section (label + thead + subtotal).  Tune these to match printed output.
-_LN_ROWS_PAGE_1 = 12   # data rows on page 1 (A5: header+grid eat ~110mm, ~12 rows remain)
-_LN_ROWS_CONT   = 24   # data rows on A5 continuation pages (cont-bar ~6mm, ~24 rows fit)
-_LN_SECTION_OH  = 3    # overhead rows per broker section (label + thead + subtotal)
+_LN_ROWS_PAGE_1      = 12  # section-row budget for page 1 at the *calibration* header size
+_LN_ROWS_CONT        = 24  # data rows on A5 continuation pages (cont-bar ~6mm, ~24 rows fit)
+_LN_SECTION_OH       = 3   # overhead rows per broker section (label + thead + subtotal)
+_LN_ROWS_HEADER_CALIB = 3  # header content rows at calibration (≈ 2 buy-opt + 1 FUT vs 2 sell-opt)
+
+
+def _ln_compute_page1_rows(sorted_legs) -> int:
+    """Return the section-row budget for page 1 of a linear ticket.
+
+    Page 1 carries the trade-header grid (BUY legs on the left, SELL legs on
+    the right).  The taller of the two columns determines how much vertical space
+    the header occupies, directly reducing the room available for broker sections.
+
+    Calibration reference:
+        3 header-content rows  →  12 section rows  (e.g. 2 buy-opt + FUT  vs  2 sell-opt)
+
+    Each extra header-content row above the calibration reference costs roughly
+    two section rows (empirical: each header row ≈ 2× a section-data row in height).
+
+        header_content_rows = max(buy_legs_count, sell_legs_count)
+        rows_page_1 = max(6, _LN_ROWS_PAGE_1 − (header_content_rows − calib) × 2)
+
+    Examples:
+        4 buy-opt + FUT  vs  2 sell-opt  →  max(5, 2) = 5  →  12 − 4 = 8
+        2 buy-opt + FUT  vs  2 sell-opt  →  max(3, 2) = 3  →  12 − 0 = 12  (calibrated)
+        1 buy-opt        vs  1 sell-opt  →  max(1, 1) = 1  →  12 − 0 = 12  (capped)
+    """
+    buy_count  = sum(1 for l in sorted_legs if (l.side or "").upper() in ("B", "BUY"))
+    sell_count = sum(1 for l in sorted_legs if (l.side or "").upper() in ("S", "SELL"))
+    header_content = max(buy_count, sell_count)
+    extra = max(0, header_content - _LN_ROWS_HEADER_CALIB)
+    return max(6, _LN_ROWS_PAGE_1 - extra * 2)
 
 
 def _fmt_strike(val) -> str:
@@ -1300,8 +1329,9 @@ def generate_ticket_with_cps_html(order, layout=None) -> str:
 
             # Regroup: strike first, then broker within each strike.
             # all_sections (broker-level) is kept for _grand_totals_html below.
-            ln_sections = _ln_group_by_strike_broker(all_sections, sorted_legs)
-            pages       = _ln_paginate_sections(ln_sections, _LN_ROWS_PAGE_1, _LN_ROWS_CONT)
+            ln_sections  = _ln_group_by_strike_broker(all_sections, sorted_legs)
+            rows_page_1  = _ln_compute_page1_rows(sorted_legs)
+            pages        = _ln_paginate_sections(ln_sections, rows_page_1, _LN_ROWS_CONT)
             total_pages = len(pages)
 
             for page_idx, sections_on_page in enumerate(pages):
