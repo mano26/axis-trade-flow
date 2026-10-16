@@ -600,9 +600,10 @@ def _build_broker_sections(fill_cps, sorted_legs, gcd_opt_vol, futures_dicts, is
             d   = cp_agg[key]
             qty = d["qty"]
             fq  = d["fut_qty"]
+            fq_is_manual = fq > 0   # True when the trader explicitly entered a value
             # Auto-calculate futures proportionally when not explicitly entered.
             # Formula: cp.quantity / order_total_qty × full_futures_lots
-            if fq == 0 and full_futures_vol > 0 and grand_cp_qty > 0:
+            if not fq_is_manual and full_futures_vol > 0 and grand_cp_qty > 0:
                 fq = round(d["qty"] / grand_cp_qty * full_futures_vol)
             total_fill_qty += qty
 
@@ -630,8 +631,16 @@ def _build_broker_sections(fill_cps, sorted_legs, gcd_opt_vol, futures_dicts, is
                     leg_vol = int(fd.get("qty", 0) or 0)
                     if not leg_vol:
                         continue
-                    # Compute each leg's qty from CP's allocation ratio independently
-                    leg_fq = round(d["qty"] / grand_cp_qty * leg_vol) if grand_cp_qty else 0
+                    # Determine this leg's qty for this CP.
+                    # Priority 1: trader manually entered futures_quantity.
+                    #   - Single-leg order: apply fq directly to the one leg.
+                    #   - Multi-leg (STUPID) order: the UI calc is SELL-delta-based,
+                    #     so fq represents the SELL allocation; auto-calc BUY legs.
+                    # Priority 2: proportional auto-calc from leg volume.
+                    if fq_is_manual and (len(futures_dicts) == 1 or fd_side == "SELL"):
+                        leg_fq = fq
+                    else:
+                        leg_fq = round(d["qty"] / grand_cp_qty * leg_vol) if grand_cp_qty else 0
                     if not leg_fq:
                         continue
                     # Strike: use contract code / price when multiple futures legs, else "FUT"
