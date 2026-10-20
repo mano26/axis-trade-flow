@@ -1306,12 +1306,19 @@ def generate_ticket_with_cps_html(order, layout=None) -> str:
         # orders have per-leg manual/auto splits handled in the broker section.
         _cp_fut_total   = sum((cp.futures_quantity or 0) for cp in fill.counterparties)
         _fut_leg_idxs   = [i for i, d in enumerate(all_leg_dicts) if d["is_fut"]]
+        _dbg_before     = all_leg_dicts[_fut_leg_idxs[0]]["qty"] if _fut_leg_idxs else "n/a"
         if _cp_fut_total > 0 and len(_fut_leg_idxs) == 1:
             _fi = _fut_leg_idxs[0]
             all_leg_dicts = (all_leg_dicts[:_fi]
                              + [dict(all_leg_dicts[_fi], qty=str(_cp_fut_total))]
                              + all_leg_dicts[_fi + 1:])
+        _dbg_after      = all_leg_dicts[_fut_leg_idxs[0]]["qty"] if _fut_leg_idxs else "n/a"
         fill_futures_dicts = [d for d in all_leg_dicts if d["is_fut"]]
+        # TEMP DEBUG — remove after diagnosis
+        html += (f"<!-- DBG fut: cp_fut_total={_cp_fut_total}"
+                 f" fut_leg_idxs={_fut_leg_idxs}"
+                 f" cp_fq_vals={[cp.futures_quantity for cp in fill.counterparties]}"
+                 f" qty_before={_dbg_before} qty_after={_dbg_after} -->\n")
 
         fill_ts = _fmt_ts(fill.fill_timestamp) if fill.fill_timestamp else ""
         time_in = _fmt_ts(order.time_in)
