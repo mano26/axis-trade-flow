@@ -1299,6 +1299,18 @@ def generate_ticket_with_cps_html(order, layout=None) -> str:
                          if fill.leg_prices else {}
         all_leg_dicts = [_leg_dict(l, fill_price_map, fill_quantity=fill.fill_quantity)
                          for l in sorted_legs]
+        # Override futures qty in the header when CPs have manually-entered
+        # quantities.  The broker section reads cp.futures_quantity directly;
+        # the header (built from all_leg_dicts) must match.
+        # Only applies to single-futures-leg orders (CVD); multi-leg (STUPID)
+        # orders have per-leg manual/auto splits handled in the broker section.
+        _cp_fut_total   = sum((cp.futures_quantity or 0) for cp in fill.counterparties)
+        _fut_leg_idxs   = [i for i, d in enumerate(all_leg_dicts) if d["is_fut"]]
+        if _cp_fut_total > 0 and len(_fut_leg_idxs) == 1:
+            _fi = _fut_leg_idxs[0]
+            all_leg_dicts = (all_leg_dicts[:_fi]
+                             + [dict(all_leg_dicts[_fi], qty=str(_cp_fut_total))]
+                             + all_leg_dicts[_fi + 1:])
         fill_futures_dicts = [d for d in all_leg_dicts if d["is_fut"]]
 
         fill_ts = _fmt_ts(fill.fill_timestamp) if fill.fill_timestamp else ""
