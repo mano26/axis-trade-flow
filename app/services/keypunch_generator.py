@@ -263,7 +263,7 @@ def _iter_rows(order):
                     "",                                # Avg Px Grp ID/Carry Firm
                     "",                                # Carry Account
                     "",                                # CTR
-                    bk_broker,                         # BK Brkr
+                    bk_broker if leg.option_type is None else "",  # BK Brkr (futures only)
                     stamp_in,                          # In Time
                     "",                                # In Time Ind
                     "",                                # Brkr Rect

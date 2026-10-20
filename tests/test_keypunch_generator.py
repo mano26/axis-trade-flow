@@ -349,7 +349,40 @@ class TestGenerateKeypunchCsv:
         rows = _parse_csv(generate_keypunch_csv(order))
         assert rows[0]["QTY"] == "12"
 
-    def test_bk_broker_populated(self):
+    def test_bk_broker_on_futures_row_only(self):
+        """BK Brkr appears on futures rows but not options rows (CVD trade)."""
+        opt_leg = _make_leg(option_type="C", strike=96.0, volume=500)
+        opt_leg.leg_index = 0
+        opt_leg.side = "B"
+        opt_leg.contract_type = "SR3"
+        opt_leg.expiry = "MAR26"
+        opt_leg.price = 0.0275
+
+        fut_leg = _make_leg(option_type=None, strike=None, volume=45)
+        fut_leg.leg_index = 1
+        fut_leg.side = "S"
+        fut_leg.contract_type = "SR3"
+        fut_leg.expiry = "MAR26"
+        fut_leg.price = 96.00
+
+        cp = _make_cp(qty=500, futures_quantity=45)
+        lp0 = _make_fill_leg_price(0, 0.0275)
+        lp1 = _make_fill_leg_price(1, 96.00)
+        fill = _make_fill(leg_prices=[lp0, lp1], counterparties=[cp])
+        order = _make_order(
+            total_quantity=500,
+            bk_broker="BGC",
+            legs=[opt_leg, fut_leg],
+            fills=[fill],
+        )
+        rows = _parse_csv(generate_keypunch_csv(order))
+        # Row 0 = options leg → BK Brkr must be blank
+        assert rows[0]["BK Brkr"] == "", "BK Brkr should be blank on options rows"
+        # Row 1 = futures leg → BK Brkr must be populated
+        assert rows[1]["BK Brkr"] == "BGC", "BK Brkr should appear on the futures row"
+
+    def test_bk_broker_blank_on_options_only_order(self):
+        """An options-only order with bk_broker set should have blank BK Brkr."""
         leg = _make_leg(option_type="C", strike=96.0, volume=100)
         leg.leg_index = 0
         leg.side = "B"
@@ -361,7 +394,7 @@ class TestGenerateKeypunchCsv:
                           counterparties=[cp])
         order = _make_order(total_quantity=100, bk_broker="BGC", legs=[leg], fills=[fill])
         rows = _parse_csv(generate_keypunch_csv(order))
-        assert rows[0]["BK Brkr"] == "BGC"
+        assert rows[0]["BK Brkr"] == ""
 
     def test_static_columns(self):
         """Verify hardcoded static column values across every row."""
