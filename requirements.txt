@@ -17,6 +17,7 @@ alembic==1.14.1                   # Schema migrations
 Flask-Migrate==4.0.7              # Flask-Alembic integration
 
 # --- Authentication & Security ---
+Flask-Mail==0.10.0                # Transactional email (password reset)
 Flask-Login==0.6.3
 Flask-WTF==1.2.2                  # CSRF protection + form validation
 WTForms==3.2.1

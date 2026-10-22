@@ -52,6 +52,17 @@ class Config:
     # 0001 at the start of each trading day.
     MAX_TICKET_NUMBER = int(os.environ.get("MAX_TICKET_NUMBER", 9999))
 
+    # --- Email (password reset, future notifications) ---
+    # Set these in Railway environment variables.
+    # Works with any SMTP provider: Gmail, SendGrid, Mailgun, etc.
+    MAIL_SERVER   = os.environ.get("MAIL_SERVER",   "smtp.gmail.com")
+    MAIL_PORT     = int(os.environ.get("MAIL_PORT", 587))
+    MAIL_USE_TLS  = os.environ.get("MAIL_USE_TLS",  "true").lower() != "false"
+    MAIL_USERNAME = os.environ.get("MAIL_USERNAME",  "")
+    MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD",  "")
+    # Sender shown to recipients — e.g. "AXIS Trade Flow <noreply@yourfirm.com>"
+    MAIL_DEFAULT_SENDER = os.environ.get("MAIL_DEFAULT_SENDER", "AXIS Trade Flow <noreply@localhost>")
+
     # --- Rithmic API (STUBBED) ---
     RITHMIC_URI = os.environ.get("RITHMIC_URI", "")
     RITHMIC_USER = os.environ.get("RITHMIC_USER", "")

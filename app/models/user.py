@@ -11,7 +11,9 @@
 # =============================================================================
 
 from datetime import datetime, timezone
+from flask import current_app
 from flask_login import UserMixin
+from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature
 from werkzeug.security import generate_password_hash, check_password_hash
 from app.extensions import db
 
@@ -127,6 +129,64 @@ class User(UserMixin, db.Model):
         Returns True if the password matches, False otherwise.
         """
         return check_password_hash(self.password_hash, password)
+
+    # -------------------------------------------------------------------------
+    # Password Reset Tokens
+    # -------------------------------------------------------------------------
+
+    _RESET_SALT = "password-reset"
+    _RESET_MAX_AGE = 3600  # 1 hour
+
+    def get_reset_token(self) -> str:
+        """
+        Generate a signed, time-limited password-reset token.
+
+        The token encodes {user_id, hash_tail} where hash_tail is the last
+        8 characters of the current password hash. This means:
+          - Tokens are self-contained — no DB table needed.
+          - Changing the password immediately invalidates any outstanding
+            token, because the hash_tail will no longer match.
+          - Tokens expire after 1 hour regardless.
+
+        Returns
+        -------
+        str
+            URL-safe signed token string.
+        """
+        s = URLSafeTimedSerializer(current_app.config["SECRET_KEY"])
+        return s.dumps(
+            {"user_id": self.id, "hash_tail": self.password_hash[-8:]},
+            salt=self._RESET_SALT,
+        )
+
+    @classmethod
+    def verify_reset_token(cls, token: str):
+        """
+        Verify a password-reset token and return the corresponding User.
+
+        Parameters
+        ----------
+        token : str
+            The token string from the reset URL.
+
+        Returns
+        -------
+        User | None
+            The user if the token is valid and unexpired; None otherwise.
+        """
+        s = URLSafeTimedSerializer(current_app.config["SECRET_KEY"])
+        try:
+            data = s.loads(token, salt=cls._RESET_SALT, max_age=cls._RESET_MAX_AGE)
+        except (SignatureExpired, BadSignature):
+            return None
+
+        user = db.session.get(cls, data.get("user_id"))
+        if user is None:
+            return None
+        # Reject token if password has changed since it was issued
+        if user.password_hash[-8:] != data.get("hash_tail"):
+            return None
+        return user
 
     # -------------------------------------------------------------------------
     # Flask-Login Integration

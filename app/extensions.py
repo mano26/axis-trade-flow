@@ -12,6 +12,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_login import LoginManager
 from flask_wtf.csrf import CSRFProtect
+from flask_mail import Mail
 
 # --- Database ---
 # SQLAlchemy instance shared across all models.
@@ -32,3 +33,8 @@ login_manager.login_message_category = "warning"  # Flash message category
 # REGULATORY NOTE: CSRF protection prevents unauthorized state changes to
 # trade data via cross-site request forgery attacks.
 csrf = CSRFProtect()
+
+# --- Email ---
+# Flask-Mail for transactional email (password reset). Configured via
+# MAIL_SERVER / MAIL_USERNAME / MAIL_PASSWORD environment variables.
+mail = Mail()
