@@ -1,0 +1,62 @@
+{% extends "layouts/base.html" %}
+{% block title %}Add User — Super Admin{% endblock %}
+
+{% block content %}
+<div style="max-width:520px; margin:32px auto;">
+    <h2>Add New User</h2>
+    <p style="color:#888; margin-bottom:20px;">Creates a user directly under any active company.</p>
+
+    <form method="POST" action="{{ url_for('companies.create_user') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="form-group">
+            <label>Company <span class="required">*</span></label>
+            <select name="tenant_id" required style="width:100%;">
+                <option value="">— select company —</option>
+                {% for t in tenants %}
+                <option value="{{ t.id }}"
+                    {% if form and form.get('tenant_id', '')|string == t.id|string %}selected{% endif %}>
+                    {{ t.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group" style="margin-top:14px;">
+            <label>Display Name <span class="required">*</span></label>
+            <input type="text" name="display_name"
+                   value="{{ form.get('display_name','') if form else '' }}"
+                   placeholder="Jane Smith" required style="width:100%;">
+        </div>
+
+        <div class="form-group" style="margin-top:14px;">
+            <label>Email <span class="required">*</span></label>
+            <input type="email" name="email"
+                   value="{{ form.get('email','') if form else '' }}"
+                   placeholder="jane@company.com" required style="width:100%;">
+        </div>
+
+        <div class="form-group" style="margin-top:14px;">
+            <label>Role</label>
+            <select name="role" style="width:100%;">
+                <option value="user"    {% if not form or form.get('role','user')=='user'    %}selected{% endif %}>User</option>
+                <option value="admin"   {% if form and form.get('role')=='admin'   %}selected{% endif %}>Admin</option>
+                <option value="auditor" {% if form and form.get('role')=='auditor' %}selected{% endif %}>Auditor</option>
+            </select>
+        </div>
+
+        <div class="form-group" style="margin-top:14px;">
+            <label>Temporary Password <span class="required">*</span>
+                <span style="font-weight:normal; font-size:0.85em; color:#888;">(min 6 chars — user should change it)</span>
+            </label>
+            <input type="text" name="password" placeholder="temporary password"
+                   required minlength="6" style="width:100%;">
+        </div>
+
+        <div style="display:flex; gap:12px; margin-top:24px;">
+            <button type="submit" class="btn btn-primary">Create User</button>
+            <a href="{{ url_for('companies.user_list') }}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

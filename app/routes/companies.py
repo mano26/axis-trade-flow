@@ -209,3 +209,143 @@ def toggle_active(tenant_id):
     db.session.commit()
     flash(f"'{tenant.name}' {'reactivated' if tenant.is_active else 'suspended'}.", "info")
     return redirect(url_for("companies.company_list"))
+
+
+# -------------------------------------------------------------------------
+# Cross-tenant User Management
+# -------------------------------------------------------------------------
+# These routes let a super admin manage ANY user from a single panel,
+# without having to switch companies first. Role changes and hard deletes
+# are only available here, not in the regular /admin/users panel.
+
+@companies_bp.route("/users")
+def user_list():
+    """All users across all companies."""
+    users = (
+        User.query
+        .join(Tenant, User.tenant_id == Tenant.id)
+        .order_by(Tenant.name, User.display_name)
+        .all()
+    )
+    tenants = Tenant.query.order_by(Tenant.name).all()
+    return render_template("companies/users.html", users=users, tenants=tenants)
+
+
+@companies_bp.route("/users/create", methods=["GET", "POST"])
+def create_user():
+    """Create a user under any tenant."""
+    tenants = Tenant.query.filter_by(is_active=True).order_by(Tenant.name).all()
+    if request.method == "POST":
+        tenant_id = request.form.get("tenant_id", type=int)
+        email = request.form.get("email", "").strip().lower()
+        display_name = request.form.get("display_name", "").strip()
+        role = request.form.get("role", UserRole.USER)
+        password = request.form.get("password", "").strip()
+
+        errors = []
+        if not tenant_id or not db.session.get(Tenant, tenant_id):
+            errors.append("Company is required.")
+        if not email:
+            errors.append("Email is required.")
+        if not display_name:
+            errors.append("Display name is required.")
+        if role not in UserRole.ALL:
+            errors.append("Invalid role.")
+        if not password or len(password) < 6:
+            errors.append("Password must be at least 6 characters.")
+        if email and User.query.filter_by(email=email).first():
+            errors.append(f"Email '{email}' is already registered.")
+
+        if errors:
+            for e in errors:
+                flash(e, "warning")
+            return render_template("companies/user_form.html", tenants=tenants,
+                                   form=request.form)
+
+        user = User(
+            tenant_id=tenant_id, email=email,
+            display_name=display_name, role=role, is_active_user=True,
+        )
+        user.set_password(password)
+        db.session.add(user)
+        audit_service.log_action(
+            action="user_created", entity_type="user",
+            entity_id=0, tenant_id=tenant_id,
+            after_value={"email": email, "role": role, "display_name": display_name},
+        )
+        db.session.commit()
+        flash(f"User '{display_name}' created.", "success")
+        return redirect(url_for("companies.user_list"))
+
+    return render_template("companies/user_form.html", tenants=tenants, form={})
+
+
+@companies_bp.route("/users/<int:user_id>/role", methods=["POST"])
+def change_role(user_id):
+    """Change a user's role."""
+    user = db.get_or_404(User, user_id)
+    if user.is_super_admin:
+        flash("Cannot change a super admin's role.", "warning")
+        return redirect(url_for("companies.user_list"))
+    new_role = request.form.get("role", "")
+    if new_role not in UserRole.ALL:
+        flash("Invalid role.", "warning")
+        return redirect(url_for("companies.user_list"))
+    old_role = user.role
+    user.role = new_role
+    audit_service.log_action(
+        action="user_role_changed", entity_type="user",
+        entity_id=user.id, tenant_id=user.tenant_id,
+        before_value={"role": old_role},
+        after_value={"role": new_role},
+    )
+    db.session.commit()
+    flash(f"Role for {user.display_name} changed to '{new_role}'.", "success")
+    return redirect(url_for("companies.user_list"))
+
+
+@companies_bp.route("/users/<int:user_id>/toggle-active", methods=["POST"])
+def toggle_user_active(user_id):
+    """Deactivate or reactivate a user."""
+    user = db.get_or_404(User, user_id)
+    if user.is_super_admin:
+        flash("Cannot deactivate a super admin.", "warning")
+        return redirect(url_for("companies.user_list"))
+    user.is_active_user = not user.is_active_user
+    audit_service.log_action(
+        action="user_activated" if user.is_active_user else "user_deactivated",
+        entity_type="user", entity_id=user.id, tenant_id=user.tenant_id,
+    )
+    db.session.commit()
+    state = "reactivated" if user.is_active_user else "deactivated"
+    flash(f"User '{user.display_name}' {state}.", "info")
+    return redirect(url_for("companies.user_list"))
+
+
+@companies_bp.route("/users/<int:user_id>/delete", methods=["POST"])
+def delete_user(user_id):
+    """
+    Hard-delete a user record permanently.
+
+    Only for accounts created by mistake or test accounts with no trade data.
+    Any user with trade history should be deactivated instead.
+    """
+    user = db.get_or_404(User, user_id)
+    if user.is_super_admin:
+        flash("Cannot delete a super admin account.", "warning")
+        return redirect(url_for("companies.user_list"))
+    if user.id == current_user.id:
+        flash("Cannot delete your own account.", "warning")
+        return redirect(url_for("companies.user_list"))
+    name = user.display_name
+    email = user.email
+    tenant_id = user.tenant_id
+    audit_service.log_action(
+        action="user_deleted", entity_type="user",
+        entity_id=user_id, tenant_id=tenant_id,
+        before_value={"email": email, "display_name": name},
+    )
+    db.session.delete(user)
+    db.session.commit()
+    flash(f"User '{name}' permanently deleted.", "warning")
+    return redirect(url_for("companies.user_list"))

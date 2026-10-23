@@ -1,0 +1,99 @@
+{% extends "layouts/base.html" %}
+{% block title %}All Users — Super Admin{% endblock %}
+
+{% block head %}
+<style>
+.role-form { display:inline-flex; gap:5px; align-items:center; }
+.role-form select { font-size:0.82rem; padding:2px 5px; border-radius:3px; border:1px solid #ccc; }
+.badge-role-admin   { background:#d4e4f0; color:#1a4a7a; padding:2px 7px; border-radius:9px; font-size:0.78rem; font-weight:600; }
+.badge-role-user    { background:#f0f0d4; color:#5a5a00; padding:2px 7px; border-radius:9px; font-size:0.78rem; font-weight:600; }
+.badge-role-auditor { background:#e8d4f0; color:#4a1a7a; padding:2px 7px; border-radius:9px; font-size:0.78rem; font-weight:600; }
+.badge-role-super   { background:#ead4f0; color:#5a1a7a; padding:2px 7px; border-radius:9px; font-size:0.78rem; font-weight:600; }
+.badge-active   { background:#d4f0d4; color:#1a7a1a; padding:2px 7px; border-radius:9px; font-size:0.78rem; font-weight:600; }
+.badge-inactive { background:#f0d4d4; color:#7a1a1a; padding:2px 7px; border-radius:9px; font-size:0.78rem; font-weight:600; }
+tr.u-inactive td { opacity:0.55; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>All Users <span style="font-weight:400;font-size:1rem;color:#888;">({{ users|length }} across {{ tenants|length }} companies)</span></h1>
+    <a href="{{ url_for('companies.create_user') }}" class="btn btn-primary">+ Add User</a>
+</div>
+
+<section>
+<table class="legs-table">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Company</th>
+            <th>Role</th>
+            <th>Status</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for u in users %}
+    <tr class="{{ 'u-inactive' if not u.is_active_user else '' }}">
+        <td>
+            {{ u.display_name }}
+            {% if u.is_super_admin %}<span class="badge-role-super">super</span>{% endif %}
+        </td>
+        <td>{{ u.email }}</td>
+        <td>{{ u.tenant.name }}</td>
+        <td>
+            {% if u.is_super_admin %}
+            <span class="badge-role-super">super admin</span>
+            {% else %}
+            <form method="POST" action="{{ url_for('companies.change_role', user_id=u.id) }}"
+                  class="role-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <select name="role">
+                    <option value="user"    {% if u.role=='user'    %}selected{% endif %}>User</option>
+                    <option value="admin"   {% if u.role=='admin'   %}selected{% endif %}>Admin</option>
+                    <option value="auditor" {% if u.role=='auditor' %}selected{% endif %}>Auditor</option>
+                </select>
+                <button type="submit" class="btn btn-sm">Set</button>
+            </form>
+            {% endif %}
+        </td>
+        <td>
+            {% if u.is_active_user %}
+            <span class="badge-active">Active</span>
+            {% else %}
+            <span class="badge-inactive">Inactive</span>
+            {% endif %}
+        </td>
+        <td style="white-space:nowrap;">
+            {% if not u.is_super_admin %}
+            {# Deactivate / Reactivate #}
+            <form method="POST"
+                  action="{{ url_for('companies.toggle_user_active', user_id=u.id) }}"
+                  style="display:inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm {% if u.is_active_user %}btn-warning{% endif %}">
+                    {{ 'Deactivate' if u.is_active_user else 'Reactivate' }}
+                </button>
+            </form>
+            {# Hard Delete #}
+            <form method="POST"
+                  action="{{ url_for('companies.delete_user', user_id=u.id) }}"
+                  style="display:inline"
+                  onsubmit="return confirm('Permanently delete {{ u.display_name }}? This cannot be undone.')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+            </form>
+            {% endif %}
+        </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+<p class="form-help" style="margin-top:10px;">
+    To create or reset a password for a user within a specific company,
+    <a href="{{ url_for('companies.company_list') }}">switch to that company</a>
+    and use the Users panel.
+</p>
+</section>
+{% endblock %}
