@@ -669,6 +669,12 @@ def amend_fill(order_id, fill_id):
         if bk_broker:
             order.bk_broker = bk_broker
 
+        # ── Stamp Times ──
+        stamp_time_in = request.form.get("stamp_time_in", "").strip()
+        stamp_time_out = request.form.get("stamp_time_out", "").strip()
+        fill.stamp_time_in = stamp_time_in or None
+        fill.stamp_time_out = stamp_time_out or None
+
         # ── Counterparties ──
         before_cp = [
             {"qty": cp.quantity, "broker": cp.broker,

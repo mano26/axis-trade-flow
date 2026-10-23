@@ -317,6 +317,11 @@
         <p class="form-help" style="margin-bottom: 6px;">
             Fill #{{ fidx }} — {{ fill.fill_quantity }} contracts
             <span class="status-badge status-allocated" style="margin-left: 6px;">ALLOCATED</span>
+            {% if fill.stamp_time_in or fill.stamp_time_out %}
+            <span style="margin-left: 10px; font-size: 0.85em; color: var(--text-muted, #666);">
+                In: {{ fill.stamp_time_in or '—' }} &nbsp;/&nbsp; Out: {{ fill.stamp_time_out or '—' }}
+            </span>
+            {% endif %}
             <button type="button" class="btn btn-sm" style="margin-left: 10px;"
                     onclick="toggleAmend({{ fill.id }}, this)">Edit</button>
         </p>
@@ -420,6 +425,24 @@
                     <input type="text" name="bk_broker" value="{{ order.bk_broker or '' }}" class="text-upper">
                 </div>
                 {% endif %}
+            </div>
+
+            {# Stamp Times #}
+            <div style="display:flex; gap:16px; margin-bottom:12px;">
+                <div class="form-group" style="margin:0;">
+                    <label style="display:block; font-size:0.85em; margin-bottom:3px;">Time In <span style="font-weight:normal;color:#888;">(HHMMSS)</span></label>
+                    <input type="text" name="stamp_time_in"
+                           value="{{ fill.stamp_time_in or '' }}"
+                           placeholder="093000" maxlength="6" pattern="[0-9]{6}"
+                           title="6-digit time HHMMSS e.g. 093000" style="width:90px;">
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label style="display:block; font-size:0.85em; margin-bottom:3px;">Time Out <span style="font-weight:normal;color:#888;">(HHMMSS)</span></label>
+                    <input type="text" name="stamp_time_out"
+                           value="{{ fill.stamp_time_out or '' }}"
+                           placeholder="093005" maxlength="6" pattern="[0-9]{6}"
+                           title="6-digit time HHMMSS e.g. 093005" style="width:90px;">
+                </div>
             </div>
 
             {# Prices #}
