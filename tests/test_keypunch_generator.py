@@ -203,14 +203,14 @@ class TestGenerateKeypunchCsv:
         assert row["P/C"] == "C"
         assert row["Strike Price"] == "96.0000"
         assert row["B/S"] == "B"
-        assert row["QTY"] == "500"
+        assert row["Qty"] == "500"
         assert row["Price"] == "0.0275"
         assert row["Account"] == "TEST"
         assert row["Order"] == "0042"
         assert row["Org"] == "C"
         assert row["CTI"] == "4"
         assert row["Traded As"] == "O"
-        assert row["Order Type"] == "L"
+        assert row["Order Type/Trnsf Rsn"] == "L"
         assert row["Brkr"] == "GKX"
         assert row["Opp Firm"] == "590"
         assert row["Opp Brkr"] == "SPNC"
@@ -284,9 +284,9 @@ class TestGenerateKeypunchCsv:
 
         rows = _parse_csv(generate_keypunch_csv(order))
         assert len(rows) == 3
-        assert int(rows[0]["QTY"]) == 500
-        assert int(rows[1]["QTY"]) == 1000
-        assert int(rows[2]["QTY"]) == 500
+        assert int(rows[0]["Qty"]) == 500
+        assert int(rows[1]["Qty"]) == 1000
+        assert int(rows[2]["Qty"]) == 500
 
     def test_multiple_fills_multiple_cps(self):
         """Two fills with one CP each → 2 rows total (single-leg order)."""
@@ -347,7 +347,7 @@ class TestGenerateKeypunchCsv:
                           counterparties=[cp])
         order = _make_order(total_quantity=500, legs=[leg], fills=[fill])
         rows = _parse_csv(generate_keypunch_csv(order))
-        assert rows[0]["QTY"] == "12"
+        assert rows[0]["Qty"] == "12"
 
     def test_bk_broker_on_futures_row_only(self):
         """BK Brkr appears on futures rows but not options rows (CVD trade)."""
@@ -414,7 +414,7 @@ class TestGenerateKeypunchCsv:
         assert row["Product Exchange"] == "CME"
         assert row["Org"] == "C"
         assert row["CTI"] == "4"
-        assert row["Order Type"] == "L"
+        assert row["Order Type/Trnsf Rsn"] == "L"
         assert row["Brkr Rect Ind"] == "F"
         assert row["Alloc Type"] == ""
         assert row["Avg Px Grp ID/Carry Firm"] == ""
@@ -428,17 +428,17 @@ class TestGenerateKeypunchCsv:
         assert row["Undly"] == ""
 
     def test_leading_zeros_preserved_in_raw_csv(self):
-        """Identifier columns must be wrapped with =".." so Excel preserves leading zeros.
+        """Identifier columns with leading zeros are output as plain strings.
 
-        csv.writer quotes values containing double-quotes, so the value ="004"
-        is stored in the raw text as the escaped form with doubled inner quotes.
-        We verify by parsing with plain csv.DictReader (no _unwrap_xl) and
-        checking the raw cell value equals the Excel formula string.
+        The CSV outputs raw string values; it is the responsibility of the
+        downstream clearing system (or the user's import step) to preserve
+        leading zeros.  Qty and Strike Price are also plain strings.
         """
         leg = _make_leg(option_type="C", strike=96.0, volume=100)
         leg.leg_index = 0
         leg.side = "B"
         leg.contract_type = "SR3"
+        leg.expiry = "MAR26"
         cp = _make_cp(qty=100, broker="GKX", symbol="NB", cp_house="004")
         fill = _make_fill(fill_qty=100, counterparties=[cp])
         fill.leg_prices = [_make_fill_leg_price(0, 0.05)]
@@ -450,21 +450,15 @@ class TestGenerateKeypunchCsv:
             account="0042",  # leading-zero account
         )
         csv_text = generate_keypunch_csv(order)
-        # Parse WITHOUT unwrapping to see the raw cell values
         raw_rows = list(csv.DictReader(io.StringIO(csv_text)))
         raw = raw_rows[0]
-        # Identifier columns must carry the Excel formula wrapper
-        assert raw["Opp Firm"] == '="004"', "Opp Firm must be wrapped to preserve leading zero"
-        assert raw["Firm"] == '="031"', "Firm must be wrapped to preserve leading zero"
-        assert raw["Account"] == '="0042"', "Account must be wrapped to preserve leading zero"
-        # Numeric columns must NOT be wrapped
-        assert raw["QTY"] == "100", "QTY must remain a plain number"
-        assert raw["Strike Price"] == "96.0000", "Strike Price must remain a plain number"
-        # After unwrapping, values are still correct
-        rows = _parse_csv(csv_text)
-        assert rows[0]["Opp Firm"] == "004"
-        assert rows[0]["Firm"] == "031"
-        assert rows[0]["Account"] == "0042"
+        # Identifier columns are plain strings (no Excel formula wrapping)
+        assert raw["Opp Firm"] == "004"
+        assert raw["Firm"] == "031"
+        assert raw["Account"] == "0042"
+        # Qty and Strike Price are plain strings too
+        assert raw["Qty"] == "100"
+        assert raw["Strike Price"] == "96.0000"
 
     def test_no_fills_returns_header_only(self):
         """An order with no fills should return a CSV with only the header."""

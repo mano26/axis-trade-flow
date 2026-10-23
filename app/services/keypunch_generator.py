@@ -97,8 +97,8 @@ def generate_keypunch_csv(order) -> str:
 
     headers = [
         "Trade Date", "Firm", "Firm Exchange", "Product Exchange", "Product",
-        "Contract", "P/C", "Strike Price", "Undly", "B/S", "QTY", "Price",
-        "Account", "Order", "Org", "CTI", "Traded As", "Order Type", "Brkr",
+        "Contract", "P/C", "Strike Price", "Undly", "B/S", "Qty", "Price",
+        "Account", "Order", "Org", "CTI", "Traded As", "Order Type/Trnsf Rsn", "Brkr",
         "Opp Firm", "Opp Brkr", "Time Brkt", "Alloc Type",
         "Avg Px Grp ID/Carry Firm", "Carry Account", "CTR", "BK Brkr",
         "In Time", "In Time Ind", "Brkr Rect", "Brkr Rect Ind",
@@ -129,13 +129,16 @@ def generate_keypunch_xlsx(order) -> bytes:
     """
     headers = [
         "Trade Date", "Firm", "Firm Exchange", "Product Exchange", "Product",
-        "Contract", "P/C", "Strike Price", "Undly", "B/S", "QTY", "Price",
-        "Account", "Order", "Org", "CTI", "Traded As", "Order Type", "Brkr",
+        "Contract", "P/C", "Strike Price", "Undly", "B/S", "Qty", "Price",
+        "Account", "Order", "Org", "CTI", "Traded As", "Order Type/Trnsf Rsn", "Brkr",
         "Opp Firm", "Opp Brkr", "Time Brkt", "Alloc Type",
         "Avg Px Grp ID/Carry Firm", "Carry Account", "CTR", "BK Brkr",
         "In Time", "In Time Ind", "Brkr Rect", "Brkr Rect Ind",
         "Exec Time", "Exec Ind", "Out Time", "Out Time Ind",
     ]
+
+    # Column index (1-based) of Strike Price — needs numeric format, not text
+    _STRIKE_COL = headers.index("Strike Price") + 1  # → 8
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -153,10 +156,17 @@ def generate_keypunch_xlsx(order) -> bytes:
     for row_idx, row_values in enumerate(_iter_rows(order), start=2):
         ws.row_dimensions[row_idx].height = 15
         for col_idx, value in enumerate(row_values, start=1):
-            cell = ws.cell(row=row_idx, column=col_idx, value=value)
+            if col_idx == _STRIKE_COL:
+                # Strike Price: store as float with 4-decimal numeric format
+                # so Excel displays "96.0000" rather than text "96.0000"
+                cell = ws.cell(row=row_idx, column=col_idx,
+                               value=float(value) if value != "" else None)
+                cell.number_format = "0.0000"
+            else:
+                cell = ws.cell(row=row_idx, column=col_idx, value=value)
+                # Force text format so Excel doesn't mangle date-like strings
+                cell.number_format = "@"
             cell.alignment = _CENTER
-            # Force text format so Excel doesn't mangle date-like strings
-            cell.number_format = "@"
 
     # ── Column widths (rough fit) ────────────────────────────────────────────
     col_widths = [
