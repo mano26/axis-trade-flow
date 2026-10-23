@@ -15,7 +15,7 @@
          ================================================================ -->
     {% if current_user.is_authenticated %}
     <nav class="nav-bar">
-        <div class="nav-brand">{{ current_user.tenant.brand_name or 'AXIS TRADE FLOW' }}</div>
+        <div class="nav-brand">{{ (active_tenant.brand_name if active_tenant else None) or 'AXIS TRADE FLOW' }}</div>
         <div class="nav-links">
             <a href="{{ url_for('orders.index') }}" class="nav-link">Orders</a>
             <a href="{{ url_for('reports.order_log') }}" class="nav-link">Order Log</a>
@@ -25,12 +25,35 @@
             <a href="{{ url_for('admin.lookup_list') }}" class="nav-link">Lookups</a>
             <a href="{{ url_for('admin.user_list') }}" class="nav-link">Users</a>
             {% endif %}
+            {% if current_user.is_super() %}
+            <a href="{{ url_for('companies.company_list') }}" class="nav-link">Companies</a>
+            {% endif %}
         </div>
         <div class="nav-user">
+            {% if switchable_tenants %}
+            <form method="POST" action="{{ url_for('companies.switch') }}" class="tenant-switcher">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <label for="tenant-switch" class="visually-hidden">Company</label>
+                <select id="tenant-switch" name="tenant_id" onchange="this.form.submit()">
+                    {% for t in switchable_tenants %}
+                    <option value="{{ t.id }}" {% if active_tenant and t.id == active_tenant.id %}selected{% endif %}>
+                        {{ t.name }}{% if t.id == current_user.tenant_id %} (home){% endif %}{% if not t.is_active %} — suspended{% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+                <noscript><button type="submit" class="btn btn-sm">Go</button></noscript>
+            </form>
+            {% endif %}
             <span class="nav-user-name">{{ current_user.display_name }}</span>
             <a href="{{ url_for('auth.logout') }}" class="nav-link nav-logout">Logout</a>
         </div>
     </nav>
+    {% if active_tenant and active_tenant.id != current_user.tenant_id %}
+    <div class="tenant-banner">
+        Working inside <strong>{{ active_tenant.name }}</strong> as super admin.
+        Everything you create or change here belongs to this company.
+    </div>
+    {% endif %}
     {% endif %}
 
     <!-- ================================================================

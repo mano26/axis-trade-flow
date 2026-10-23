@@ -15,6 +15,7 @@
 
 from flask import Blueprint, redirect, url_for, flash
 from flask_login import login_required, current_user
+from app.tenancy import active_tenant_id
 from app.extensions import db
 from app.models.order import Order, OrderStatus
 from app.services.rithmic_client import RithmicClient
@@ -39,7 +40,7 @@ def submit_to_exchange(order_id: int):
     REPORT_ACCEPTED or REPORT_FAILED based on the exchange response.
     """
     order = Order.query.filter_by(
-        id=order_id, tenant_id=current_user.tenant_id,
+        id=order_id, tenant_id=active_tenant_id(),
     ).first_or_404()
 
     # Validate order can be submitted
@@ -80,7 +81,7 @@ def submit_to_exchange(order_id: int):
     if result.success:
         order.transition_to(OrderStatus.REPORT_ACCEPTED)
         audit_service.log_exchange_submission(
-            order, current_user.tenant_id, success=True,
+            order, active_tenant_id(), success=True,
             details=f"Reference: {result.reference_id}",
         )
         flash(
@@ -90,7 +91,7 @@ def submit_to_exchange(order_id: int):
     else:
         order.transition_to(OrderStatus.REPORT_FAILED)
         audit_service.log_exchange_submission(
-            order, current_user.tenant_id, success=False,
+            order, active_tenant_id(), success=False,
             details=result.error_message,
         )
         flash(
@@ -99,7 +100,7 @@ def submit_to_exchange(order_id: int):
         )
 
     audit_service.log_order_status_change(
-        order, current_user.tenant_id, old_status, order.status,
+        order, active_tenant_id(), old_status, order.status,
     )
     db.session.commit()
 

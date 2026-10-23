@@ -1,0 +1,54 @@
+{% extends "layouts/base.html" %}
+{% block title %}Companies — AXIS Trade Flow{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Companies</h1>
+    <a href="{{ url_for('companies.create_company') }}" class="btn btn-primary">+ Add Company</a>
+</div>
+
+<section>
+    <table class="legs-table">
+        <thead>
+            <tr><th>Name</th><th>Slug</th><th>Brand</th><th>Users</th><th>Status</th><th>Created</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+            {% for t in tenants %}
+            <tr>
+                <td>
+                    {{ t.name }}
+                    {% if t.id == current_user.tenant_id %}<span class="form-help">(home)</span>{% endif %}
+                    {% if active_tenant and t.id == active_tenant.id %}<span class="status-badge status-allocated" style="margin-left:4px;">ACTIVE VIEW</span>{% endif %}
+                </td>
+                <td>{{ t.slug }}</td>
+                <td>{{ t.brand_name or '—' }}</td>
+                <td>{{ user_counts.get(t.id, 0) }}</td>
+                <td>
+                    {% if t.is_active %}<span class="status-badge status-allocated">ACTIVE</span>
+                    {% else %}<span class="status-badge status-cancelled">SUSPENDED</span>{% endif %}
+                </td>
+                <td>{{ t.created_at.strftime('%m/%d/%Y') if t.created_at else '' }}</td>
+                <td style="white-space:nowrap;">
+                    <form method="POST" action="{{ url_for('companies.switch') }}" style="display:inline">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="tenant_id" value="{{ t.id }}">
+                        <button type="submit" class="btn btn-sm">Switch to</button>
+                    </form>
+                    <a href="{{ url_for('companies.edit_company', tenant_id=t.id) }}" class="btn btn-sm">Edit</a>
+                    {% if t.id != current_user.tenant_id %}
+                    <form method="POST" action="{{ url_for('companies.toggle_active', tenant_id=t.id) }}" style="display:inline">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-sm {% if t.is_active %}btn-danger{% endif %}"
+                                onclick="return confirm('{{ 'Suspend' if t.is_active else 'Reactivate' }} {{ t.name }}?')">
+                            {{ 'Suspend' if t.is_active else 'Reactivate' }}
+                        </button>
+                    </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <p class="form-help" style="margin-top:12px;">To manage a company's users, brokers or other lookups, switch to it and use Users / Lookups.</p>
+</section>
+{% endblock %}

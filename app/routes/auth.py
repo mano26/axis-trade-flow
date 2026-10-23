@@ -18,6 +18,7 @@ from flask_login import login_user, logout_user, login_required, current_user
 from datetime import datetime, timezone
 from app.extensions import db
 from app.models.user import User
+from app.tenancy import clear_switch
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -52,6 +53,7 @@ def login():
             is_first_login = user.last_login_at is None
             user.last_login_at = datetime.now(timezone.utc)
             db.session.commit()
+            clear_switch()
             login_user(user, remember=False)
             # TODO: Log successful login to audit trail
             flash("Logged in successfully.", "success")
@@ -78,6 +80,7 @@ def guide():
 def logout():
     """Log the user out and redirect to login page."""
     logout_user()
+    clear_switch()
     flash("You have been logged out.", "info")
     return redirect(url_for("auth.login"))
 

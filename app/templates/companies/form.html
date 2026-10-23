@@ -1,0 +1,52 @@
+{% extends "layouts/base.html" %}
+{% set editing = tenant is not none %}
+{% set f = form or {} %}
+{% block title %}{{ 'Edit' if editing else 'Add' }} Company — AXIS Trade Flow{% endblock %}
+
+{% macro field(id, label, type='text', value='', required=false, help='') %}
+<div class="form-group" style="margin-bottom:16px;">
+    <label for="{{ id }}" style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">{{ label }}</label>
+    <input type="{{ type }}" id="{{ id }}" name="{{ id }}" value="{{ value }}" {% if required %}required{% endif %}
+           style="width:100%;padding:8px 12px;border:1px solid #d0d0d0;border-radius:4px;font-size:14px;">
+    {% if help %}<div class="form-help">{{ help }}</div>{% endif %}
+</div>
+{% endmacro %}
+
+{% block content %}
+<div class="page-header"><h1>{{ 'Edit ' ~ tenant.name if editing else 'Add Company' }}</h1></div>
+
+<section>
+    <form method="POST" style="max-width:440px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {{ field('name', 'Company name', value=(tenant.name if editing else f.get('name', '')), required=true) }}
+        {% if not editing %}
+        {{ field('slug', 'Slug', value=f.get('slug', ''), help='Optional. Generated from the name if left blank.') }}
+        {% endif %}
+        {{ field('brand_name', 'Brand name (nav bar)', value=((tenant.brand_name or '') if editing else f.get('brand_name', '')), help="Falls back to AXIS TRADE FLOW.") }}
+
+        {% if not editing %}
+        <h3 style="margin:24px 0 8px;font-size:14px;">First admin (optional)</h3>
+        {{ field('admin_name', 'Full name', value=f.get('admin_name', '')) }}
+        {{ field('admin_email', 'Email', type='email', value=f.get('admin_email', '')) }}
+        {{ field('admin_password', 'Temporary password', type='password') }}
+
+        <h3 style="margin:24px 0 8px;font-size:14px;">Starter lookups (optional)</h3>
+        <div class="form-group" style="margin-bottom:16px;">
+            <select name="copy_lookups_from" style="width:100%;padding:8px 12px;border:1px solid #d0d0d0;border-radius:4px;font-size:14px;">
+                <option value="">Start empty</option>
+                {% for s in sources %}<option value="{{ s.id }}">Copy market/contract/expiry/C-P lists from {{ s.name }}</option>{% endfor %}
+            </select>
+            <div class="form-help">Brokers, counterparties, houses, accounts and brackets are never copied — each company enters its own.</div>
+        </div>
+        <label style="font-size:13px;display:block;margin-bottom:16px;">
+            <input type="checkbox" name="switch_now" value="1" checked> Switch to this company after creating it
+        </label>
+        {% endif %}
+
+        <div style="display:flex;gap:12px;">
+            <button type="submit" class="btn btn-primary">{{ 'Save' if editing else 'Create Company' }}</button>
+            <a href="{{ url_for('companies.company_list') }}" class="btn">Cancel</a>
+        </div>
+    </form>
+</section>
+{% endblock %}
