@@ -9,13 +9,14 @@
 # trading day (8 hours) per the config.
 # =============================================================================
 
+import os
 import traceback
 
+import resend
 from flask import Blueprint, render_template, redirect, url_for, flash, request, current_app
 from flask_login import login_user, logout_user, login_required, current_user
-from flask_mail import Message
 from datetime import datetime, timezone
-from app.extensions import db, mail
+from app.extensions import db
 from app.models.user import User
 
 auth_bp = Blueprint("auth", __name__)
@@ -100,18 +101,20 @@ def forgot_password():
         if user and user.is_active:
             token = user.get_reset_token()
             reset_url = url_for("auth.reset_password", token=token, _external=True)
-            msg = Message(
-                subject="Reset your AXIS Trade Flow password",
-                recipients=[user.email],
-            )
-            msg.html = render_template(
+            html_body = render_template(
                 "email/password_reset.html",
                 user=user,
                 reset_url=reset_url,
             )
             try:
-                mail.send(msg)
-                current_app.logger.info("Password reset email sent to %s", user.email)
+                resend.api_key = current_app.config.get("MAIL_PASSWORD") or os.environ.get("MAIL_PASSWORD", "")
+                resp = resend.Emails.send({
+                    "from": current_app.config.get("MAIL_DEFAULT_SENDER", "AXIS Trade Flow <noreply@confirmengine.com>"),
+                    "to": [user.email],
+                    "subject": "Reset your AXIS Trade Flow password",
+                    "html": html_body,
+                })
+                current_app.logger.info("Password reset email sent to %s (id: %s)", user.email, resp.id)
             except Exception as exc:
                 current_app.logger.error(
                     "Failed to send password reset email to %s: %s\n%s",
