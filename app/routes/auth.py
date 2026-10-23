@@ -9,7 +9,9 @@
 # trading day (8 hours) per the config.
 # =============================================================================
 
-from flask import Blueprint, render_template, redirect, url_for, flash, request
+import traceback
+
+from flask import Blueprint, render_template, redirect, url_for, flash, request, current_app
 from flask_login import login_user, logout_user, login_required, current_user
 from flask_mail import Message
 from datetime import datetime, timezone
@@ -109,9 +111,14 @@ def forgot_password():
             )
             try:
                 mail.send(msg)
-            except Exception:
-                # Log the error but don't expose it to the user
-                pass  # TODO: log to audit trail
+                current_app.logger.info("Password reset email sent to %s", user.email)
+            except Exception as exc:
+                current_app.logger.error(
+                    "Failed to send password reset email to %s: %s\n%s",
+                    user.email,
+                    exc,
+                    traceback.format_exc(),
+                )
 
         # Always show the same message to prevent user-enumeration attacks
         flash(
