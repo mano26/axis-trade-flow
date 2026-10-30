@@ -56,6 +56,39 @@ function clearHouseIfSymbolCleared(rowIndex) {
     // If symbol is empty, clear house too
     if (!sym) houseInput.value = '';
 }
+
+// ── Futures qty auto-calculation for CVD / multi-expiration counterparty rows ──
+function updateFutQty(qtyInput) {
+    var delta = parseFloat(qtyInput.dataset.delta) || 0;
+    var delta2 = parseFloat(qtyInput.dataset.delta2 || '0') || 0;
+    var row = qtyInput.dataset.row;
+    var qty = parseInt(qtyInput.value) || 0;
+    var raw = qty * delta;
+    var futField = document.getElementById('cp_fut_qty_' + row);
+    if (futField) {
+        if (raw > 0) {
+            var floor = Math.floor(raw);
+            futField.value = floor;
+            futField.title = 'Calculated: ' + raw.toFixed(2) + ' (floor=' + floor + ', ceil=' + Math.ceil(raw) + ')';
+        } else {
+            futField.value = '';
+            futField.title = '';
+        }
+    }
+    if (delta2 > 0) {
+        var raw2 = qty * delta2;
+        var futField2 = document.getElementById('cp_fut_qty_2_' + row);
+        if (futField2) {
+            if (raw2 > 0) {
+                futField2.value = Math.floor(raw2);
+                futField2.title = 'Calculated: ' + raw2.toFixed(2);
+            } else {
+                futField2.value = '';
+                futField2.title = '';
+            }
+        }
+    }
+}
 </script>
 
 {# Datalist for counterparty autocomplete #}
@@ -115,6 +148,17 @@ function clearHouseIfSymbolCleared(rowIndex) {
             Selecting a known trader auto-fills their house number.
         </p>
 
+        {% if order.has_futures_legs %}
+        {% set _e_fl = order.legs | selectattr("option_type", "equalto", none) | selectattr("strike", "equalto", none) | list %}
+        {% set fut_leg = _e_fl[0] if _e_fl else none %}
+        {% set fut_leg_2 = _e_fl[1] if _e_fl | length > 1 else none %}
+        {% set delta_pct = (fut_leg.volume / order.total_quantity) if fut_leg and order.total_quantity else 0 %}
+        {% set delta_pct_2 = (fut_leg_2.volume / order.total_quantity) if fut_leg_2 and order.total_quantity else 0 %}
+        <p class="form-help" style="color: #c66a00; margin-bottom: 6px; font-size: 12px;">
+            &#9888; {% if fut_leg_2 %}Multi-expiration futures trade{% else %}CVD trade &mdash; delta {{ "%.1f"|format(delta_pct * 100) }}%{% endif %}. Futures Qty column is trader-adjustable.
+        </p>
+        {% endif %}
+
         <table class="legs-table cp-entry-table">
             <thead>
                 <tr>
@@ -124,6 +168,14 @@ function clearHouseIfSymbolCleared(rowIndex) {
                     <th>House</th>
                     <th>Bracket</th>
                     <th>Notes</th>
+                    {% if order.has_futures_legs %}
+                    {% if fut_leg_2 %}
+                    <th>Fut Qty ({{ (fut_leg.mo_card_code or fut_leg.expiry or 'Leg 1') | upper }})</th>
+                    <th>Fut Qty ({{ (fut_leg_2.mo_card_code or fut_leg_2.expiry or 'Leg 2') | upper }})</th>
+                    {% else %}
+                    <th>Futures Qty</th>
+                    {% endif %}
+                    {% endif %}
                 </tr>
             </thead>
             <tbody>
@@ -147,11 +199,21 @@ function clearHouseIfSymbolCleared(rowIndex) {
                     {% set init_house = '' %}
                 {% endif %}
 
+                {% if order.has_futures_legs %}
+                {% set calc_raw_e = ((cp.quantity if cp else (fill.fill_quantity if i == 0 and not fill.counterparties else 0)) | float) * delta_pct %}
+                {% set existing_fut_e = cp.futures_quantity if cp and cp.futures_quantity is not none else none %}
+                {% set calc_raw_e2 = ((cp.quantity if cp else (fill.fill_quantity if i == 0 and not fill.counterparties else 0)) | float) * delta_pct_2 %}
+                {% set existing_fut_e2 = cp.futures_quantity_2 if cp and cp.futures_quantity_2 is not none else none %}
+                {% endif %}
                 <tr>
                     <td>
                         <input type="number" name="cp_qty_{{ i }}"
                                value="{{ cp.quantity if cp else (fill.fill_quantity if i == 0 else '') }}"
-                               min="0" class="cp-qty-input">
+                               min="0" class="cp-qty-input"
+                               {% if order.has_futures_legs %}
+                               data-delta="{{ delta_pct }}" data-delta2="{{ delta_pct_2 }}" data-row="{{ i }}"
+                               oninput="updateFutQty(this)"
+                               {% endif %}>
                     </td>
                     <td>
                         <input type="text" name="cp_broker_{{ i }}"
@@ -188,6 +250,30 @@ function clearHouseIfSymbolCleared(rowIndex) {
                                value="{{ cp.notes if cp else '' }}"
                                placeholder="Optional">
                     </td>
+                    {% if order.has_futures_legs %}
+                    <td>
+                        {% if calc_raw_e > 0 and calc_raw_e != (calc_raw_e | int) %}
+                        <span style="font-size:11px;color:#888;display:block;">calc: {{ "%.2f"|format(calc_raw_e) }}</span>
+                        {% endif %}
+                        <input type="number" name="cp_fut_qty_{{ i }}"
+                               id="cp_fut_qty_{{ i }}"
+                               value="{{ existing_fut_e if existing_fut_e is not none else ((calc_raw_e | int) if calc_raw_e > 0 else '') }}"
+                               min="0" style="width:70px;"
+                               placeholder="{{ calc_raw_e | int if calc_raw_e > 0 else '' }}">
+                    </td>
+                    {% if fut_leg_2 %}
+                    <td>
+                        {% if calc_raw_e2 > 0 and calc_raw_e2 != (calc_raw_e2 | int) %}
+                        <span style="font-size:11px;color:#888;display:block;">calc: {{ "%.2f"|format(calc_raw_e2) }}</span>
+                        {% endif %}
+                        <input type="number" name="cp_fut_qty_2_{{ i }}"
+                               id="cp_fut_qty_2_{{ i }}"
+                               value="{{ existing_fut_e2 if existing_fut_e2 is not none else ((calc_raw_e2 | int) if calc_raw_e2 > 0 else '') }}"
+                               min="0" style="width:70px;"
+                               placeholder="{{ calc_raw_e2 | int if calc_raw_e2 > 0 else '' }}">
+                    </td>
+                    {% endif %}
+                    {% endif %}
                 </tr>
                 {% endfor %}
             </tbody>

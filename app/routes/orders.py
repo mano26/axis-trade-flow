@@ -561,6 +561,8 @@ def save_counterparties(order_id):
                 continue
             fut_qty_str = request.form.get(f"cp_fut_qty_{i}", "").strip()
             fut_qty = int(fut_qty_str) if fut_qty_str else None
+            fut_qty_2_str = request.form.get(f"cp_fut_qty_2_{i}", "").strip()
+            fut_qty_2 = int(fut_qty_2_str) if fut_qty_2_str else None
             cp = FillCounterparty(
                 fill_id=fill.id,
                 quantity=int(qty_str) if qty_str else 0,
@@ -570,6 +572,7 @@ def save_counterparties(order_id):
                 bracket=bracket,
                 notes=notes or None,
                 futures_quantity=fut_qty,
+                futures_quantity_2=fut_qty_2,
             )
             counterparties.append(cp)
 
@@ -697,6 +700,8 @@ def amend_fill(order_id, fill_id):
                 continue  # qty=0 means "remove this counterparty"
             fut_qty_str = request.form.get(f"cp_fut_qty_{i}", "").strip()
             fut_qty = int(fut_qty_str) if fut_qty_str else None
+            fut_qty_2_str = request.form.get(f"cp_fut_qty_2_{i}", "").strip()
+            fut_qty_2 = int(fut_qty_2_str) if fut_qty_2_str else None
             counterparties.append(FillCounterparty(
                 fill_id=fill.id,
                 quantity=int(qty_str) if qty_str else 0,
@@ -705,6 +710,7 @@ def amend_fill(order_id, fill_id):
                 bracket=bracket,
                 notes=notes or None,
                 futures_quantity=fut_qty,
+                futures_quantity_2=fut_qty_2,
             ))
 
         if counterparties:
@@ -790,6 +796,8 @@ def amend_fill_counterparties(order_id, fill_id):
                 continue
             fut_qty_str = request.form.get(f"cp_fut_qty_{i}", "").strip()
             fut_qty = int(fut_qty_str) if fut_qty_str else None
+            fut_qty_2_str = request.form.get(f"cp_fut_qty_2_{i}", "").strip()
+            fut_qty_2 = int(fut_qty_2_str) if fut_qty_2_str else None
             cp = FillCounterparty(
                 fill_id=fill.id,
                 quantity=int(qty_str) if qty_str else 0,
@@ -799,6 +807,7 @@ def amend_fill_counterparties(order_id, fill_id):
                 bracket=bracket,
                 notes=notes or None,
                 futures_quantity=fut_qty,
+                futures_quantity_2=fut_qty_2,
             )
             counterparties.append(cp)
 

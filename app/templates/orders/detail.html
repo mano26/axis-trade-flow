@@ -478,15 +478,18 @@
             {# Counterparties #}
             <p class="form-help" style="margin-bottom: 6px; font-weight: 600;">Counterparties</p>
             {% if order.has_futures_legs %}
-            {% set fut_leg = order.legs | selectattr("option_type", "equalto", none) | selectattr("strike", "equalto", none) | first | default(none) %}
+            {% set _amend_fl = order.legs | selectattr("option_type", "equalto", none) | selectattr("strike", "equalto", none) | list %}
+            {% set fut_leg = _amend_fl[0] if _amend_fl else none %}
+            {% set fut_leg_2 = _amend_fl[1] if _amend_fl | length > 1 else none %}
             {% set delta_pct = (fut_leg.volume / order.total_quantity) if fut_leg and order.total_quantity else 0 %}
+            {% set delta_pct_2 = (fut_leg_2.volume / order.total_quantity) if fut_leg_2 and order.total_quantity else 0 %}
             <p class="form-help" style="color: #c66a00; margin-bottom: 6px; font-size: 12px;">
-                &#9888; CVD trade &mdash; delta {{ "%.1f"|format(delta_pct * 100) }}%. Futures Qty column is trader-adjustable.
+                &#9888; {% if fut_leg_2 %}Multi-expiration futures trade{% else %}CVD trade &mdash; delta {{ "%.1f"|format(delta_pct * 100) }}%{% endif %}. Futures Qty column is trader-adjustable.
             </p>
             {% endif %}
             <table class="legs-table cp-entry-table">
                 <thead>
-                    <tr><th>Qty</th><th>Filling Broker</th><th>Counterparty</th><th>House</th><th>Bracket</th><th>Notes</th>{% if order.has_futures_legs %}<th>Futures Qty</th>{% endif %}<th></th></tr>
+                    <tr><th>Qty</th><th>Filling Broker</th><th>Counterparty</th><th>House</th><th>Bracket</th><th>Notes</th>{% if order.has_futures_legs %}{% if fut_leg_2 %}<th>Fut Qty ({{ (fut_leg.mo_card_code or fut_leg.expiry or 'Leg 1') | upper }})</th><th>Fut Qty ({{ (fut_leg_2.mo_card_code or fut_leg_2.expiry or 'Leg 2') | upper }})</th>{% else %}<th>Futures Qty</th>{% endif %}{% endif %}<th></th></tr>
                 </thead>
                 <tbody id="cp-tbody-amend-{{ fill.id }}">
                     {% set initial_rows_a = [10, fill.counterparties|length] | max %}
@@ -495,11 +498,13 @@
                     {% if order.has_futures_legs %}
                     {% set calc_raw_a = ((cp.quantity if cp else 0) | float) * delta_pct %}
                     {% set existing_fut_a = cp.futures_quantity if cp and cp.futures_quantity is not none else none %}
+                    {% set calc_raw_a_2 = ((cp.quantity if cp else 0) | float) * delta_pct_2 %}
+                    {% set existing_fut_a_2 = cp.futures_quantity_2 if cp and cp.futures_quantity_2 is not none else none %}
                     {% endif %}
                     <tr>
                         <td><input type="number" name="cp_qty_{{ i }}" value="{{ cp.quantity if cp else '' }}" min="0" class="cp-qty-input"
                             {% if order.has_futures_legs %}
-                            data-delta="{{ delta_pct }}" data-row="a{{ i }}"
+                            data-delta="{{ delta_pct }}" data-delta2="{{ delta_pct_2 }}" data-row="a{{ i }}"
                             oninput="updateFutQty(this)"
                             {% endif %}
                         ></td>
@@ -559,6 +564,17 @@
                                    value="{{ existing_fut_a if existing_fut_a is not none else ((calc_raw_a | int) if calc_raw_a > 0 else '') }}"
                                    min="0" style="width:70px;">
                         </td>
+                        {% if fut_leg_2 %}
+                        <td>
+                            {% if calc_raw_a_2 > 0 and calc_raw_a_2 != (calc_raw_a_2 | int) %}
+                            <span style="font-size:11px;color:#888;display:block;">calc: {{ "%.2f"|format(calc_raw_a_2) }}</span>
+                            {% endif %}
+                            <input type="number" name="cp_fut_qty_2_{{ i }}"
+                                   id="cp_fut_qty_2_a{{ i }}"
+                                   value="{{ existing_fut_a_2 if existing_fut_a_2 is not none else ((calc_raw_a_2 | int) if calc_raw_a_2 > 0 else '') }}"
+                                   min="0" style="width:70px;">
+                        </td>
+                        {% endif %}
                         {% endif %}
                         <td>
                             <button type="button"
@@ -659,17 +675,20 @@
         </div>
         {% if order.has_futures_legs %}
         {# Pre-compute per-counterparty fractional futures for the warning display #}
-        {# delta_pct = futures_leg.volume / order.total_quantity * 100 #}
-        {% set fut_leg = order.legs | selectattr("option_type", "equalto", none) | selectattr("strike", "equalto", none) | first | default(none) %}
+        {# delta_pct = futures_leg.volume / order.total_quantity #}
+        {% set _pend_fl = order.legs | selectattr("option_type", "equalto", none) | selectattr("strike", "equalto", none) | list %}
+        {% set fut_leg = _pend_fl[0] if _pend_fl else none %}
+        {% set fut_leg_2 = _pend_fl[1] if _pend_fl | length > 1 else none %}
         {% set delta_pct = (fut_leg.volume / order.total_quantity) if fut_leg and order.total_quantity else 0 %}
+        {% set delta_pct_2 = (fut_leg_2.volume / order.total_quantity) if fut_leg_2 and order.total_quantity else 0 %}
         <p class="form-help" style="color: #c66a00; margin-bottom: 6px; font-size: 12px;">
-            &#9888; CVD trade &mdash; delta {{ "%.1f"|format(delta_pct * 100) }}%.
+            &#9888; {% if fut_leg_2 %}Multi-expiration futures trade{% else %}CVD trade &mdash; delta {{ "%.1f"|format(delta_pct * 100) }}%{% endif %}.
             Enter the futures quantity for each counterparty (may differ from calculated due to rounding).
         </p>
         {% endif %}
         <table class="legs-table cp-entry-table">
             <thead>
-                <tr><th>Qty</th><th>Filling Broker</th><th>Counterparty</th><th>House</th><th>Bracket</th><th>Notes</th>{% if order.has_futures_legs %}<th>Futures Qty</th>{% endif %}</tr>
+                <tr><th>Qty</th><th>Filling Broker</th><th>Counterparty</th><th>House</th><th>Bracket</th><th>Notes</th>{% if order.has_futures_legs %}{% if fut_leg_2 %}<th>Fut Qty ({{ (fut_leg.mo_card_code or fut_leg.expiry or 'Leg 1') | upper }})</th><th>Fut Qty ({{ (fut_leg_2.mo_card_code or fut_leg_2.expiry or 'Leg 2') | upper }})</th>{% else %}<th>Futures Qty</th>{% endif %}{% endif %}</tr>
             </thead>
             <tbody id="cp-tbody-pend-{{ fill.id }}">
                 {% set initial_rows_p = [10, fill.counterparties|length] | max %}
@@ -681,11 +700,14 @@
                 {% set calc_floor = calc_raw | int %}
                 {% set calc_ceil = (calc_raw + 0.9999) | int %}
                 {% set existing_fut = cp.futures_quantity if cp and cp.futures_quantity is not none else none %}
+                {% set calc_raw_2 = ((cp.quantity if cp else (fill.fill_quantity if i == 0 and not fill.counterparties else 0)) | float) * delta_pct_2 %}
+                {% set calc_floor_2 = calc_raw_2 | int %}
+                {% set existing_fut_2 = cp.futures_quantity_2 if cp and cp.futures_quantity_2 is not none else none %}
                 {% endif %}
                 <tr>
                     <td><input type="number" name="cp_qty_{{ i }}" value="{{ cp.quantity if cp else (fill.fill_quantity if i == 0 and not fill.counterparties else '') }}" min="0" class="cp-qty-input"
                         {% if order.has_futures_legs %}
-                        data-delta="{{ delta_pct }}" data-row="{{ i }}"
+                        data-delta="{{ delta_pct }}" data-delta2="{{ delta_pct_2 }}" data-row="{{ i }}"
                         oninput="updateFutQty(this)"
                         {% endif %}
                     ></td>
@@ -748,6 +770,18 @@
                                min="0" style="width:70px;"
                                placeholder="{{ calc_floor if calc_raw > 0 else '' }}">
                     </td>
+                    {% if fut_leg_2 %}
+                    <td>
+                        {% if calc_raw_2 > 0 and calc_raw_2 != calc_floor_2 %}
+                        <span style="font-size:11px;color:#888;display:block;">calc: {{ "%.2f"|format(calc_raw_2) }}</span>
+                        {% endif %}
+                        <input type="number" name="cp_fut_qty_2_{{ i }}"
+                               id="cp_fut_qty_2_{{ i }}"
+                               value="{{ existing_fut_2 if existing_fut_2 is not none else ((calc_floor_2) if calc_raw_2 > 0 else '') }}"
+                               min="0" style="width:70px;"
+                               placeholder="{{ calc_floor_2 if calc_raw_2 > 0 else '' }}">
+                    </td>
+                    {% endif %}
                     {% endif %}
                 </tr>
                 {% endfor %}
@@ -863,6 +897,8 @@ var cpRowCounts = {};
 var _existingDeltaInput = document.querySelector('[data-delta]');
 var hasFuturesLegs  = !!_existingDeltaInput;
 var deltaPctGlobal  = _existingDeltaInput ? parseFloat(_existingDeltaInput.dataset.delta) : 0;
+var deltaPctGlobal2 = _existingDeltaInput ? parseFloat(_existingDeltaInput.dataset.delta2 || '0') : 0;
+var numFuturesLegs  = deltaPctGlobal2 > 0 ? 2 : (hasFuturesLegs ? 1 : 0);
 
 function addCPRow(formType, fillId) {
     var key = formType + '-' + fillId;
@@ -882,7 +918,7 @@ function addCPRow(formType, fillId) {
     var row = document.createElement('tr');
     var html =
         '<td><input type="number" name="cp_qty_' + i + '" min="0" class="cp-qty-input"' +
-            (hasFuturesLegs ? ' data-delta="' + deltaPctGlobal + '" data-row="' + i + '" oninput="updateFutQty(this)"' : '') +
+            (hasFuturesLegs ? ' data-delta="' + deltaPctGlobal + '" data-delta2="' + deltaPctGlobal2 + '" data-row="' + i + '" oninput="updateFutQty(this)"' : '') +
         '></td>' +
         '<td><input type="text" name="cp_broker_' + i + '" class="text-upper" placeholder="Broker"></td>' +
         '<td><input type="text" id="' + symId + '" name="cp_symbol_' + i + '"' +
@@ -896,6 +932,10 @@ function addCPRow(formType, fillId) {
     if (hasFuturesLegs) {
         html += '<td><input type="number" id="cp_fut_qty_' + i + '" name="cp_fut_qty_' + i + '"' +
             ' class="cp-qty-input" placeholder="auto"></td>';
+        if (numFuturesLegs >= 2) {
+            html += '<td><input type="number" id="cp_fut_qty_2_' + i + '" name="cp_fut_qty_2_' + i + '"' +
+                ' class="cp-qty-input" placeholder="auto"></td>';
+        }
     }
     row.innerHTML = html;
     tbody.appendChild(row);
@@ -954,9 +994,10 @@ function addLegRow() {
     rowCounter++;
 }
 
-// ── Futures qty auto-calculation for CVD counterparty rows ──
+// ── Futures qty auto-calculation for CVD / multi-expiration counterparty rows ──
 function updateFutQty(qtyInput) {
     var delta = parseFloat(qtyInput.dataset.delta) || 0;
+    var delta2 = parseFloat(qtyInput.dataset.delta2 || '0') || 0;
     var row = qtyInput.dataset.row;
     var qty = parseInt(qtyInput.value) || 0;
     var raw = qty * delta;
@@ -969,6 +1010,19 @@ function updateFutQty(qtyInput) {
     } else {
         futField.value = '';
         futField.title = '';
+    }
+    if (delta2 > 0) {
+        var raw2 = qty * delta2;
+        var futField2 = document.getElementById('cp_fut_qty_2_' + row);
+        if (futField2) {
+            if (raw2 > 0) {
+                futField2.value = Math.floor(raw2);
+                futField2.title = 'Calculated: ' + raw2.toFixed(2);
+            } else {
+                futField2.value = '';
+                futField2.title = '';
+            }
+        }
     }
 }
 

@@ -99,8 +99,20 @@ def generate_cards_html(order: Order) -> str:
                         "qty": cp.quantity,
                         "symbol": cp.symbol or "",
                         "cp_house": cp.cp_house or "",
-                        "futures_qty": cp.futures_quantity,  # None if not set
+                        "futures_qty": cp.futures_quantity,    # None if not set
+                        "futures_qty_2": cp.futures_quantity_2,  # None if not set
                     })
+
+    # Track futures leg index (0-based) so _build_card can apply the correct
+    # stored futures quantity: futures_qty for the first futures leg (index 0),
+    # futures_qty_2 for the second (index 1). Option legs get index -1.
+    fut_leg_count = 0
+    for l in legs:
+        if l["is_fut"]:
+            l["fut_leg_idx"] = fut_leg_count
+            fut_leg_count += 1
+        else:
+            l["fut_leg_idx"] = -1
 
     is_multi_leg = len(legs) > 1
 
@@ -239,11 +251,18 @@ def _build_card(
         h += f"<div class='slot' style='border-color:{ink}'>"
         if slot < len(cps):
             cp = cps[slot]
-            # For options: scale cp qty by leg_ratio (leg.volume / order.total_quantity).
-            # For futures on CVD trades: use cp["futures_qty"] if the trader
-            # explicitly chose a rounded value; otherwise fall back to leg_ratio.
-            if leg["is_fut"] and cp.get("futures_qty") is not None:
-                dq = cp["futures_qty"]
+            # For options: scale cp qty by leg_ratio.
+            # For futures: use the stored per-leg quantity when available.
+            #   - First futures leg  (fut_leg_idx == 0): futures_qty
+            #   - Second futures leg (fut_leg_idx == 1): futures_qty_2
+            # Falls back to leg_ratio when no stored value exists.
+            if leg["is_fut"]:
+                fut_idx = leg.get("fut_leg_idx", 0)
+                stored_fq = cp.get("futures_qty_2") if fut_idx == 1 else cp.get("futures_qty")
+                if stored_fq is not None:
+                    dq = stored_fq
+                else:
+                    dq = round(cp["qty"] * leg["leg_ratio"])
             else:
                 dq = round(cp["qty"] * leg["leg_ratio"])
 
