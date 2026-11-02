@@ -63,13 +63,13 @@ def create():
         flash("Please enter a trade string.", "warning")
         return redirect(url_for("orders.index"))
 
-    # Optional manual ticket number override (super admin only). When set,
+    # Optional manual ticket number override (all users). When set,
     # this order takes that exact number instead of auto-increment — used
     # to set the day's starting ticket # directly from the entry form.
     # Applies once; subsequent orders resume normal auto-increment from there.
     ticket_override_str = request.form.get("ticket_override", "").strip()
     forced_ticket_num = None
-    if ticket_override_str and current_user.is_super():
+    if ticket_override_str:
         try:
             forced_ticket_num = int(ticket_override_str)
             if not 1 <= forced_ticket_num <= 9999:
@@ -960,9 +960,9 @@ def cancel(order_id):
 @orders_bp.route("/bulk-delete", methods=["POST"])
 @login_required
 def bulk_delete():
-    # Bulk soft-delete. Super admin only.
-    if not current_user.is_super():
-        flash("Only super admins can delete orders.", "danger")
+    # Bulk soft-delete. Company admin and super admin.
+    if not current_user.is_admin():
+        flash("Only admins can delete orders.", "danger")
         return redirect(url_for("reports.order_log"))
     from datetime import datetime, timezone as _tz
     order_ids = request.form.getlist("order_ids")
@@ -983,7 +983,7 @@ def bulk_delete():
                 entity_id=order.id,
                 tenant_id=active_tenant_id(),
                 user_id=current_user.id,
-                notes=f"Order #{order.ticket_display} bulk-deleted by super admin.",
+                notes=f"Order #{order.ticket_display} bulk-deleted by {current_user.email}.",
             )
             deleted += 1
     db.session.commit()
@@ -994,12 +994,12 @@ def bulk_delete():
 @orders_bp.route("/<int:order_id>/delete", methods=["POST"])
 @login_required
 def delete(order_id):
-    # Hard-delete an order. Super admin only, any status.
+    # Hard-delete an order. Company admin and super admin, any status.
     # Physically removes the row (and cascaded fills/legs) so the ticket
     # number is freed from the unique constraint and can be reused.
     # Audit log entry is written BEFORE deletion so the record is preserved.
-    if not current_user.is_super():
-        flash("Only super admins can delete orders.", "danger")
+    if not current_user.is_admin():
+        flash("Only admins can delete orders.", "danger")
         return redirect(url_for("orders.detail", order_id=order_id))
 
     order = _get_order_or_404(order_id)
@@ -1014,7 +1014,7 @@ def delete(order_id):
         tenant_id=active_tenant_id(),
         user_id=current_user.id,
         notes=(
-            f"Order #{ticket_display} hard-deleted by super admin "
+            f"Order #{ticket_display} hard-deleted by {current_user.email} "
             f"(trade: {order.raw_input}). Ticket number released for reuse."
         ),
     )
@@ -1039,12 +1039,12 @@ def delete(order_id):
 def cancel_duplicate(order_id):
     """
     Mark a filled/amended order as CANCELLED_DUPLICATE.
-    Super admin only. Retains the record for compliance audit but excludes
-    it from all volume totals. Used when the same trade was entered twice
-    by different users and one entry needs to be voided after the fact.
+    Company admin and super admin only. Retains the record for compliance
+    audit but excludes it from all volume totals. Used when the same trade
+    was entered twice by different users and one entry needs to be voided.
     """
-    if not current_user.is_super():
-        flash("Only super admins can cancel orders as duplicates.", "danger")
+    if not current_user.is_admin():
+        flash("Only admins can cancel orders as duplicates.", "danger")
         return redirect(url_for("orders.detail", order_id=order_id))
 
     order = _get_order_or_404(order_id)
@@ -1073,7 +1073,7 @@ def cancel_duplicate(order_id):
         tenant_id=active_tenant_id(),
         user_id=current_user.id,
         notes=(
-            f"Order #{order.ticket_display} marked CANCELLED DUPLICATE by super admin. "
+            f"Order #{order.ticket_display} marked CANCELLED DUPLICATE by {current_user.email}. "
             f"Previous status: {prev_status}. "
             f"Trade: {order.raw_input}. "
             f"Record retained for compliance audit."
@@ -1086,6 +1086,70 @@ def cancel_duplicate(order_id):
         f"It will no longer appear in volume totals.",
         "warning",
     )
+    return redirect(url_for("orders.detail", order_id=order_id))
+
+
+@orders_bp.route("/<int:order_id>/set-ticket", methods=["POST"])
+@login_required
+def set_ticket(order_id):
+    """
+    Edit the ticket number on an existing order. Company admin and super admin only.
+    The new number must be unused by any other order for the same trade date.
+    """
+    if not current_user.is_admin():
+        flash("Only admins can edit ticket numbers.", "danger")
+        return redirect(url_for("orders.detail", order_id=order_id))
+
+    order = _get_order_or_404(order_id)
+
+    new_ticket_str = request.form.get("new_ticket_number", "").strip()
+    try:
+        new_ticket = int(new_ticket_str)
+        if not 1 <= new_ticket <= 9999:
+            raise ValueError
+    except ValueError:
+        flash("Ticket number must be between 1 and 9999.", "warning")
+        return redirect(url_for("orders.detail", order_id=order_id))
+
+    if new_ticket == order.ticket_number:
+        flash("Ticket number unchanged.", "info")
+        return redirect(url_for("orders.detail", order_id=order_id))
+
+    # Check uniqueness for this tenant + trade date
+    existing = db.session.execute(
+        db.select(Order.id)
+        .where(Order.tenant_id == active_tenant_id())
+        .where(Order.trade_date == order.trade_date)
+        .where(Order.ticket_number == new_ticket)
+        .where(Order.id != order_id)
+    ).first()
+    if existing:
+        flash(f"Ticket #{new_ticket:04d} is already in use on {order.trade_date.strftime('%m/%d/%Y')}.", "warning")
+        return redirect(url_for("orders.detail", order_id=order_id))
+
+    old_ticket_display = order.ticket_display
+    order.ticket_number = new_ticket
+
+    # If this ticket date is today, keep the counter in sync
+    tenant = db.session.get(Tenant, active_tenant_id())
+    from datetime import date as _date
+    if order.trade_date == _date.today() and new_ticket > (tenant.current_ticket_number or 0):
+        tenant.current_ticket_number = new_ticket
+
+    audit_service.log_action(
+        action="ticket_number_changed",
+        entity_type="order",
+        entity_id=order.id,
+        tenant_id=active_tenant_id(),
+        user_id=current_user.id,
+        notes=(
+            f"Ticket number changed from #{old_ticket_display} to "
+            f"#{new_ticket:04d} by {current_user.email}."
+        ),
+    )
+
+    db.session.commit()
+    flash(f"Ticket number updated to #{new_ticket:04d}.", "info")
     return redirect(url_for("orders.detail", order_id=order_id))
 
 

@@ -3,7 +3,22 @@
 
 {% block content %}
 <div class="page-header">
-    <h1>Order #{{ order.ticket_display }}</h1>
+    <h1>Order #{{ order.ticket_display }}{% if current_user.is_admin() %}<button type="button"
+            onclick="document.getElementById('edit-ticket-form').style.display=document.getElementById('edit-ticket-form').style.display==='none'?'inline-flex':'none'"
+            style="margin-left:10px;font-size:11px;padding:2px 8px;background:none;border:1px solid #aaa;border-radius:3px;cursor:pointer;color:#555;vertical-align:middle;"
+            title="Edit ticket number">✎</button>{% endif %}</h1>
+    {% if current_user.is_admin() %}
+    <form id="edit-ticket-form" method="POST" action="{{ url_for('orders.set_ticket', order_id=order.id) }}"
+          style="display:none;align-items:center;gap:6px;margin-left:12px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="text" name="new_ticket_number" value="{{ order.ticket_display }}"
+               maxlength="4" style="width:60px;font-size:13px;padding:3px 6px;"
+               title="New ticket number (1–9999)">
+        <button type="submit" class="btn btn-primary" style="font-size:12px;padding:4px 10px;">Save</button>
+        <button type="button" onclick="document.getElementById('edit-ticket-form').style.display='none'"
+                class="btn" style="font-size:12px;padding:4px 10px;">Cancel</button>
+    </form>
+    {% endif %}
     <span class="status-badge status-{{ order.status }}">{{ order.status | replace('_', ' ') | upper }}</span>
     {% if order.is_generic %}
     <span class="status-badge" style="background:#fff3e0;color:#e65100;margin-left:4px;">GENERIC</span>
@@ -834,7 +849,7 @@
         <a href="{{ url_for('orders.correct_trade_string_page', order_id=order.id) }}"
            class="btn" style="background:#795548; color:#fff; border-color:#795548;">Correct Trade String</a>
         {% endif %}
-        {% if current_user.is_super() and order.status in ('filled', 'amended', 'partial_fill', 'partial_cancelled') %}
+        {% if current_user.is_admin() and order.status in ('filled', 'amended', 'partial_fill', 'partial_cancelled') %}
         <form method="POST" action="{{ url_for('orders.cancel_duplicate', order_id=order.id) }}" style="display:inline">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn"
@@ -844,7 +859,7 @@
             </button>
         </form>
         {% endif %}
-        {% if current_user.is_super() %}
+        {% if current_user.is_admin() %}
         <form method="POST" action="{{ url_for('orders.delete', order_id=order.id) }}" style="display:inline">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-danger"

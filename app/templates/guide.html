@@ -48,6 +48,7 @@
     <h3>Contents</h3>
     <ol>
         <li><a href="#workflow">Workflow Overview</a></li>
+        <li><a href="#order-entry">Order Entry &amp; Ticket Numbering</a></li>
         <li><a href="#syntax">Trade String Syntax</a></li>
         <li><a href="#strategies">Strategy Keywords &amp; Aliases</a></li>
         <li><a href="#price-format">Price Format &amp; Direction</a></li>
@@ -55,8 +56,10 @@
         <li><a href="#tick-check">Quarter-Tick Check</a></li>
         <li><a href="#generic">Generic Trade Mode</a></li>
         <li><a href="#fills">Recording Fills &amp; Partial Fills</a></li>
+        <li><a href="#futures-qty">CVD &amp; Futures Qty on Counterparty Entry</a></li>
         <li><a href="#cards-tickets">Cards &amp; Tickets</a></li>
         <li><a href="#amend">Amending a Trade</a></li>
+        <li><a href="#delete-orders">Correcting, Deleting &amp; Marking Duplicate Orders</a></li>
         <li><a href="#modify-balance">Modifying the Balance</a></li>
         <li><a href="#order-log">Order Log</a></li>
     </ol>
@@ -79,8 +82,28 @@
 
 
 <!-- ═══════════════════════════════════════════════════════ -->
+<div class="guide-section" id="order-entry">
+    <h2>2 — Order Entry &amp; Ticket Numbering</h2>
+
+    <h3>Entering an Order</h3>
+    <p>Type the trade string in the entry box on the Orders page and click <strong>Submit Order</strong>. The system parses the string, validates it, and assigns the next sequential ticket number. House and Account can be set before submitting using the dropdowns below the entry box — they default to the values most recently used.</p>
+
+    <h3>Ticket Numbering System</h3>
+    <p>Every order gets a four-digit ticket number: <strong>0001 through 9999</strong>. The counter advances by one for each new order. At the end of the day the counter wraps — the first order the following morning picks up from where the prior day left off (or from 0001 if the previous day ended at 9999). Hard-deleting an order frees its ticket number and the system reuses it for the next order created.</p>
+
+    <h3>Setting the First Ticket of the Day</h3>
+    <p>To force a specific starting ticket number — for example to begin a new day at <strong>0001</strong>, or to match an off-system sequence — use the <strong>Ticket #</strong> field in the page header next to the date. Type the desired number before submitting the order. That order will take the number you entered, and subsequent orders auto-increment from there. Leave it blank to let the system assign the next number automatically.</p>
+    <div class="tip-box">The Ticket # field is available to all users. If the number you enter is already in use today the system will reject it and prompt you to choose another.</div>
+
+    <h3>Editing a Ticket Number After the Fact</h3>
+    <p>Company admins and super admins can change a ticket number on an existing order — even after it has been filled — by clicking the small <strong>✎</strong> pencil icon next to the order number on the order detail page. Enter the corrected four-digit number and click Save. The number must be unused on that order's trade date. The change is written to the audit log.</p>
+    <div class="tip-box">If you need to reuse a ticket number that was assigned to a wrong or duplicate order, delete the original order first (which frees the number) and then re-enter the correct order using the Ticket # override field.</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════ -->
 <div class="guide-section" id="syntax">
-    <h2>2 — Trade String Syntax</h2>
+    <h2>3 — Trade String Syntax</h2>
     <p>The general structure is:</p>
     <div class="code-block">&lt;contract&gt; &lt;strike(s)&gt; &lt;C/P&gt; &lt;strategy&gt; [ratio] &lt;price_format&gt;</div>
 
@@ -104,7 +127,7 @@ SFRH6 95.75 96.00 96.25 C FLY 2/200</div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <div class="guide-section" id="strategies">
-    <h2>3 — Strategy Keywords &amp; Aliases</h2>
+    <h2>4 — Strategy Keywords &amp; Aliases</h2>
     <p>Any of the aliases below can be used interchangeably — the system normalises them.</p>
 
     <table class="strat-table">
@@ -213,7 +236,7 @@ SFRH6 95.75 96.00 96.25 C FLY 2/200</div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <div class="guide-section" id="price-format">
-    <h2>4 — Price Format &amp; Direction</h2>
+    <h2>5 — Price Format &amp; Direction</h2>
     <p>The price/quantity token tells the system both the package premium and the direction of the trade.</p>
 
     <h3>Buy (Debit)</h3>
@@ -230,7 +253,7 @@ SFRH6 95.75 96.00 96.25 C FLY 2/200</div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <div class="guide-section" id="advanced">
-    <h2>5 — Advanced Modifiers</h2>
+    <h2>6 — Advanced Modifiers</h2>
 
     <h3>Ratio Spreads</h3>
     <p>Add a ratio token like <span class="code">1X2</span>, <span class="code">1X3</span>, or <span class="code">1X2X1</span> to create unequal-leg structures. The base quantity from the price format is multiplied by each ratio number.</p>
@@ -274,7 +297,7 @@ SFRM7 SFRU7 SFRZ7 SFRH8 99.00 C strip 45/750  &lt;- buy all 4 contracts</div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <div class="guide-section" id="tick-check">
-    <h2>6 — Quarter-Tick Check</h2>
+    <h2>7 — Quarter-Tick Check</h2>
     <p>When a trade price falls on a 0.25-tick increment (e.g. 2.25 ticks, 4.75 ticks) rather than a half-tick or whole-tick, the system pauses and asks for confirmation before submitting.</p>
     <p>A dialog will appear:</p>
     <ul>
@@ -287,7 +310,7 @@ SFRM7 SFRU7 SFRZ7 SFRH8 99.00 C strip 45/750  &lt;- buy all 4 contracts</div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <div class="guide-section" id="generic">
-    <h2>7 — Generic Trade Mode</h2>
+    <h2>8 — Generic Trade Mode</h2>
     <p>For complex or non-standard trades that the parser cannot handle, check the <strong>Generic Trade</strong> box before submitting. The trade string is stored as a reference but the system does not attempt to parse it into legs.</p>
     <p>After creating a generic order:</p>
     <ol class="workflow-steps">
@@ -303,7 +326,7 @@ SFRM7 SFRU7 SFRZ7 SFRH8 99.00 C strip 45/750  &lt;- buy all 4 contracts</div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <div class="guide-section" id="fills">
-    <h2>8 — Recording Fills &amp; Partial Fills</h2>
+    <h2>9 — Recording Fills &amp; Partial Fills</h2>
 
     <h3>Single Fill</h3>
     <p>On the order detail page, enter the fill quantity in the <em>Record Fill</em> section and click <strong>Record Fill</strong>. For a complete fill enter the remaining quantity (pre-filled by default).</p>
@@ -323,8 +346,50 @@ SFRM7 SFRU7 SFRZ7 SFRH8 99.00 C strip 45/750  &lt;- buy all 4 contracts</div>
 
 
 <!-- ═══════════════════════════════════════════════════════ -->
+<div class="guide-section" id="futures-qty">
+    <h2>10 — CVD &amp; Futures Qty on Counterparty Entry</h2>
+
+    <h3>What is CVD?</h3>
+    <p><strong>CVD (Contains Vs Delta)</strong> is a trade that pairs an options leg with a futures leg used to hedge the delta. The options and futures are on opposite sides of the trade (e.g. BUY PUT + BUY FUT, or SELL CALL + BUY FUT). When you enter counterparty quantities on a CVD trade, the futures quantity for each counterparty is calculated automatically from their options quantity and the trade's delta percentage.</p>
+
+    <h3>Delta Percentage and Futures Qty</h3>
+    <p>The <strong>delta %</strong> is displayed on the order detail page (e.g. <em>Δ 63%</em>). It is derived from the parsed trade string: futures volume ÷ total options quantity, expressed as a percentage. For a standard CVD, every counterparty's futures allocation is:</p>
+    <div class="code-block">Futures Qty = floor(Options Qty × delta%)</div>
+    <p>The result is floored (rounded down) to a whole number of contracts. This means on odd-lot trades, or when a large order is split across many counterparties, the calculated futures quantities may not sum exactly to the total futures volume. If there is a rounding shortfall, adjust one counterparty's futures quantity manually.</p>
+
+    <div class="tip-box">
+        <strong>Odd-lot example:</strong> 3,000-lot order at 63% delta = 1,890 futures.
+        Split 1,200 / 1,800 across two counterparties:<br>
+        floor(1,200 × 0.63) = 756 &nbsp;|&nbsp; floor(1,800 × 0.63) = 1,134 &nbsp;&rarr;&nbsp; total 1,890. ✓<br><br>
+        Split 1,000 / 2,000:<br>
+        floor(1,000 × 0.63) = 630 &nbsp;|&nbsp; floor(2,000 × 0.63) = 1,260 &nbsp;&rarr;&nbsp; total 1,890. ✓<br><br>
+        Split 1,500 / 1,500 (equal halves):<br>
+        floor(1,500 × 0.63) = 945 &nbsp;|&nbsp; floor(1,500 × 0.63) = 945 &nbsp;&rarr;&nbsp; total 1,890. ✓<br><br>
+        If the totals don't add up, add the shortfall to the largest counterparty's futures qty.
+    </div>
+
+    <h3>Overriding the Auto-Calculated Futures Qty</h3>
+    <p>Each counterparty row shows a <em>Futures Qty</em> field pre-filled by the delta calculation. You can type a different number to override it — the field accepts any positive integer. An override is appropriate when:</p>
+    <ul>
+        <li>You need to correct a rounding shortfall across counterparties</li>
+        <li>The broker confirmed a slightly different futures allocation</li>
+        <li>The order was filled at a different effective delta than the trade string implied</li>
+    </ul>
+    <p>The system does not validate that per-counterparty futures quantities sum to the order's total futures volume — that reconciliation is your responsibility before printing.</p>
+
+    <h3>Multi-Expiration Futures (Two Futures Legs)</h3>
+    <p>Some CVD strategies use two separate futures expirations — for example <em>SFRZ7</em> as the primary hedge and <em>SFRM8</em> as a secondary. When the trade string includes two futures legs, the counterparty entry form shows <strong>two Futures Qty columns</strong>: <em>Futures Qty (1st exp)</em> and <em>Futures Qty (2nd exp)</em>. Each is calculated independently using the same delta formula, and each can be overridden independently.</p>
+
+    <div class="warn-box">Make sure to allocate futures for <em>both</em> expirations on multi-leg CVD trades. Leaving the second futures qty at zero will produce incorrect broker cards.</div>
+
+    <h3>Non-CVD Futures Trades</h3>
+    <p>If the trade string contains only a futures leg and no options leg (i.e. an outright futures order), there is no delta calculation. The counterparty entry form shows a single quantity field for the futures contracts, which you fill in the same way as any other outright trade.</p>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════ -->
 <div class="guide-section" id="cards-tickets">
-    <h2>9 — Cards &amp; Tickets</h2>
+    <h2>11 — Cards &amp; Tickets</h2>
     <p>Cards and tickets are available from the order detail page once fills are allocated. Three buttons appear in the Actions section:</p>
 
     <h3>Print Cards</h3>
@@ -351,7 +416,7 @@ SFRM7 SFRU7 SFRZ7 SFRH8 99.00 C strip 45/750  &lt;- buy all 4 contracts</div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <div class="guide-section" id="amend">
-    <h2>10 — Amending a Trade</h2>
+    <h2>12 — Amending a Trade</h2>
     <p>After a fill is fully allocated you can still correct it. On the order detail page, find the allocated fill in the Counterparties section and click <strong>Edit</strong>.</p>
     <p>The amendment form lets you change:</p>
     <ul>
@@ -370,8 +435,69 @@ SFRM7 SFRU7 SFRZ7 SFRH8 99.00 C strip 45/750  &lt;- buy all 4 contracts</div>
 
 
 <!-- ═══════════════════════════════════════════════════════ -->
+<div class="guide-section" id="delete-orders">
+    <h2>13 — Correcting, Deleting &amp; Marking Duplicate Orders</h2>
+
+    <h3>Overview</h3>
+    <p>AXIS provides three ways to deal with a problematic order: mark it as a duplicate (soft removal for compliance), hard-delete it (physical removal, ticket number reclaimed), or bulk-delete multiple orders at once from the Order Log. All three operations require <strong>Company Admin or Super Admin</strong> access. Standard users cannot remove or cancel orders.</p>
+
+    <h3>Mark as Duplicate</h3>
+    <p>Use <strong>Mark as Duplicate</strong> when an order was accidentally entered twice and you need to suppress it from volume reports without physically removing it. On the order detail page, the <em>Mark as Duplicate</em> button appears in the Actions bar for admins.</p>
+    <ul>
+        <li>The order status changes to <em>CANCELLED DUPLICATE</em></li>
+        <li>The order record is retained — it remains visible in the Order Log with its original ticket number</li>
+        <li>The order is excluded from all volume totals and EOD summaries</li>
+        <li>Cards and tickets can still be printed if needed for the audit trail</li>
+        <li>A reason is not required, but the action is written to the audit log</li>
+    </ul>
+    <div class="tip-box">Mark as Duplicate is the preferred option when compliance requires keeping a record. Hard-delete is irreversible and loses the audit trail for that ticket number.</div>
+
+    <h3>Delete Order (Hard Delete)</h3>
+    <p>Use <strong>Delete Order</strong> to permanently remove an order from the system. This is appropriate for test orders, entry errors caught immediately, or orders entered on the wrong date.</p>
+    <ul>
+        <li>The order row is permanently removed from the database — it cannot be recovered</li>
+        <li>The ticket number is freed and immediately becomes eligible for reuse (it will be assigned to the next order if the counter reaches that number)</li>
+        <li>If the deleted order held the highest ticket number of the day, the tenant's ticket counter is reset to the previous highest number, so the sequence continues without a gap</li>
+        <li>Fills, prices, and counterparties associated with the order are also removed</li>
+    </ul>
+    <div class="warn-box"><strong>Delete Order is irreversible.</strong> The ticket number will be reused. Only delete orders that should never have existed. For orders that were legitimately worked but should be suppressed, use Mark as Duplicate instead.</div>
+
+    <h3>Editing the Ticket Number</h3>
+    <p>After an order is filled you may discover the ticket number needs to be changed — for example if orders were entered out of sequence and the numbers don't match the physical paper trail. Admins can edit the ticket number directly from the order detail page:</p>
+    <ol>
+        <li>Open the order detail page</li>
+        <li>Click the <strong>✎</strong> pencil icon next to the ticket number in the page header</li>
+        <li>Enter the new ticket number (1–9999) and click <strong>Save</strong></li>
+    </ol>
+    <p>The system checks that the new ticket number is not already in use on the same trade date. If it is, the save is blocked and a warning is shown. The change is recorded in the audit log with the old and new ticket numbers.</p>
+    <div class="tip-box">If you need to completely rebuild an order — change the quantity, price, strategy, and counterparties — the simplest approach is to delete the incorrect order and re-enter it from scratch. The ticket number from the deleted order will be available to reuse if needed, or you can force any specific ticket number using the Ticket # field on the Order Entry form.</div>
+
+    <h3>Bulk Delete (Order Log)</h3>
+    <p>Admins can delete multiple orders at once from the <strong>Order Log</strong> page. This is useful for clearing a batch of test or duplicate orders.</p>
+    <ol>
+        <li>Navigate to <strong>Order Log</strong> and use the date range and filters to locate the orders</li>
+        <li>Check the checkbox next to each order to delete (or use the Select All checkbox in the header)</li>
+        <li>Click <strong>Delete Selected</strong> — a confirmation dialog will appear</li>
+        <li>Type <code>DELETE</code> exactly (all caps) in the dialog and click OK</li>
+    </ol>
+    <p>All selected orders are permanently removed in a single operation. The ticket counter is adjusted for each deleted order using the same logic as a single hard delete. The action is written to the audit log with a list of deleted ticket numbers.</p>
+    <div class="warn-box">Bulk delete is permanent and cannot be undone. Double-check your selection and date filters before confirming.</div>
+
+    <h3>Setting the First Ticket of the Day</h3>
+    <p>By default, the first order of each day gets ticket number 0001. If your firm's paper trail started at a different number — for example if some orders were processed offline before AXIS was opened — you can force the starting number using the <strong>Ticket #</strong> field on the Order Entry form (top-right of the Trade Entry page). All users can set this field; it applies to that single order only.</p>
+    <ul>
+        <li>Leave the field blank to use the next auto-incremented number</li>
+        <li>Enter a specific number (e.g. <code>0023</code>) to force that order's ticket number</li>
+        <li>If the entered number is higher than the current counter, the counter advances to that number so subsequent auto-incremented orders continue from there</li>
+        <li>If the entered number is lower than or equal to the current counter, the counter is not changed — only this one order gets the specified number</li>
+    </ul>
+    <div class="tip-box">Ticket numbers wrap from 9999 → 0001 at the end of each day's sequence. Gaps in the sequence caused by deleted orders are not automatically back-filled — the counter only moves forward.</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════ -->
 <div class="guide-section" id="modify-balance">
-    <h2>11 — Modifying the Balance</h2>
+    <h2>14 — Modifying the Balance</h2>
     <p>When an order is partially filled and you need to revise what's still working — whether the price, quantity, or structure has changed — use the <strong>Modify Balance</strong> button on the order detail page. It is only visible when the order is in <em>PARTIAL FILL</em> status.</p>
 
     <h3>How it works</h3>
@@ -413,7 +539,7 @@ SFRM7 SFRU7 SFRZ7 SFRH8 99.00 C strip 45/750  &lt;- buy all 4 contracts</div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <div class="guide-section" id="order-log">
-    <h2>12 — Order Log</h2>
+    <h2>15 — Order Log</h2>
     <p>The Order Log shows all orders across any date range. Use the filters to search by:</p>
     <ul>
         <li><strong>Date range</strong> — defaults to today</li>
