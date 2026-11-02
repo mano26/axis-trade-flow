@@ -836,10 +836,6 @@
         {% if order.status in ('filled', 'amended', 'partial_fill', 'partial_cancelled') %}
         <a href="{{ url_for('tickets.generate_with_cps', order_id=order.id) }}" class="btn">Print Ticket + CPs</a>
         <a href="{{ url_for('tickets.generate_with_cps_linear', order_id=order.id) }}" class="btn">Print Ticket (Linear)</a>
-        <form method="POST" action="{{ url_for('exchange.submit_to_exchange', order_id=order.id) }}" style="display:inline">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="btn btn-primary" onclick="return confirm('Submit to exchange?')">Send to Exchange</button>
-        </form>
         <a href="{{ url_for('orders.download_keypunch_csv', order_id=order.id) }}"
            class="btn" title="Download keypunch Excel file for clearing system">
             Download Keypunch
