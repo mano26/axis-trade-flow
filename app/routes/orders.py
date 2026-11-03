@@ -1129,6 +1129,7 @@ def set_ticket(order_id):
 
     old_ticket_display = order.ticket_display
     order.ticket_number = new_ticket
+    order.ticket_display = f"{new_ticket:04d}"
 
     # If this ticket date is today, keep the counter in sync
     tenant = db.session.get(Tenant, active_tenant_id())
