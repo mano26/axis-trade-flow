@@ -223,7 +223,7 @@ body {{ font-family:Arial,Helvetica,sans-serif; background:#e0e0e0; padding:0; }
 .ticket {{ width:8in; height:5.5in; border:1.5px solid #000; background:#fff;
   padding:14px 18px; display:flex; flex-direction:column; page-break-inside:avoid; }}
 .tkt-header {{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:1px; }}
-.tkt-num {{ font-size:15px; color:#cc2222; font-weight:700; font-family:monospace; }}
+.tkt-num {{ font-size:{sF}px; color:#cc2222; font-weight:900; font-family:monospace; flex:1; text-align:center; }}
 .tkt-title {{ font-size:{tF}px; font-weight:900; letter-spacing:5px; text-align:center; flex:1; }}
 .tkt-bk-meta {{ font-size:11px; font-weight:900; letter-spacing:2px; margin-bottom:2px; }}
 .tkt-house-left {{ font-size:13px; font-weight:900; margin-bottom:1px; }}
