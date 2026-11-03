@@ -1111,7 +1111,7 @@ def set_ticket(order_id):
         flash("Ticket number must be between 1 and 9999.", "warning")
         return redirect(url_for("orders.detail", order_id=order_id))
 
-    if new_ticket == order.ticket_number:
+    if new_ticket == order.ticket_number and order.ticket_display == f"{new_ticket:04d}":
         flash("Ticket number unchanged.", "info")
         return redirect(url_for("orders.detail", order_id=order_id))
 
