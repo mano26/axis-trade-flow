@@ -296,9 +296,9 @@ def _build_ticket(
 
     # Header
     h += "<div class='tkt-header'>"
-    h += f"<div class='tkt-num'>#{ticket_num}</div>"
     bk_line_r = f"BK: {bk_broker}<br>" if bk_broker else ""
     h += f"<div class='tkt-acct-left'>House: {house}<br>Acct: {account}</div>"
+    h += f"<div class='tkt-num'>#{ticket_num}</div>"
     h += "<div class='tkt-title'>A X I S</div>"
     acct_block = f"{bk_line_r}Account No.<br>{account}"
     if fill_label:
@@ -1170,8 +1170,8 @@ def _new_cps_page(order, page_num, total_pages, fill_label,
     bk_line = f"BK: {bk_val}<br>" if bk_val else ""
     tkt_num = order.ticket_display or ""
     h += (f"<div class='tkt-header'>"
-          f"<div class='tkt-num'>#{tkt_num}</div>"
           f"<div class='tkt-acct-left'>House: {house}<br>Acct: {acct}</div>"
+          f"<div class='tkt-num'>#{tkt_num}</div>"
           f"<span class='tkt-title'>A X I S</span>"
           f"<div class='tkt-meta'>"
           f"{bk_line}"
@@ -1374,8 +1374,8 @@ def generate_ticket_with_cps_html(order, layout=None) -> str:
                     # Page 1: full AXIS header + trade grid
                     _ln_tkt_num = order.ticket_display or ""
                     page_h += (f"<div class='tkt-header'>"
-                               f"<div class='tkt-num'>#{_ln_tkt_num}</div>"
                                f"<div class='tkt-acct-left'>House: {house}<br>Acct: {acct}</div>"
+                               f"<div class='tkt-num'>#{_ln_tkt_num}</div>"
                                f"<span class='tkt-title'>A X I S</span>"
                                f"<div class='tkt-meta'>"
                                f"{bk_line}"
