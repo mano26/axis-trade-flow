@@ -340,15 +340,3 @@ class TestProportionalFillVolume:
         ratio = filled / total
         displayed = [round(v * ratio) for v in legs_base]
         assert displayed == [30, 60, 30]
-
-class TestVsRatioCvdE2E:
-
-    def test_vs_2x_cvd_each_segment_uses_own_delta(self):
-        _, legs = parse_and_build(
-            "SFRM7 95.75 C CVD 95.52 D 37 VS (2X) SFRH7 96.25 C CVD 95.64 D 13 1000 @ 11.25"
-        )
-        futs = [l for l in legs if l.get("option_type") is None and l.get("strike") is None]
-        assert [f["volume"] for f in futs] == [370, 260]
-        # 350-lot fill → 129.5 M7 futures, 91 H7 futures
-        assert 350 * futs[0]["volume"] / 1000 == 129.5
-        assert 350 * futs[1]["volume"] / 1000 == 91

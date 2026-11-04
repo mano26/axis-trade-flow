@@ -276,45 +276,6 @@ class Order(TenantMixin, db.Model):
             for leg in self.legs
         )
 
-    @property
-    def futures_deltas(self) -> tuple[float, float]:
-        """
-        Futures-per-option ratio for the first and second futures legs, used
-        to pre-fill counterparty futures quantities (cp_qty × delta).
-
-        Derived by re-parsing raw_input with the current parser so each
-        segment of a VS / (2X) CVD trade gets its own delta — e.g.
-        "SFRM7 … D 37 VS (2X) SFRH7 … D 13 1000@11.25" → (0.37, 0.26).
-        Falls back to stored leg volume / total_quantity when the trade
-        string can't be re-parsed (generic orders, legacy strings).
-        """
-        fut_legs = [l for l in self.legs if l.option_type is None and l.strike is None]
-        stored = [
-            (l.volume / self.total_quantity) if self.total_quantity else 0.0
-            for l in fut_legs[:2]
-        ]
-        stored += [0.0] * (2 - len(stored))
-
-        if self.is_generic or not self.raw_input or not fut_legs:
-            return stored[0], stored[1]
-        try:
-            from app.services.trade_parser import parse_trade_input
-            from app.services.strategy_handlers import build_legs
-            parts = parse_trade_input(self.raw_input)
-            base = parts[0].volume / (parts[0].volume_multiplier or 1)
-            parsed_fut = []
-            for p in parts:
-                for ld in build_legs(p):
-                    if ld.get("option_type") is None and ld.get("strike") is None:
-                        raw = ld.get("cvd_raw_volume")
-                        parsed_fut.append(raw if raw is not None else ld["volume"])
-            if base and len(parsed_fut) == len(fut_legs):
-                d = [v / base for v in parsed_fut[:2]] + [0.0, 0.0]
-                return d[0], d[1]
-        except Exception:
-            pass
-        return stored[0], stored[1]
-
     def can_transition_to(self, new_status: str) -> bool:
         """
         Check whether the order can move to the given status.

@@ -158,8 +158,8 @@ function updateFutQty(qtyInput) {
         {% set _e_fl = order.legs | selectattr("option_type", "equalto", none) | selectattr("strike", "equalto", none) | list %}
         {% set fut_leg = _e_fl[0] if _e_fl else none %}
         {% set fut_leg_2 = _e_fl[1] if _e_fl | length > 1 else none %}
-        {% set _fd = order.futures_deltas %}{% set delta_pct = _fd[0] %}
-        {% set delta_pct_2 = _fd[1] %}
+        {% set delta_pct = (fut_leg.volume / order.total_quantity) if fut_leg and order.total_quantity else 0 %}
+        {% set delta_pct_2 = (fut_leg_2.volume / order.total_quantity) if fut_leg_2 and order.total_quantity else 0 %}
         <p class="form-help" style="color: #c66a00; margin-bottom: 6px; font-size: 12px;">
             &#9888; {% if fut_leg_2 %}Multi-expiration futures trade{% else %}CVD trade &mdash; delta {{ "%.1f"|format(delta_pct * 100) }}%{% endif %}. Futures Qty column is trader-adjustable.
         </p>

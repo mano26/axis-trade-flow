@@ -496,8 +496,8 @@
             {% set _amend_fl = order.legs | selectattr("option_type", "equalto", none) | selectattr("strike", "equalto", none) | list %}
             {% set fut_leg = _amend_fl[0] if _amend_fl else none %}
             {% set fut_leg_2 = _amend_fl[1] if _amend_fl | length > 1 else none %}
-            {% set _fd = order.futures_deltas %}{% set delta_pct = _fd[0] %}
-            {% set delta_pct_2 = _fd[1] %}
+            {% set delta_pct = (fut_leg.volume / order.total_quantity) if fut_leg and order.total_quantity else 0 %}
+            {% set delta_pct_2 = (fut_leg_2.volume / order.total_quantity) if fut_leg_2 and order.total_quantity else 0 %}
             <p class="form-help" style="color: #c66a00; margin-bottom: 6px; font-size: 12px;">
                 &#9888; {% if fut_leg_2 %}Multi-expiration futures trade{% else %}CVD trade &mdash; delta {{ "%.1f"|format(delta_pct * 100) }}%{% endif %}. Futures Qty column is trader-adjustable.
             </p>
@@ -694,8 +694,8 @@
         {% set _pend_fl = order.legs | selectattr("option_type", "equalto", none) | selectattr("strike", "equalto", none) | list %}
         {% set fut_leg = _pend_fl[0] if _pend_fl else none %}
         {% set fut_leg_2 = _pend_fl[1] if _pend_fl | length > 1 else none %}
-        {% set _fd = order.futures_deltas %}{% set delta_pct = _fd[0] %}
-        {% set delta_pct_2 = _fd[1] %}
+        {% set delta_pct = (fut_leg.volume / order.total_quantity) if fut_leg and order.total_quantity else 0 %}
+        {% set delta_pct_2 = (fut_leg_2.volume / order.total_quantity) if fut_leg_2 and order.total_quantity else 0 %}
         <p class="form-help" style="color: #c66a00; margin-bottom: 6px; font-size: 12px;">
             &#9888; {% if fut_leg_2 %}Multi-expiration futures trade{% else %}CVD trade &mdash; delta {{ "%.1f"|format(delta_pct * 100) }}%{% endif %}.
             Enter the futures quantity for each counterparty (may differ from calculated due to rounding).
