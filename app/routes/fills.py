@@ -224,9 +224,21 @@ def enter_counterparties(fill_id: int):
                 continue
 
             fut_qty_str = request.form.get(f"cp_fut_qty_{i}", "").strip()
-            fut_qty = int(fut_qty_str) if fut_qty_str else None
+            fut_qty = None
+            if fut_qty_str:
+                _fq = float(fut_qty_str)
+                if _fq != int(_fq):
+                    from app.services.validation import ValidationError as _VE
+                    raise _VE([f"Futures qty {_fq} on row {i + 1} must be a whole number — resolve the half-future before saving."])
+                fut_qty = int(_fq)
             fut_qty_2_str = request.form.get(f"cp_fut_qty_2_{i}", "").strip()
-            fut_qty_2 = int(fut_qty_2_str) if fut_qty_2_str else None
+            fut_qty_2 = None
+            if fut_qty_2_str:
+                _fq2 = float(fut_qty_2_str)
+                if _fq2 != int(_fq2):
+                    from app.services.validation import ValidationError as _VE
+                    raise _VE([f"Futures qty {_fq2} on row {i + 1} (leg 2) must be a whole number — resolve the half-future before saving."])
+                fut_qty_2 = int(_fq2)
             cp = FillCounterparty(
                 fill_id=fill.id,
                 quantity=int(qty_str) if qty_str else 0,

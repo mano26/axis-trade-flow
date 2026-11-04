@@ -67,9 +67,12 @@ function updateFutQty(qtyInput) {
     var futField = document.getElementById('cp_fut_qty_' + row);
     if (futField) {
         if (raw > 0) {
-            var floor = Math.floor(raw);
-            futField.value = floor;
-            futField.title = 'Calculated: ' + raw.toFixed(2) + ' (floor=' + floor + ', ceil=' + Math.ceil(raw) + ')';
+            var isFrac = (raw % 1) !== 0;
+            // Show the exact value — if fractional, trader must round manually before saving
+            futField.value = isFrac ? raw.toFixed(2) : raw;
+            futField.title = isFrac
+                ? 'Half-future — must round to ' + Math.floor(raw) + ' or ' + Math.ceil(raw) + ' before saving'
+                : '';
         } else {
             futField.value = '';
             futField.title = '';
@@ -80,8 +83,11 @@ function updateFutQty(qtyInput) {
         var futField2 = document.getElementById('cp_fut_qty_2_' + row);
         if (futField2) {
             if (raw2 > 0) {
-                futField2.value = Math.floor(raw2);
-                futField2.title = 'Calculated: ' + raw2.toFixed(2);
+                var isFrac2 = (raw2 % 1) !== 0;
+                futField2.value = isFrac2 ? raw2.toFixed(2) : raw2;
+                futField2.title = isFrac2
+                    ? 'Half-future — must round to ' + Math.floor(raw2) + ' or ' + Math.ceil(raw2) + ' before saving'
+                    : '';
             } else {
                 futField2.value = '';
                 futField2.title = '';
@@ -257,9 +263,9 @@ function updateFutQty(qtyInput) {
                         {% endif %}
                         <input type="number" name="cp_fut_qty_{{ i }}"
                                id="cp_fut_qty_{{ i }}"
-                               value="{{ existing_fut_e if existing_fut_e is not none else ((calc_raw_e | int) if calc_raw_e > 0 else '') }}"
-                               min="0" style="width:70px;"
-                               placeholder="{{ calc_raw_e | int if calc_raw_e > 0 else '' }}">
+                               value="{{ existing_fut_e if existing_fut_e is not none else (calc_raw_e if calc_raw_e > 0 else '') }}"
+                               min="0" step="any" style="width:70px;"
+                               placeholder="{{ calc_raw_e if calc_raw_e > 0 else '' }}">
                     </td>
                     {% if fut_leg_2 %}
                     <td>
@@ -268,9 +274,9 @@ function updateFutQty(qtyInput) {
                         {% endif %}
                         <input type="number" name="cp_fut_qty_2_{{ i }}"
                                id="cp_fut_qty_2_{{ i }}"
-                               value="{{ existing_fut_e2 if existing_fut_e2 is not none else ((calc_raw_e2 | int) if calc_raw_e2 > 0 else '') }}"
-                               min="0" style="width:70px;"
-                               placeholder="{{ calc_raw_e2 | int if calc_raw_e2 > 0 else '' }}">
+                               value="{{ existing_fut_e2 if existing_fut_e2 is not none else (calc_raw_e2 if calc_raw_e2 > 0 else '') }}"
+                               min="0" step="any" style="width:70px;"
+                               placeholder="{{ calc_raw_e2 if calc_raw_e2 > 0 else '' }}">
                     </td>
                     {% endif %}
                     {% endif %}
