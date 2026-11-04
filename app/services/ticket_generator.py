@@ -661,7 +661,7 @@ def _build_broker_sections(fill_cps, sorted_legs, gcd_opt_vol, futures_dicts, is
                                          "mo": fd.get("mo", "").upper(),
                                          "price": fd.get("price", ""),
                                          "cp": d["cp"], "house": d["house"],
-                                         "bracket": d["bracket"], "is_fut": True,
+                                         "bracket": d["bracket"], "is_fut": True, "fd_idx": fd_idx,
                                          "new_cp": _new_cp(buy_rows)})
                         buy_fut_total += leg_fq
                     else:
@@ -670,7 +670,7 @@ def _build_broker_sections(fill_cps, sorted_legs, gcd_opt_vol, futures_dicts, is
                                           "mo": fd.get("mo", "").upper(),
                                           "price": fd.get("price", ""),
                                           "cp": d["cp"], "house": d["house"],
-                                          "bracket": d["bracket"], "is_fut": True,
+                                          "bracket": d["bracket"], "is_fut": True, "fd_idx": fd_idx,
                                           "new_cp": _new_cp(sell_rows)})
                         sell_fut_total += leg_fq
 
@@ -697,6 +697,55 @@ def _build_broker_sections(fill_cps, sorted_legs, gcd_opt_vol, futures_dicts, is
         })
 
     return sections
+
+
+def _futures_totals_from_sections(sections, n_fut_legs):
+    """Per-futures-leg totals exactly as printed in the CP broker sections.
+
+    Index i corresponds to the i-th futures leg (leg_index order).  None means
+    no CP rows were printed for that leg (caller keeps its computed qty).
+    """
+    totals = [None] * n_fut_legs
+    for sec in sections:
+        for row in sec["buy_rows"] + sec["sell_rows"]:
+            i = row.get("fd_idx")
+            if row.get("is_fut") and i is not None and i < n_fut_legs:
+                totals[i] = (totals[i] or 0) + row["qty"]
+    return totals
+
+
+def fill_futures_totals(order, fill):
+    """Futures lots per futures leg for one fill, matching the CP ticket.
+
+    Returns a list aligned with the order's futures legs (leg_index order).
+    Uses the trader-entered CP futures quantities when present; otherwise the
+    same proportional calc the ticket uses.
+    """
+    sorted_legs = sorted(order.legs, key=lambda l: l.leg_index)
+    fut_legs = [l for l in sorted_legs if l.option_type is None and l.strike is None]
+    if not fut_legs:
+        return []
+    total_qty = order.total_quantity or 0
+    scaled = [round(fill.fill_quantity * l.volume / total_qty) if total_qty else l.volume
+              for l in fut_legs]
+    if not fill.counterparties:
+        return scaled
+    opt_vols = [l.volume for l in sorted_legs
+                if not (l.option_type is None and l.strike is None)
+                and l.volume and l.volume > 0]
+    gcd_opt = reduce(gcd, opt_vols) if opt_vols else 1
+    fut_dicts = [{"side": "BUY" if l.side == "B" else "SELL",
+                  "qty": str(q), "mo": (l.mo_card_code or l.expiry or "").upper(),
+                  "price": ""} for l, q in zip(fut_legs, scaled)]
+    # Same single-leg header override the ticket applies before building sections
+    cp_fut_total = sum((cp.futures_quantity or 0) for cp in fill.counterparties)
+    if cp_fut_total > 0 and len(fut_dicts) == 1:
+        fut_dicts[0]["qty"] = str(cp_fut_total)
+    sections = _build_broker_sections(fill.counterparties, sorted_legs, gcd_opt,
+                                      fut_dicts, True,
+                                      order_total_qty=total_qty or 1)
+    totals = _futures_totals_from_sections(sections, len(fut_legs))
+    return [t if t is not None else s for t, s in zip(totals, scaled)]
 
 
 def _cp_row_html(row) -> str:
@@ -1353,6 +1402,16 @@ def generate_ticket_with_cps_html(order, layout=None) -> str:
             order_total_qty=order.total_quantity or 1,
             leg_price_map=leg_price_map,
         )
+
+        # Header futures qty must equal what the CP sections print (covers
+        # orders with two futures legs, where the per-leg CP columns differ
+        # from the computed delta, e.g. 129 entered vs 130 computed).
+        _fut_totals = _futures_totals_from_sections(all_sections, len(_fut_leg_idxs))
+        if any(t is not None for t in _fut_totals):
+            all_leg_dicts = list(all_leg_dicts)
+            for _fi, _tot in zip(_fut_leg_idxs, _fut_totals):
+                if _tot is not None:
+                    all_leg_dicts[_fi] = dict(all_leg_dicts[_fi], qty=str(_tot))
 
         if eff_layout == "linear":
             # Linear layout: paginate broker sections across A5 pages.

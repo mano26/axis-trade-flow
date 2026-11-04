@@ -92,3 +92,49 @@ def test_cards_match_entered_futures(order_with_cps):
     text = re.sub(r"\s+", " ", text)
     assert "37 SFRM7 95.52 ASB" in text and "92 SFRM7 95.52 SHD" in text
     assert "26 SFRH7 95.64 ASB" in text and "65 SFRH7 95.64 SHD" in text
+
+
+# -----------------------------------------------------------------------------
+# Regression: header FUT qty and EOD summary must match the CP-entered futures.
+# Computed delta for SFRM7 on a 350 fill is 130 (raw 129.5); trader entered
+# 37 + 92 = 129.  The header printed 130 and EOD counted 130.
+# -----------------------------------------------------------------------------
+
+def _header_fut_qtys(html):
+    """(side, qty, contract) for FUT rows in the BUY/SELL header grid."""
+    body = html.split("<div class='tkt-body'>", 1)[1].split("<div class='timestamps'>")[0] \
+        if "<div class='tkt-body'>" in html else html
+    import html as _h
+    text = _h.unescape(re.sub(r"<[^>]+>", " ", body))
+    text = re.sub(r"\s+", " ", text)
+    return text
+
+
+@pytest.mark.parametrize("layout", ["linear", None])
+def test_header_futures_qty_matches_cp_entries(order_with_cps, layout):
+    html = generate_ticket_with_cps_html(order_with_cps, layout=layout)
+    text = _header_fut_qtys(html)
+    assert "FUT 129 SFRM7" in text, text[:400]
+    assert "FUT 91 SFRH7" in text, text[:400]
+    assert "FUT 130 SFRM7" not in text
+
+
+def test_fill_futures_totals_use_cp_entries(order_with_cps):
+    from app.services.ticket_generator import fill_futures_totals
+    (fill,) = order_with_cps.fills
+    assert fill_futures_totals(order_with_cps, fill) == [129, 91]
+
+
+def test_eod_futures_volume_uses_cp_entries(order_with_cps):
+    from app.routes.reports import _order_futures_vol
+    ratio = order_with_cps.filled_quantity / order_with_cps.total_quantity
+    assert _order_futures_vol(order_with_cps, ratio) == 129 + 91
+
+
+def test_eod_futures_volume_without_cps_unchanged():
+    """Orders with no CP'd fills keep the original proportional calc."""
+    from types import SimpleNamespace as NS
+    from app.routes.reports import _order_futures_vol
+    leg = NS(option_type=None, strike=None, volume=370)
+    order = NS(legs=[leg], fills=[NS(counterparties=[])])
+    assert _order_futures_vol(order, 0.35) == round(370 * 0.35)

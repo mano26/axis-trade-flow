@@ -115,10 +115,9 @@ def eod_summary():
                       if order.total_quantity else 0)
 
         for leg in order.legs:
-            if leg.option_type is None and leg.strike is None:
-                total_futures_vol += round(leg.volume * fill_ratio)
-            else:
+            if not (leg.option_type is None and leg.strike is None):
                 total_options_vol += round(leg.volume * fill_ratio)
+        total_futures_vol += _order_futures_vol(order, fill_ratio)
 
         # Strategy counts use the package base qty (filled_quantity)
         key = order.strategy or "unknown"
@@ -143,11 +142,7 @@ def eod_summary():
                 for l in order.legs
                 if not (l.option_type is None and l.strike is None)
             )
-            fut_vol = sum(
-                round(l.volume * fill_ratio)
-                for l in order.legs
-                if l.option_type is None and l.strike is None
-            )
+            fut_vol = _order_futures_vol(order, fill_ratio)
         else:
             opts_vol = fut_vol = 0
 
@@ -205,6 +200,23 @@ def eod_summary():
         strategy_counts   = strategy_counts,
         breakdown         = breakdown,
     )
+
+
+def _order_futures_vol(order, fill_ratio):
+    """Futures lots for an order, matching the printed CP ticket.
+
+    Fills with counterparties use the trader-entered CP futures quantities
+    (via the ticket generator), so an adjusted odd delta (e.g. 129 vs a
+    computed 130) is counted as printed.  Orders with no CP'd fills keep the
+    original proportional calc.
+    """
+    fut_legs = [l for l in order.legs if l.option_type is None and l.strike is None]
+    if not fut_legs:
+        return 0
+    if not any(f.counterparties for f in order.fills):
+        return sum(round(l.volume * fill_ratio) for l in fut_legs)
+    from app.services.ticket_generator import fill_futures_totals
+    return sum(sum(fill_futures_totals(order, f)) for f in order.fills)
 
 
 def _parse_date(value, default=None):
