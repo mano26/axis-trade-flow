@@ -213,6 +213,8 @@ def _iter_rows(order):
         stamp_out = fill.stamp_time_out or ""
         bk_broker = (order.bk_broker or "").upper()
 
+        _fut_leg_idx = [l.leg_index for l in order.legs
+                        if l.option_type is None and l.strike is None]
         for cp in fill.counterparties:
             for leg in order.legs:
                 leg_price = next(
@@ -225,7 +227,14 @@ def _iter_rows(order):
                 pc     = leg.option_type or ""
                 strike = f"{leg.strike:.4f}" if leg.strike is not None else ""
 
-                if (
+                # Second futures leg (e.g. VS/2X CVD) uses the CP form's
+                # second futures column when it was entered.
+                _is_fut2 = (len(_fut_leg_idx) > 1
+                            and leg.leg_index == _fut_leg_idx[1]
+                            and cp.futures_quantity_2 is not None)
+                if leg.option_type is None and _is_fut2:
+                    row_qty = cp.futures_quantity_2
+                elif (
                     leg.option_type is None
                     and cp.futures_quantity is not None
                 ):

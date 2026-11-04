@@ -586,9 +586,10 @@ def _build_broker_sections(fill_cps, sorted_legs, gcd_opt_vol, futures_dicts, is
             if key not in cp_agg:
                 cp_order.append(key)
                 cp_agg[key] = {"cp": cp_sym, "house": cp_house, "bracket": bracket_d,
-                               "qty": 0, "fut_qty": 0}
-            cp_agg[key]["qty"]     += (cp.quantity         or 0)
-            cp_agg[key]["fut_qty"] += (cp.futures_quantity or 0)
+                               "qty": 0, "fut_qty": 0, "fut_qty_2": 0}
+            cp_agg[key]["qty"]       += (cp.quantity           or 0)
+            cp_agg[key]["fut_qty"]   += (cp.futures_quantity   or 0)
+            cp_agg[key]["fut_qty_2"] += (cp.futures_quantity_2 or 0)
 
         buy_rows = []
         sell_rows = []
@@ -599,6 +600,7 @@ def _build_broker_sections(fill_cps, sorted_legs, gcd_opt_vol, futures_dicts, is
             d   = cp_agg[key]
             qty = d["qty"]
             fq  = d["fut_qty"]
+            fq2 = d["fut_qty_2"]
             fq_is_manual = fq > 0   # True when the trader explicitly entered a value
             # Auto-calculate futures proportionally when not explicitly entered.
             # Formula: cp.quantity / order_total_qty × full_futures_lots
@@ -625,7 +627,7 @@ def _build_broker_sections(fill_cps, sorted_legs, gcd_opt_vol, futures_dicts, is
             # A STUPID trade has BUY futures and SELL futures in the same order —
             # do not use a single fut_side derived from futures_dicts[0].
             if futures_dicts and (fq or full_futures_vol):
-                for fd in futures_dicts:
+                for fd_idx, fd in enumerate(futures_dicts):
                     fd_side = fd.get("side", "SELL")   # "BUY" or "SELL" per leg
                     leg_vol = int(fd.get("qty", 0) or 0)
                     if not leg_vol:
@@ -636,7 +638,12 @@ def _build_broker_sections(fill_cps, sorted_legs, gcd_opt_vol, futures_dicts, is
                     #   - Multi-leg (STUPID) order: the UI calc is SELL-delta-based,
                     #     so fq represents the SELL allocation; auto-calc BUY legs.
                     # Priority 2: proportional auto-calc from leg volume.
-                    if fq_is_manual and (len(futures_dicts) == 1 or fd_side == "SELL"):
+                    # Two futures legs with both columns entered on the CP form:
+                    # column 1 (futures_quantity) → first futures leg,
+                    # column 2 (futures_quantity_2) → second futures leg.
+                    if len(futures_dicts) > 1 and fd_idx < 2 and fq_is_manual and fq2 > 0:
+                        leg_fq = fq if fd_idx == 0 else fq2
+                    elif fq_is_manual and (len(futures_dicts) == 1 or fd_side == "SELL"):
                         leg_fq = fq
                     else:
                         leg_fq = round(d["qty"] / grand_cp_qty * leg_vol) if grand_cp_qty else 0
