@@ -511,9 +511,9 @@
                     {% for i in range(initial_rows_a) %}
                     {% set cp = fill.counterparties[i] if i < fill.counterparties|length else none %}
                     {% if order.has_futures_legs %}
-                    {% set calc_raw_a = ((cp.quantity if cp else 0) | float) * delta_pct %}
+                    {% set calc_raw_a = ((cp.quantity if cp else 0) | float) * delta_pct %}{% set calc_raw_a = calc_raw_a | round(6) %}
                     {% set existing_fut_a = cp.futures_quantity if cp and cp.futures_quantity is not none else none %}
-                    {% set calc_raw_a_2 = ((cp.quantity if cp else 0) | float) * delta_pct_2 %}
+                    {% set calc_raw_a_2 = ((cp.quantity if cp else 0) | float) * delta_pct_2 %}{% set calc_raw_a_2 = calc_raw_a_2 | round(6) %}
                     {% set existing_fut_a_2 = cp.futures_quantity_2 if cp and cp.futures_quantity_2 is not none else none %}
                     {% endif %}
                     <tr>
@@ -711,11 +711,11 @@
                 {% set cp = fill.counterparties[i] if i < fill.counterparties|length else none %}
                 {% if order.has_futures_legs %}
                 {# Calculated futures qty for this row: cp_qty * delta_pct, rounded #}
-                {% set calc_raw = ((cp.quantity if cp else (fill.fill_quantity if i == 0 and not fill.counterparties else 0)) | float) * delta_pct %}
+                {% set calc_raw = ((cp.quantity if cp else (fill.fill_quantity if i == 0 and not fill.counterparties else 0)) | float) * delta_pct %}{% set calc_raw = calc_raw | round(6) %}
                 {% set calc_floor = calc_raw | int %}
                 {% set calc_ceil = (calc_raw + 0.9999) | int %}
                 {% set existing_fut = cp.futures_quantity if cp and cp.futures_quantity is not none else none %}
-                {% set calc_raw_2 = ((cp.quantity if cp else (fill.fill_quantity if i == 0 and not fill.counterparties else 0)) | float) * delta_pct_2 %}
+                {% set calc_raw_2 = ((cp.quantity if cp else (fill.fill_quantity if i == 0 and not fill.counterparties else 0)) | float) * delta_pct_2 %}{% set calc_raw_2 = calc_raw_2 | round(6) %}
                 {% set calc_floor_2 = calc_raw_2 | int %}
                 {% set existing_fut_2 = cp.futures_quantity_2 if cp and cp.futures_quantity_2 is not none else none %}
                 {% endif %}
@@ -1009,12 +1009,16 @@ function addLegRow() {
 }
 
 // ── Futures qty auto-calculation for CVD / multi-expiration counterparty rows ──
+// qty * delta carries float drift (50 * 0.58 = 28.999999999999996);
+// snap to 6 dp so whole results stay whole before floor/round.
+function snapQty(x) { return Math.round(x * 1e6) / 1e6; }
+
 function updateFutQty(qtyInput) {
     var delta = parseFloat(qtyInput.dataset.delta) || 0;
     var delta2 = parseFloat(qtyInput.dataset.delta2 || '0') || 0;
     var row = qtyInput.dataset.row;
     var qty = parseInt(qtyInput.value) || 0;
-    var raw = qty * delta;
+    var raw = snapQty(qty * delta);
     var futField = document.getElementById('cp_fut_qty_' + row);
     if (!futField) return;
     if (raw > 0) {
@@ -1026,7 +1030,7 @@ function updateFutQty(qtyInput) {
         futField.title = '';
     }
     if (delta2 > 0) {
-        var raw2 = qty * delta2;
+        var raw2 = snapQty(qty * delta2);
         var futField2 = document.getElementById('cp_fut_qty_2_' + row);
         if (futField2) {
             if (raw2 > 0) {

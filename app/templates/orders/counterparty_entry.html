@@ -58,12 +58,16 @@ function clearHouseIfSymbolCleared(rowIndex) {
 }
 
 // ── Futures qty auto-calculation for CVD / multi-expiration counterparty rows ──
+// qty * delta carries float drift (50 * 0.58 = 28.999999999999996);
+// snap to 6 dp so whole results stay whole before floor/round.
+function snapQty(x) { return Math.round(x * 1e6) / 1e6; }
+
 function updateFutQty(qtyInput) {
     var delta = parseFloat(qtyInput.dataset.delta) || 0;
     var delta2 = parseFloat(qtyInput.dataset.delta2 || '0') || 0;
     var row = qtyInput.dataset.row;
     var qty = parseInt(qtyInput.value) || 0;
-    var raw = qty * delta;
+    var raw = snapQty(qty * delta);
     var futField = document.getElementById('cp_fut_qty_' + row);
     if (futField) {
         if (raw > 0) {
@@ -79,7 +83,7 @@ function updateFutQty(qtyInput) {
         }
     }
     if (delta2 > 0) {
-        var raw2 = qty * delta2;
+        var raw2 = snapQty(qty * delta2);
         var futField2 = document.getElementById('cp_fut_qty_2_' + row);
         if (futField2) {
             if (raw2 > 0) {
@@ -206,9 +210,9 @@ function updateFutQty(qtyInput) {
                 {% endif %}
 
                 {% if order.has_futures_legs %}
-                {% set calc_raw_e = ((cp.quantity if cp else (fill.fill_quantity if i == 0 and not fill.counterparties else 0)) | float) * delta_pct %}
+                {% set calc_raw_e = ((cp.quantity if cp else (fill.fill_quantity if i == 0 and not fill.counterparties else 0)) | float) * delta_pct %}{% set calc_raw_e = calc_raw_e | round(6) %}
                 {% set existing_fut_e = cp.futures_quantity if cp and cp.futures_quantity is not none else none %}
-                {% set calc_raw_e2 = ((cp.quantity if cp else (fill.fill_quantity if i == 0 and not fill.counterparties else 0)) | float) * delta_pct_2 %}
+                {% set calc_raw_e2 = ((cp.quantity if cp else (fill.fill_quantity if i == 0 and not fill.counterparties else 0)) | float) * delta_pct_2 %}{% set calc_raw_e2 = calc_raw_e2 | round(6) %}
                 {% set existing_fut_e2 = cp.futures_quantity_2 if cp and cp.futures_quantity_2 is not none else none %}
                 {% endif %}
                 <tr>
