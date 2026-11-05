@@ -911,13 +911,16 @@ var deltaPctGlobal  = _existingDeltaInput ? parseFloat(_existingDeltaInput.datas
 var deltaPctGlobal2 = _existingDeltaInput ? parseFloat(_existingDeltaInput.dataset.delta2 || '0') : 0;
 var numFuturesLegs  = deltaPctGlobal2 > 0 ? 2 : (hasFuturesLegs ? 1 : 0);
 
+// Must match the server-side row limit (cp_qty_0..49 in orders.py / fills.py)
+var MAX_CP_ROWS = 50;
+
 function addCPRow(formType, fillId) {
     var key = formType + '-' + fillId;
     if (!cpRowCounts[key]) {
         var tbody = document.getElementById('cp-tbody-' + formType + '-' + fillId);
         cpRowCounts[key] = tbody ? tbody.querySelectorAll('tr').length : 10;
     }
-    if (cpRowCounts[key] >= 20) return;
+    if (cpRowCounts[key] >= MAX_CP_ROWS) return;
     var i = cpRowCounts[key];
     var tbody = document.getElementById('cp-tbody-' + formType + '-' + fillId);
     if (!tbody) return;
@@ -952,9 +955,9 @@ function addCPRow(formType, fillId) {
     tbody.appendChild(row);
 
     cpRowCounts[key]++;
-    if (cpRowCounts[key] >= 20) {
+    if (cpRowCounts[key] >= MAX_CP_ROWS) {
         var btn = document.getElementById('add-cp-btn-' + formType + '-' + fillId);
-        if (btn) { btn.disabled = true; btn.textContent = 'Max 20'; }
+        if (btn) { btn.disabled = true; btn.textContent = 'Max ' + MAX_CP_ROWS; }
     }
 }
 
@@ -1085,7 +1088,7 @@ function validateCPForm(form, fillQty) {
     var totalQty = 0;
     var filledRows = 0;
 
-    for (var i = 0; i < 20; i++) {
+    for (var i = 0; i < MAX_CP_ROWS; i++) {
         var qtyEl    = form.querySelector('[name="cp_qty_' + i + '"]');
         var brokerEl = form.querySelector('[name="cp_broker_' + i + '"]');
         var symEl    = form.querySelector('[name="cp_symbol_' + i + '"]');
