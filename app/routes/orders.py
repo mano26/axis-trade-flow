@@ -1220,8 +1220,8 @@ def set_ticket(order_id):
 @login_required
 def correct_trade_string_page(order_id):
     """Dedicated page for correcting the trade string on a filled order."""
-    if not current_user.is_super():
-        flash("Only super admins can correct a filled order's trade string.", "danger")
+    if not current_user.is_admin():
+        flash("Only admins can correct a filled order's trade string.", "danger")
         return redirect(url_for("orders.detail", order_id=order_id))
 
     order = _get_order_or_404(order_id)
@@ -1247,19 +1247,22 @@ def correct_trade_string_page(order_id):
 @login_required
 def amend_trade_string(order_id):
     """
-    Correct the trade string and leg reference data (contract code, expiry,
-    market) for a filled order where the wrong contract/expiry was entered.
+    Correct the trade string on a filled order where the wrong contract/expiry
+    or the wrong strike(s) were entered.
 
-    Super admin only. Strikes, volumes, sides, option types, prices, and
-    counterparties are UNCHANGED — they are confirmed by the existing fills.
-    Only reference fields that identify the contract (expiry, contract_type,
-    market, mo_card_code) are updated on each leg.
+    Admins only (company admin or super admin). Updated on each leg: the
+    contract reference (expiry, contract_type, market, mo_card_code) and the
+    strike. Must stay the same: number of legs, and each leg's side, option
+    type and volume; the trade's direction, quantity and package price; and
+    the order of the legs (a corrected strike may not move past another
+    strike, so entered prices stay with the right strikes). Prices and
+    counterparties are kept — prices are stored per leg position.
 
     A written reason is required and written to the audit log alongside the
     old and new trade strings.
     """
-    if not current_user.is_super():
-        flash("Only super admins can correct a filled order's trade string.", "danger")
+    if not current_user.is_admin():
+        flash("Only admins can correct a filled order's trade string.", "danger")
         return redirect(url_for("orders.detail", order_id=order_id))
 
     order = _get_order_or_404(order_id)
@@ -1308,42 +1311,28 @@ def amend_trade_string(order_id):
             )
             return redirect(_correct_page)
 
-        # Guard: same option types, strikes, and sides on each leg
-        mismatches = []
-        for i, (new_leg, old_leg) in enumerate(zip(new_all_legs, old_legs), 1):
-            if new_leg.get("option_type") != old_leg.option_type:
-                mismatches.append(
-                    f"Leg {i}: option type changed "
-                    f"({old_leg.option_type} → {new_leg.get('option_type')})"
-                )
-            if new_leg.get("strike") != old_leg.strike:
-                mismatches.append(
-                    f"Leg {i}: strike changed "
-                    f"({old_leg.strike} → {new_leg.get('strike')})"
-                )
-            if new_leg.get("side") != old_leg.side:
-                mismatches.append(
-                    f"Leg {i}: side changed "
-                    f"({old_leg.side} → {new_leg.get('side')})"
-                )
-
+        mismatches = _correction_mismatches(order, old_legs, new_all_legs, new_input)
         if mismatches:
             flash(
-                "Corrected trade string changes the trade structure — only the "
-                "contract/expiry reference should differ. Issues: "
-                + "; ".join(mismatches),
+                "This correction would change more than the contract/expiry or "
+                "strikes. Issues: " + "; ".join(mismatches),
                 "danger",
             )
             return redirect(_correct_page)
 
-        # All validation passed — update only reference fields
+        # All validation passed — update reference fields and strikes
         old_raw_input = order.raw_input
+        strike_changes = []
 
-        for new_leg_data, old_leg in zip(new_all_legs, old_legs):
+        for i, (new_leg_data, old_leg) in enumerate(zip(new_all_legs, old_legs), 1):
             old_leg.contract_type = new_leg_data.get("contract_type", old_leg.contract_type)
             old_leg.expiry        = new_leg_data.get("expiry",        old_leg.expiry)
             old_leg.market        = new_leg_data.get("market",        old_leg.market)
             old_leg.mo_card_code  = new_leg_data.get("mo_card_code",  old_leg.mo_card_code)
+            new_strike = new_leg_data.get("strike")
+            if new_strike != old_leg.strike:
+                strike_changes.append(f"Leg {i}: {old_leg.strike:g} → {new_strike:g}")
+                old_leg.strike = new_strike
 
         order.raw_input = new_input
 
@@ -1358,21 +1347,30 @@ def amend_trade_string(order_id):
             entity_id=order.id,
             tenant_id=active_tenant_id(),
             before_value={"raw_input": old_raw_input},
-            after_value={"raw_input": new_input},
+            after_value={"raw_input": new_input, "strike_changes": strike_changes},
             notes=(
-                f"Trade string corrected by super admin.\n"
+                f"Trade string corrected by {current_user.email}.\n"
                 f"REASON: {reason}\n"
                 f"OLD: {old_raw_input}\n"
                 f"NEW: {new_input}"
+                + (f"\nSTRIKES: {'; '.join(strike_changes)}" if strike_changes else "")
             ),
         )
 
         db.session.commit()
-        flash(
-            f"Order #{order.ticket_display} trade string corrected. "
-            f"Reprint cards and ticket to reflect the change.",
-            "success",
-        )
+        if strike_changes:
+            flash(
+                f"Order #{order.ticket_display} corrected — strikes changed "
+                f"({'; '.join(strike_changes)}). Re-check the leg prices, then "
+                f"reprint the ticket and cards and download a new keypunch file.",
+                "warning",
+            )
+        else:
+            flash(
+                f"Order #{order.ticket_display} trade string corrected. "
+                f"Reprint cards and ticket to reflect the change.",
+                "success",
+            )
 
     except ParseError as e:
         flash(f"Parse error in corrected trade string: {e}", "danger")
@@ -1381,6 +1379,66 @@ def amend_trade_string(order_id):
         flash(f"Error correcting trade string: {e}", "danger")
 
     return redirect(url_for("orders.detail", order_id=order_id))
+
+
+def _correction_mismatches(order, old_legs, new_legs, new_input) -> list:
+    """Reasons a trade-string correction is not allowed (empty list = OK).
+
+    Allowed to change: contract/expiry and strikes. Everything that fills,
+    prices and counterparties depend on must stay the same, and legs must
+    keep their order so per-leg prices stay attached to the right strike.
+    """
+    issues = []
+    try:
+        direction, volume, premium = _extract_price_info(new_input)
+    except Exception:
+        direction = volume = premium = None
+    if direction is not None and direction != order.direction:
+        issues.append(f"direction changed ({order.direction} → {direction})")
+    if volume is not None and volume != order.total_quantity:
+        issues.append(f"quantity changed ({order.total_quantity} → {volume})")
+    if (premium is not None and order.package_premium is not None
+            and abs(premium - order.package_premium) > 1e-9):
+        issues.append(f"price changed ({order.package_premium * 100:g} → {premium * 100:g})")
+
+    for i, (new_leg, old_leg) in enumerate(zip(new_legs, old_legs), 1):
+        if new_leg.get("option_type") != old_leg.option_type:
+            issues.append(f"Leg {i}: option type changed ({old_leg.option_type} → {new_leg.get('option_type')})")
+        if new_leg.get("side") != old_leg.side:
+            issues.append(f"Leg {i}: side changed ({old_leg.side} → {new_leg.get('side')})")
+        if new_leg.get("volume") != old_leg.volume:
+            issues.append(f"Leg {i}: volume changed ({old_leg.volume} → {new_leg.get('volume')})")
+        if (new_leg.get("strike") is None) != (old_leg.strike is None):
+            issues.append(f"Leg {i}: an option leg and a futures leg can't swap")
+
+    # Leg order must be preserved: no corrected strike may cross another.
+    pairs = [(o.strike, n.get("strike")) for o, n in zip(old_legs, new_legs)
+             if o.strike is not None and n.get("strike") is not None]
+    # The parser sorts strikes, so a strike that crosses another shifts other
+    # legs too. If more legs changed position-by-position than strikes
+    # actually changed, legs were reordered and prices would land on the
+    # wrong strikes.
+    from collections import Counter
+    old_set, new_set = Counter(a for a, _ in pairs), Counter(b for _, b in pairs)
+    really_changed = sum((old_set - new_set).values())
+    moved = sum(1 for a, b in pairs if a != b)
+    if moved > really_changed:
+        issues.append(
+            "a corrected strike moves past another strike, which would "
+            "reorder the legs — re-enter this trade instead"
+        )
+        return issues
+    def _sign(x):
+        return (x > 0) - (x < 0)
+    for a in range(len(pairs)):
+        for b in range(a + 1, len(pairs)):
+            if _sign(pairs[a][0] - pairs[b][0]) != _sign(pairs[a][1] - pairs[b][1]):
+                issues.append(
+                    "a corrected strike moves past another strike, which would "
+                    "reorder the legs — re-enter this trade instead"
+                )
+                return issues
+    return issues
 
 
 @orders_bp.route("/<int:order_id>/modify", methods=["GET", "POST"])

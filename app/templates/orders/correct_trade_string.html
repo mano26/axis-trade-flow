@@ -68,9 +68,10 @@
   <section class="order-summary">
     <h2 style="font-size:14px; font-weight:700; margin-bottom:4px; color:#795548; text-transform:uppercase; letter-spacing:1px;">Apply Correction</h2>
     <p style="font-size:12px; color:#888; margin-bottom:16px; line-height:1.5;">
-      Only the contract code and expiry reference will be updated (e.g. <code>H6 → H7</code>).
-      Strikes, volumes, option types, sides, prices, and counterparties are <strong>not changed</strong>.
-      A reason is required for the audit log.
+      You can correct the contract code / expiry (e.g. <code>H6 → H7</code>) and strikes
+      (e.g. <code>96.50 → 96.625</code>). Sides, option types, volumes, the price and quantity,
+      and counterparties must stay the same, and a corrected strike can't move past another strike.
+      Entered prices are kept — re-check them after changing a strike. A reason is required for the audit log.
     </p>
 
     <form method="POST" action="{{ url_for('orders.amend_trade_string', order_id=order.id) }}">
@@ -89,7 +90,7 @@
                  style="width:100%; font-family:var(--font-mono); font-size:14px;"
                  placeholder="Enter corrected trade string">
           <div style="font-size:11px; color:#888; margin-top:4px;">
-            Edit the contract code / expiry above. The parser will validate the structure matches the original.
+            Edit the contract code / expiry or strikes above. The parser checks everything else matches the original.
           </div>
         </div>
 
@@ -111,7 +112,7 @@
           <button type="submit"
                   class="btn"
                   style="background:#795548; color:#fff; border-color:#795548;"
-                  onclick="return confirm('Apply correction to order #{{ order.ticket_display }}?\n\nThis updates the contract/expiry reference on all legs.\nReprint cards and ticket after confirming.\n\nThis action is logged to the audit trail.')">
+                  onclick="return confirm('Apply correction to order #{{ order.ticket_display }}?\n\nThis updates the contract/expiry and strikes on the legs.\nReprint cards and ticket after confirming.\n\nThis action is logged to the audit trail.')">
             Apply Correction
           </button>
           <a href="{{ url_for('orders.detail', order_id=order.id) }}"

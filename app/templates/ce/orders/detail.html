@@ -113,7 +113,7 @@
             {% if order.status == 'partial_fill' %}
             <a class="ce-action" href="{{ url_for('orders.modify_balance', order_id=order.id) }}"><span><b>Modify balance</b><small>Change the working quantity</small></span><i aria-hidden="true">→</i></a>
             {% endif %}
-            {% if current_user.is_super() and printable and not order.is_generic %}
+            {% if current_user.is_admin() and printable and not order.is_generic %}
             <a class="ce-action" href="{{ url_for('orders.correct_trade_string_page', order_id=order.id) }}"><span><b>Correct trade string</b><small>Fix a leg after the fact</small></span><i aria-hidden="true">→</i></a>
             {% endif %}
             {% if current_user.is_admin() %}

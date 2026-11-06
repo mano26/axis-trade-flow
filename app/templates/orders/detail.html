@@ -841,7 +841,7 @@
             Download Keypunch
         </a>
         {% endif %}
-        {% if current_user.is_super() and order.status in ('filled', 'amended', 'partial_fill', 'partial_cancelled') and not order.is_generic %}
+        {% if current_user.is_admin() and order.status in ('filled', 'amended', 'partial_fill', 'partial_cancelled') and not order.is_generic %}
         <a href="{{ url_for('orders.correct_trade_string_page', order_id=order.id) }}"
            class="btn" style="background:#795548; color:#fff; border-color:#795548;">Correct Trade String</a>
         {% endif %}

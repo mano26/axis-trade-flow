@@ -427,8 +427,8 @@ SFRM7 SFRU7 SFRZ7 SFRH8 99.00 C strip 45/750  &lt;- buy all 4 contracts</div>
     <p>Save Amendment commits both price and counterparty changes in a single transaction. The order status updates to <em>AMENDED</em> and a full before/after record is written to the audit trail.</p>
 
     <h3>Correct Trade String</h3>
-    <p>For super admins only. If the wrong expiry or contract code was entered (e.g. H6 instead of H7), click the brown <strong>Correct Trade String</strong> button in the Actions bar. This opens a dedicated page showing the current leg structure and a form to enter the corrected trade string.</p>
-    <p>Only the contract code and expiry reference are updated — strikes, volumes, option types, sides, prices, and counterparties are not changed. A reason is required for the audit log. Reprint cards and tickets after correcting.</p>
+    <p>For company admins and super admins. If the wrong expiry, contract code or strike was entered on a filled order (e.g. H6 instead of H7, or 96.50 instead of 96.625), click <strong>Correct Trade String</strong> on the order. This opens a page showing the current legs and a form for the corrected trade string.</p>
+    <p>The contract code, expiry and strikes are updated. Sides, option types, volumes, the price and quantity, and counterparties must stay the same, and a corrected strike can't move past another strike (that would reorder the legs — re-enter the trade instead). Entered prices are kept, so re-check them after changing a strike. A reason is required for the audit log. Reprint cards and tickets and download a new keypunch file after correcting.</p>
 
     <div class="tip-box">To amend the trade structure itself (strikes, strategy, direction) use the <strong>Modify Order</strong> button. This re-parses a new trade string and rebuilds the legs.</div>
 </div>

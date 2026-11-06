@@ -15,7 +15,7 @@
 
 <section class="ce-card">
     <div class="ce-card-head"><div><h2 class="ce-card-title">Current</h2>
-        <span class="ce-card-sub">For filled orders: fix the contract code or expiry without re-entering the trade</span></div></div>
+        <span class="ce-card-sub">For filled orders: fix the contract, expiry or a strike without re-entering the trade</span></div></div>
     <div class="ce-field"><label for="ce-cur">Current trade string</label>
         <input type="text" id="ce-cur" value="{{ order.raw_input or '' }}" readonly class="ce-mono-input ce-readonly"></div>
     {% if order.legs %}
@@ -43,8 +43,8 @@
 <section class="ce-card">
     <div class="ce-card-head"><div><h2 class="ce-card-title">Apply correction</h2></div></div>
     <div class="ce-note ce-note-info">
-        <b>Only the contract code and expiry change</b>
-        <span>For example <code>H6 → H7</code>. Strikes, volumes, option types, sides, prices and counterparties are not changed. The parser checks the structure still matches the original.</span>
+        <b>What you can change: contract, expiry and strikes</b>
+        <span>For example <code>H6 → H7</code> or <code>96.50 → 96.625</code>. Sides, option types, volumes, the price and quantity, and counterparties must stay the same, and a corrected strike can't move past another strike. Entered prices are kept.</span>
     </div>
     <form method="POST" action="{{ url_for('orders.amend_trade_string', order_id=order.id) }}" class="ce-stack" style="gap:14px;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -59,13 +59,13 @@
             <span class="form-help">Recorded in the audit log with the old and new trade strings.</span>
         </div>
         <div class="ce-note ce-note-warn">
-            <b>Prints and keypunch will change</b>
-            <span>After correcting, reprint the ticket and cards and download a new keypunch file.</span>
+            <b>After correcting</b>
+            <span>If you changed a strike, re-check the leg prices. Then reprint the ticket and cards and download a new keypunch file.</span>
         </div>
         <div class="ce-actions" style="justify-content:flex-end;">
             <a href="{{ url_for('orders.detail', order_id=order.id) }}" class="btn ce-lg">Cancel</a>
             <button type="submit" class="btn ce-lg btn-primary"
-                    onclick="return confirm('Apply correction to order #{{ order.ticket_display }}?\n\nThis updates the contract/expiry reference on all legs.\nReprint cards and ticket after confirming.\n\nThis action is logged to the audit trail.')">Apply correction</button>
+                    onclick="return confirm('Apply correction to order #{{ order.ticket_display }}?\n\nThis updates the contract/expiry and strikes on the legs.\nReprint cards and ticket after confirming.\n\nThis action is logged to the audit trail.')">Apply correction</button>
         </div>
     </form>
 </section>
