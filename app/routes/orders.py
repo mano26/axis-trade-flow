@@ -264,9 +264,19 @@ def detail(order_id):
                  if l.option_type is not None and l.volume and l.volume > 0]
     gcd_opt_vol = _reduce(_gcd, _opt_vols) if _opt_vols else 1
 
+    # Print history — used by the new-design page's progress tracker only.
+    from app.models.print_event import PrintEvent
+    print_events = (
+        PrintEvent.query
+        .filter_by(order_id=order.id, tenant_id=active_tenant_id())
+        .order_by(PrintEvent.created_at)
+        .all()
+    )
+
     return render_template(
-        "orders/detail.html",
+        themed("orders/detail.html"),
         order=order,
+        print_events=print_events,
         latest_fill=latest_fill,
         oldest_pending_fill=oldest_pending_fill,
         all_fills_display=all_fills_display,
@@ -274,6 +284,57 @@ def detail(order_id):
         display_legs=display_legs,
         has_prices=has_prices,
         gcd_opt_vol=gcd_opt_vol,
+    )
+
+
+# =========================================================================
+# Parse preview (read-only)
+# =========================================================================
+
+@orders_bp.route("/parse-preview")
+@login_required
+def parse_preview():
+    """Parse a trade string WITHOUT saving anything, for the live preview on
+    the new-design Orders page. Uses the same parser, leg builder and price
+    extraction as orders.create, so the preview matches what would be saved.
+    Never writes to the database; the create route still validates on submit.
+    """
+    raw = request.args.get("s", "").strip()
+    if not raw:
+        return jsonify(ok=False, empty=True)
+    try:
+        direction, volume, premium = _extract_price_info(raw)
+        premium_ticks = premium * 100
+        quarter_tick = (premium_ticks % 0.5) != 0 and (premium_ticks % 0.25) == 0
+        parts = parse_trade_input(raw)
+        if not parts:
+            return jsonify(ok=False, error="No valid trade legs found.")
+        legs = []
+        for part in parts:
+            legs.extend(build_legs(part))
+    except ParseError as e:
+        return jsonify(ok=False, error=str(e))
+    except Exception as e:  # anything else: report, never fail the page
+        return jsonify(ok=False, error=f"Couldn't read this trade string ({e}).")
+
+    contracts = []
+    for leg in legs:
+        code = f"{leg.get('contract_type') or ''} {leg.get('expiry') or ''}".strip()
+        if code and code not in contracts:
+            contracts.append(code)
+    strikes = sorted({leg["strike"] for leg in legs if leg.get("strike") is not None})
+    return jsonify(
+        ok=True,
+        direction=direction,
+        volume=volume,
+        price=round(premium_ticks, 4),   # as typed in the trade string (ticks)
+        quarter_tick=bool(quarter_tick),
+        strategy=parts[0].strategy,
+        segments=len(parts),
+        contracts=contracts,
+        strikes=[f"{s:g}" for s in strikes],
+        legs=len(legs),
+        has_futures=any(leg.get("option_type") is None and leg.get("strike") is None for leg in legs),
     )
 
 
@@ -1179,7 +1240,7 @@ def correct_trade_string_page(order_id):
         flash("Generic orders do not have parsed legs to correct.", "warning")
         return redirect(url_for("orders.detail", order_id=order_id))
 
-    return render_template("orders/correct_trade_string.html", order=order)
+    return render_template(themed("orders/correct_trade_string.html"), order=order)
 
 
 @orders_bp.route("/<int:order_id>/amend-trade-string", methods=["POST"])
@@ -1330,7 +1391,7 @@ def modify(order_id):
         flash("Only unfilled (OPEN) orders can be modified.", "warning")
         return redirect(url_for("orders.detail", order_id=order.id))
     if request.method == "GET":
-        return render_template("orders/modify.html", order=order)
+        return render_template(themed("orders/modify.html"), order=order)
     new_input = request.form.get("trade_string", "").strip()
     if not new_input:
         flash("Please enter a trade string.", "warning")
@@ -1402,7 +1463,7 @@ def modify_balance(order_id):
         return redirect(url_for("orders.detail", order_id=order.id))
 
     if request.method == "GET":
-        return render_template("orders/modify_balance.html", order=order)
+        return render_template(themed("orders/modify_balance.html"), order=order)
 
     new_input = request.form.get("trade_string", "").strip().upper()
     if not new_input:
@@ -1637,7 +1698,7 @@ def cancel_balance(order_id):
 
     if request.method == "GET":
         return render_template(
-            "orders/modify_balance.html",
+            themed("orders/modify_balance.html"),
             order=order,
         )
 

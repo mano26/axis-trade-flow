@@ -7,7 +7,7 @@
             onclick="document.getElementById('edit-ticket-form').style.display=document.getElementById('edit-ticket-form').style.display==='none'?'inline-flex':'none'"
             style="margin-left:10px;font-size:11px;padding:2px 8px;background:none;border:1px solid #aaa;border-radius:3px;cursor:pointer;color:#555;vertical-align:middle;"
             title="Edit ticket number">✎</button>{% endif %}</h1>
-    {% if current_user.is_admin() %}
+    {% block ce_ticket_form %}{% if current_user.is_admin() %}
     <form id="edit-ticket-form" method="POST" action="{{ url_for('orders.set_ticket', order_id=order.id) }}"
           style="display:none;align-items:center;gap:6px;margin-left:12px;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -18,7 +18,7 @@
         <button type="button" onclick="document.getElementById('edit-ticket-form').style.display='none'"
                 class="btn" style="font-size:12px;padding:4px 10px;">Cancel</button>
     </form>
-    {% endif %}
+    {% endif %}{% endblock %}
     <span class="status-badge status-{{ order.status }}">{{ order.status | replace('_', ' ') | upper }}</span>
     {% if order.is_generic %}
     <span class="status-badge" style="background:#fff3e0;color:#e65100;margin-left:4px;">GENERIC</span>
@@ -87,7 +87,7 @@
     </div>
 </section>
 
-{% if order.status in ('open', 'partial_fill') %}
+{% block ce_fill %}{% if order.status in ('open', 'partial_fill') %}
 <section>
     <h2>Record Fill</h2>
     <form method="POST" action="{{ url_for('orders.record_fill', order_id=order.id) }}">
@@ -103,12 +103,12 @@
         </div>
     </form>
 </section>
-{% endif %}
+{% endif %}{% endblock %}
 
 <!-- ================================================================
      Editable Confirmation Legs (using proportional display volumes)
      ================================================================ -->
-<section class="legs-section">
+{% block ce_legs %}<section class="legs-section">
     <h2>Confirmation Legs &amp; Prices</h2>
 
     {% if not order.is_generic %}
@@ -317,9 +317,9 @@
     </form>
     {% endif %}
     {% endif %}
-</section>
+</section>{% endblock %}
 
-{% if order.fills %}
+{% block ce_cps %}{% if order.fills %}
 <section>
     <h2>Counterparties</h2>
 
@@ -816,7 +816,7 @@
     {% endif %}
     {% endfor %}
 </section>
-{% endif %}
+{% endif %}{% endblock %}
 
 <section class="actions-section">
     <h2>Actions</h2>

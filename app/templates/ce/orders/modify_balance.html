@@ -1,0 +1,47 @@
+{% extends "orders/modify_balance.html" %}
+{#- New-design layout. Same form (POST orders.modify_balance, field
+    trade_string) and the same confirmation before closing the order. -#}
+
+{% block content %}
+<div class="ce-stack" style="max-width:960px;">
+
+<div class="ce-head">
+    <div>
+        <p class="ce-eyebrow">Order #{{ order.ticket_display }} · Partial fill</p>
+        <h1 class="ce-h1">Modify <span class="ce-serif">balance</span></h1>
+    </div>
+    <div class="ce-actions"><a href="{{ url_for('orders.detail', order_id=order.id) }}" class="btn ce-lg">Back to order</a></div>
+</div>
+
+<section class="ce-card">
+    <div class="ce-field">
+        <label for="ce-orig">Original trade string</label>
+        <input type="text" id="ce-orig" value="{{ order.raw_input }}" readonly class="ce-mono-input ce-readonly">
+    </div>
+    <div class="ce-tiles">
+        <div><span>Original</span><b>{{ "{:,}".format(order.total_quantity) }}</b></div>
+        <div><span>Filled · closes now</span><b>{{ "{:,}".format(order.filled_quantity) }}</b></div>
+        <div class="is-hl"><span>Balance · new ticket</span><b>{{ "{:,}".format(order.remaining_quantity) }}</b></div>
+    </div>
+    <div class="ce-note ce-note-info">
+        <b>What happens</b>
+        <span>Order #{{ order.ticket_display }} closes at {{ "{:,}".format(order.filled_quantity) }} filled. A <strong>new ticket</strong> opens for the balance using the trade string below, so you can change the price, quantity or structure (for example add CVD).</span>
+    </div>
+    <form method="POST" action="{{ url_for('orders.modify_balance', order_id=order.id) }}" class="ce-stack" style="gap:14px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="ce-field">
+            <label for="ce-bal">Trade string for the balance</label>
+            <input type="text" id="ce-bal" name="trade_string" class="ce-mono-input ce-hero-input text-upper" autofocus autocomplete="off" spellcheck="false" placeholder="Enter balance trade string">
+            <span class="form-help">Example with CVD added: <code>SFRZ6 96.125 96.25 96.375 C FLY CVD 95.965 D 10 4/1000</code></span>
+        </div>
+        {% with ce_diff_input='#ce-bal', ce_diff_was=order.raw_input %}{% include "ce/_diff.html" %}{% endwith %}
+        <div class="ce-actions" style="justify-content:flex-end;">
+            <a href="{{ url_for('orders.detail', order_id=order.id) }}" class="btn ce-lg">Cancel</a>
+            <button type="submit" class="btn ce-lg btn-primary"
+                    onclick="return confirm('Close order #{{ order.ticket_display }} at {{ order.filled_quantity }} filled\nand open a new ticket for the balance?')">Close partial &amp; open new ticket</button>
+        </div>
+    </form>
+</section>
+
+</div>
+{% endblock %}

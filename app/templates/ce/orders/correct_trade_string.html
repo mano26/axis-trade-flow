@@ -1,0 +1,74 @@
+{% extends "orders/correct_trade_string.html" %}
+{#- New-design layout. Same form (POST orders.amend_trade_string, fields
+    corrected_trade_string and correction_reason) and the same confirmation. -#}
+
+{% block content %}
+<div class="ce-stack" style="max-width:960px;">
+
+<div class="ce-head">
+    <div>
+        <p class="ce-eyebrow">Order #{{ order.ticket_display }} · {{ order.status | replace('_', ' ') | capitalize }}</p>
+        <h1 class="ce-h1">Correct <span class="ce-serif">trade string</span></h1>
+    </div>
+    <div class="ce-actions"><a href="{{ url_for('orders.detail', order_id=order.id) }}" class="btn ce-lg">Back to order</a></div>
+</div>
+
+<section class="ce-card">
+    <div class="ce-card-head"><div><h2 class="ce-card-title">Current</h2>
+        <span class="ce-card-sub">For filled orders: fix the contract code or expiry without re-entering the trade</span></div></div>
+    <div class="ce-field"><label for="ce-cur">Current trade string</label>
+        <input type="text" id="ce-cur" value="{{ order.raw_input or '' }}" readonly class="ce-mono-input ce-readonly"></div>
+    {% if order.legs %}
+    <div class="ce-table-wrap">
+    <table class="ce-table" style="min-width:600px;">
+        <thead><tr><th>Leg</th><th>Side</th><th>Type</th><th class="num">Qty</th><th>Contract</th><th>Expiry</th><th class="num">Strike</th></tr></thead>
+        <tbody>
+        {% for leg in order.legs | sort(attribute='leg_index') %}
+            <tr>
+                <td class="muted">{{ loop.index }}</td>
+                <td><span class="ce-side-pill ce-side-{{ leg.side }}">{{ leg.side }}</span></td>
+                <td>{{ leg.option_type or 'FUT' }}</td>
+                <td class="num muted">{{ leg.volume }}</td>
+                <td class="ce-mono">{{ leg.contract_type or '—' }}</td>
+                <td class="ce-mono strong">{{ leg.expiry or '—' }}</td>
+                <td class="num ce-mono">{{ leg.strike or '—' }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% endif %}
+</section>
+
+<section class="ce-card">
+    <div class="ce-card-head"><div><h2 class="ce-card-title">Apply correction</h2></div></div>
+    <div class="ce-note ce-note-info">
+        <b>Only the contract code and expiry change</b>
+        <span>For example <code>H6 → H7</code>. Strikes, volumes, option types, sides, prices and counterparties are not changed. The parser checks the structure still matches the original.</span>
+    </div>
+    <form method="POST" action="{{ url_for('orders.amend_trade_string', order_id=order.id) }}" class="ce-stack" style="gap:14px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="ce-field">
+            <label for="ce-corr">Corrected trade string</label>
+            <input type="text" id="ce-corr" name="corrected_trade_string" value="{{ order.raw_input }}" class="ce-mono-input ce-hero-input text-upper" autocomplete="off" placeholder="Enter corrected trade string">
+        </div>
+        {% with ce_diff_input='#ce-corr', ce_diff_was=order.raw_input %}{% include "ce/_diff.html" %}{% endwith %}
+        <div class="ce-field">
+            <label for="ce-reason">Reason for correction <span style="color:#B42318;">*</span></label>
+            <input type="text" id="ce-reason" name="correction_reason" required placeholder="e.g. Wrong expiry entered — SFRH6 should be SFRH7">
+            <span class="form-help">Recorded in the audit log with the old and new trade strings.</span>
+        </div>
+        <div class="ce-note ce-note-warn">
+            <b>Prints and keypunch will change</b>
+            <span>After correcting, reprint the ticket and cards and download a new keypunch file.</span>
+        </div>
+        <div class="ce-actions" style="justify-content:flex-end;">
+            <a href="{{ url_for('orders.detail', order_id=order.id) }}" class="btn ce-lg">Cancel</a>
+            <button type="submit" class="btn ce-lg btn-primary"
+                    onclick="return confirm('Apply correction to order #{{ order.ticket_display }}?\n\nThis updates the contract/expiry reference on all legs.\nReprint cards and ticket after confirming.\n\nThis action is logged to the audit trail.')">Apply correction</button>
+        </div>
+    </form>
+</section>
+
+</div>
+{% endblock %}

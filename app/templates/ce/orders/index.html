@@ -57,10 +57,21 @@
             </div>
             <button type="submit" class="btn btn-primary ce-submit">Submit Order</button>
         </div>
+        <div id="ce-entry-error" class="ce-inline-error" role="alert" hidden>House and Account are required.</div>
         <label class="checkbox-label" style="margin-top:12px;">
             <input type="checkbox" id="generic_checkbox" onchange="toggleGeneric()">
             <span>Generic entry (manual legs)</span>
         </label>
+        <div id="ce-preview" class="ce-preview" aria-live="polite" hidden></div>
+        <div id="ce-qt" class="ce-note ce-note-warn" role="alert" hidden>
+            <b id="ce-qt-title">Quarter-tick price</b>
+            <span>Is this a quarter-tick eligible month? Choose how to submit — nothing is sent until you pick.</span>
+            <span class="ce-actions" style="margin-top:8px;">
+                <button type="button" class="btn btn-primary" id="ce-qt-parsed">Submit as parsed · quarter-tick month</button>
+                <button type="button" class="btn" id="ce-qt-generic">Enter legs manually (generic)</button>
+                <button type="button" class="ce-link-btn" id="ce-qt-cancel">Cancel</button>
+            </span>
+        </div>
     </form>
 </section>
 
@@ -119,4 +130,107 @@
 </section>
 
 </div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+/* New design only: live parse preview and inline messages instead of the
+   browser alert/confirm pop-ups. The server still validates on submit. */
+(function () {
+    var form = document.getElementById('order-form');
+    var input = document.getElementById('trade_string');
+    var box = document.getElementById('ce-preview');
+    var qt = document.getElementById('ce-qt');
+    var err = document.getElementById('ce-entry-error');
+    if (!form || !input) return;
+    var NAMES = {cs:'Call Spread', ps:'Put Spread', rr:'Risk Reversal', straddle:'Straddle', strangle:'Strangle',
+                 single:'Single Option', bflyc:'Call Butterfly', bflyp:'Put Butterfly', bfly:'Butterfly',
+                 condorc:'Call Condor', condorp:'Put Condor', ic:'Iron Condor', treec:'Call Tree', treep:'Put Tree'};
+    var esc = function (t) { return String(t).replace(/[&<>"]/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); };
+    var chip = function (k, v) { return '<span class="ce-chip"><small>' + esc(k) + '</small><b>' + esc(v) + '</b></span>'; };
+    var timer = null, seq = 0;
+
+    function render(d) {
+        if (!d || d.empty) { box.hidden = true; box.innerHTML = ''; return; }
+        box.hidden = false;
+        if (!d.ok) {
+            box.className = 'ce-preview is-error';
+            box.innerHTML = '<span class="ce-preview-label">Can\'t read this yet</span><span class="ce-preview-msg">' + esc(d.error || '') + '</span>';
+            return;
+        }
+        box.className = 'ce-preview';
+        var s = d.strategy || '';
+        var html = '<span class="ce-preview-label">Parsed</span>' +
+            chip('Side', d.direction === 'B' ? 'Buy' : 'Sell') +
+            chip('Strategy', (NAMES[s] || s.toUpperCase()) + (d.segments > 1 ? ' · ' + d.segments + ' parts' : '')) +
+            chip(d.contracts.length > 1 ? 'Contracts' : 'Contract', d.contracts.join(' · ')) +
+            (d.strikes.length ? chip(d.strikes.length > 1 ? 'Strikes' : 'Strike', d.strikes.join(' · ')) : '') +
+            chip('Price', d.price) + chip('Qty', Number(d.volume).toLocaleString('en-US')) +
+            chip('Legs', d.legs + (d.has_futures ? ' incl. futures' : ''));
+        html += d.quarter_tick
+            ? '<span class="ce-preview-flag is-warn">Quarter-tick price</span>'
+            : '<span class="ce-preview-flag">Ready to submit</span>';
+        box.innerHTML = html;
+    }
+
+    function preview() {
+        var s = input.value.trim(), mine = ++seq;
+        if (!s) { render({empty: true}); return; }
+        fetch('{{ url_for("orders.parse_preview") }}?s=' + encodeURIComponent(s), {credentials: 'same-origin'})
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (d) { if (mine === seq && d) render(d); })
+            .catch(function () { /* preview is optional; never block entry */ });
+    }
+    input.addEventListener('input', function () { qt.hidden = true; clearTimeout(timer); timer = setTimeout(preview, 250); });
+
+    function clearErr() { err.hidden = true; document.querySelectorAll('.ce-field-error').forEach(function (e) { e.classList.remove('ce-field-error'); }); }
+    ['entry-house', 'entry-account'].forEach(function (id) { var el = document.getElementById(id); if (el) el.addEventListener('change', clearErr); });
+
+    // Same checks as the classic page, shown inline. Runs before the classic
+    // submit handler (capture phase) and replaces its pop-ups.
+    document.addEventListener('submit', function (e) {
+        if (e.target !== form) return;
+        e.stopImmediatePropagation();
+        var houseEl = form.querySelector('[name="house"]'), acctEl = form.querySelector('[name="account"]');
+        var house = houseEl ? houseEl.value.trim() : '', acct = acctEl ? acctEl.value.trim() : '';
+        clearErr();
+        if (!house || !acct) {
+            e.preventDefault();
+            err.hidden = false;
+            if (!house && houseEl) { houseEl.classList.add('ce-field-error'); houseEl.focus(); }
+            if (!acct && acctEl) { acctEl.classList.add('ce-field-error'); if (house) acctEl.focus(); }
+            return;
+        }
+        var isGeneric = document.getElementById('generic_checkbox').checked;
+        var price = 0;
+        var norm = input.value.replace(/\s*@\s*/g, '@').replace(/\s*\/\s*/g, '/');
+        norm.split(/\s+/).forEach(function (t) {
+            var p;
+            if (t.indexOf('/') > -1 && t.indexOf('@') === -1) { p = t.split('/'); if (p.length === 2 && !isNaN(p[0])) price = parseFloat(p[0]); }
+            else if (t.indexOf('@') > -1) { p = t.split('@'); if (p.length === 2 && !isNaN(p[1])) price = parseFloat(p[1]); }
+        });
+        if (price > 0 && (price % 0.5) !== 0 && (price % 0.25) === 0 && !isGeneric &&
+            document.getElementById('quarter_tick_hidden').value !== '1') {
+            e.preventDefault();
+            document.getElementById('ce-qt-title').textContent = price + ' is a quarter-tick price';
+            qt.hidden = false;
+            document.getElementById('ce-qt-parsed').focus();
+        }
+    }, true);
+
+    document.getElementById('ce-qt-parsed').addEventListener('click', function () {
+        document.getElementById('quarter_tick_hidden').value = '1';
+        form.submit();
+    });
+    document.getElementById('ce-qt-generic').addEventListener('click', function () {
+        document.getElementById('generic_checkbox').checked = true;
+        document.getElementById('is_generic_hidden').value = '1';
+        form.submit();
+    });
+    document.getElementById('ce-qt-cancel').addEventListener('click', function () { qt.hidden = true; input.focus(); });
+
+    if (input.value.trim()) preview();
+})();
+</script>
 {% endblock %}

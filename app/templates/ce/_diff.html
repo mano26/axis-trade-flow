@@ -1,0 +1,32 @@
+{#- Live "was → now" preview for a trade-string input.
+    Usage: include with ce_diff_input = CSS selector of the input,
+    ce_diff_was = the original string. Display only; it never changes the form. -#}
+<div class="ce-diff" id="ce-diff" aria-live="polite" hidden>
+    <span>Was</span><code id="ce-diff-was"></code>
+    <span>Now</span><code id="ce-diff-now"></code>
+</div>
+<script>
+(function () {
+    var input = document.querySelector({{ ce_diff_input | tojson }});
+    var was = {{ (ce_diff_was or '') | tojson }};
+    if (!input) return;
+    var esc = function (t) { return t.replace(/[&<>"]/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); };
+    function render() {
+        var now = input.value.trim().toUpperCase();
+        var a = was.trim().toUpperCase().split(/\s+/), b = now.split(/\s+/);
+        var box = document.getElementById('ce-diff');
+        if (!now || now === was.trim().toUpperCase()) { box.hidden = true; return; }
+        box.hidden = false;
+        var n = Math.max(a.length, b.length), wasHtml = [], nowHtml = [];
+        for (var i = 0; i < n; i++) {
+            var x = a[i] || '', y = b[i] || '';
+            if (x) wasHtml.push(x === y ? esc(x) : '<del>' + esc(x) + '</del>');
+            if (y) nowHtml.push(x === y ? esc(y) : '<ins>' + esc(y) + '</ins>');
+        }
+        document.getElementById('ce-diff-was').innerHTML = wasHtml.join(' ') || '—';
+        document.getElementById('ce-diff-now').innerHTML = nowHtml.join(' ') || '—';
+    }
+    input.addEventListener('input', render);
+    render();
+})();
+</script>

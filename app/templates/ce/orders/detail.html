@@ -1,0 +1,186 @@
+{% extends "orders/detail.html" %}
+{#- New-design order detail. The working parts of the classic page — legs &
+    prices (ce_legs), counterparties (ce_cps) and the ticket-number form
+    (ce_ticket_form) — are rendered from orders/detail.html unchanged, along
+    with its page script. This file only adds the layout around them, the
+    progress tracker, quick-pick fill quantities and the action sidebar. -#}
+
+{% block content %}
+{% set printable = order.status in ('filled', 'amended', 'partial_fill', 'partial_cancelled') %}
+{% set ticket_prints = print_events | selectattr('event_type', 'equalto', 'ticket') | list %}
+{% set n_cps = order.fills | map(attribute='counterparties') | map('length') | sum %}
+{% set all_allocated = order.fills and (order.fills | rejectattr('allocation_status', 'equalto', 'allocated') | list | length == 0) %}
+{% set fully_filled = order.total_quantity and order.filled_quantity >= order.total_quantity %}
+
+<div class="ce-stack">
+
+<div class="ce-head">
+    <div>
+        <p class="ce-eyebrow">{{ order.trade_date.strftime('%A, %-d %B %Y') }}{% if active_tenant %} · {{ active_tenant.name }}{% endif %}</p>
+        <h1 class="ce-h1">Order <span class="ce-serif">#{{ order.ticket_display }}</span></h1>
+    </div>
+    <div class="ce-actions">
+        <span class="status-badge ce-badge status-{{ order.status }}">{{ order.status | replace('_', ' ') | capitalize }}</span>
+        {% if order.is_generic %}<span class="status-badge ce-badge" style="background:#FFF1E8;color:#9A3F0E;">Generic</span>{% endif %}
+        <a href="{{ url_for('orders.index') }}" class="btn ce-lg">Back to orders</a>
+        {% if printable %}<a href="{{ url_for('tickets.generate_with_cps_linear', order_id=order.id) }}" class="btn ce-lg ce-btn-accent">Print ticket</a>{% endif %}
+    </div>
+</div>
+
+<section class="ce-card">
+    <div style="display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:16px;">
+        <div style="display:flex;flex-direction:column;gap:8px;min-width:0;">
+            <span class="form-help">Trade string</span>
+            <span class="ce-mono" style="font-size:20px;font-weight:500;white-space:normal;">{{ order.raw_input }}</span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+            <span class="ce-side-pill ce-side-{{ order.direction }}">{{ order.direction }}</span>
+            <span style="font-size:14px;font-weight:500;">{{ 'Buy' if order.direction == 'B' else 'Sell' }} · {{ order.strategy | upper | replace('_', ' ') }}</span>
+        </div>
+    </div>
+
+    <ol class="ce-steps" aria-label="Order progress">
+        <li class="is-done"><span class="ce-dot"></span><span><b>Entered</b><small>{{ order.time_in | chicago_time if order.time_in else '' }}</small></span></li>
+        <li class="{{ 'is-done' if fully_filled else 'is-current' }}"><span class="ce-dot"></span><span><b>Filled</b><small>{{ "{:,}".format(order.filled_quantity or 0) }} of {{ "{:,}".format(order.total_quantity or 0) }}</small></span></li>
+        <li class="{{ 'is-done' if has_prices else ('is-current' if order.fills else '') }}"><span class="ce-dot"></span><span><b>Priced</b><small>{{ 'Prices saved' if has_prices else 'After the fill' }}</small></span></li>
+        <li class="{{ 'is-done' if all_allocated else ('is-current' if has_prices else '') }}"><span class="ce-dot"></span><span><b>Allocated</b><small>{% if n_cps %}{{ n_cps }} counterpart{{ 'y' if n_cps == 1 else 'ies' }}{% else %}Counterparties{% endif %}</small></span></li>
+        <li class="{{ 'is-done' if ticket_prints else ('is-current' if all_allocated else '') }}"><span class="ce-dot"></span><span><b>Printed</b><small>{% if ticket_prints %}Ticket {{ ticket_prints[-1].created_at | chicago_time }}{% else %}Ticket not printed yet{% endif %}</small></span></li>
+    </ol>
+
+    <div class="ce-facts">
+        <div><span>Quantity</span><b>{{ "{:,}".format(order.filled_quantity or 0) }} / {{ "{:,}".format(order.total_quantity or 0) }}</b></div>
+        <div><span>Package premium</span><b>{{ '%.4f' % order.package_premium if order.package_premium is not none else '—' }}</b></div>
+        <div><span>House</span><b>{{ order.house or '—' }}</b></div>
+        <div><span>Account</span><b>{{ order.account or '—' }}</b></div>
+        <div><span>Time in</span><b>{{ order.time_in | chicago_time if order.time_in else '—' }}</b></div>
+        <div><span>Time out</span><b>{{ order.time_out | chicago_time if order.time_out else '—' }}</b></div>
+    </div>
+</section>
+
+<div class="ce-cols">
+<div class="ce-main ce-stack">
+
+    {% if order.status in ('open', 'partial_fill') %}
+    <section class="ce-card ce-focus">
+        <div class="ce-card-head">
+            <div><h2 class="ce-card-title">Record a fill</h2>
+            <span class="ce-card-sub">{{ "{:,}".format(order.remaining_quantity) }} working{% if order.filled_quantity %} · {{ "{:,}".format(order.filled_quantity) }} already filled{% else %} · nothing filled yet{% endif %}</span></div>
+        </div>
+        {% set rem = order.remaining_quantity %}
+        {% set picks = [rem] %}
+        {% for q in [rem // 2, 1000, 500] %}{% if q > 0 and q < rem and q not in picks %}{% set _ = picks.append(q) %}{% endif %}{% endfor %}
+        <div class="ce-picks" role="group" aria-label="Quick fill quantities">
+            {% for q in picks %}
+            <button type="button" class="ce-pick{% if loop.first %} is-on{% endif %}" data-qty="{{ q }}">{% if loop.first %}All {% endif %}{{ "{:,}".format(q) }}</button>
+            {% endfor %}
+        </div>
+        <form method="POST" action="{{ url_for('orders.record_fill', order_id=order.id) }}" class="ce-fields">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="ce-field" style="flex:0 1 260px;">
+                <label for="fill_quantity">Fill quantity (of {{ "{:,}".format(rem) }})</label>
+                <input type="number" id="fill_quantity" name="fill_quantity" min="1" max="{{ rem }}" value="{{ rem }}" class="ce-big-num">
+            </div>
+            <button type="submit" class="btn ce-submit">Record fill &amp; enter prices</button>
+        </form>
+    </section>
+    {% endif %}
+
+    <div class="ce-card ce-embed">{{ self.ce_legs() }}</div>
+
+    {% if order.fills %}<div class="ce-card ce-embed">{{ self.ce_cps() }}</div>{% endif %}
+
+</div>
+
+<aside class="ce-side ce-stack" aria-label="Order actions">
+
+    {% if printable %}
+    <section class="ce-card">
+        <div class="ce-card-head"><div><h2 class="ce-card-title">Print &amp; export</h2><span class="ce-card-sub">Everything the desk needs for this order</span></div></div>
+        <div class="ce-action-list">
+            <a class="ce-action is-accent" href="{{ url_for('tickets.generate_with_cps_linear', order_id=order.id) }}"><span><b>Print ticket</b><small>Linear layout with counterparties</small></span><i aria-hidden="true">→</i></a>
+            <a class="ce-action" href="{{ url_for('cards.generate', order_id=order.id) }}"><span><b>Print cards</b><small>One card per leg and counterparty</small></span><i aria-hidden="true">→</i></a>
+            <a class="ce-action" href="{{ url_for('orders.download_keypunch_csv', order_id=order.id) }}"><span><b>Download keypunch</b><small>CSV for the exchange</small></span><i aria-hidden="true">→</i></a>
+        </div>
+    </section>
+    {% endif %}
+
+    <section class="ce-card">
+        <div class="ce-card-head"><h2 class="ce-card-title">Change this order</h2></div>
+        <div class="ce-action-list">
+            {% if order.status == 'open' %}
+            <a class="ce-action" href="{{ url_for('orders.modify', order_id=order.id) }}"><span><b>Modify order</b><small>Change the trade string</small></span><i aria-hidden="true">→</i></a>
+            {% endif %}
+            {% if order.status == 'partial_fill' %}
+            <a class="ce-action" href="{{ url_for('orders.modify_balance', order_id=order.id) }}"><span><b>Modify balance</b><small>Change the working quantity</small></span><i aria-hidden="true">→</i></a>
+            {% endif %}
+            {% if current_user.is_super() and printable and not order.is_generic %}
+            <a class="ce-action" href="{{ url_for('orders.correct_trade_string_page', order_id=order.id) }}"><span><b>Correct trade string</b><small>Fix a leg after the fact</small></span><i aria-hidden="true">→</i></a>
+            {% endif %}
+            {% if current_user.is_admin() %}
+            <button type="button" class="ce-action" onclick="var f=document.getElementById('edit-ticket-form');f.style.display=f.style.display==='none'?'inline-flex':'none';">
+                <span><b>Edit ticket number</b><small>Currently #{{ order.ticket_display }}</small></span><i aria-hidden="true">✎</i></button>
+            <div class="ce-ticket-form">{{ self.ce_ticket_form() }}</div>
+            {% endif %}
+            {% if order.status in ('open', 'partial_fill') %}
+            <form method="POST" action="{{ url_for('orders.cancel', order_id=order.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="ce-action is-danger" onclick="return confirm('Cancel this order?')"><span><b>Cancel order</b><small>{{ 'Nothing has filled' if not order.filled_quantity else 'Cancels the working balance' }}</small></span></button>
+            </form>
+            {% endif %}
+        </div>
+        {% if current_user.is_admin() %}
+        <div class="ce-divider"></div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+            <span class="ce-danger-label">Admin</span>
+            <div style="display:flex;gap:16px;flex-wrap:wrap;">
+                {% if printable %}
+                <form method="POST" action="{{ url_for('orders.cancel_duplicate', order_id=order.id) }}" style="display:inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="ce-link-btn danger"
+                            onclick="return confirm('Mark order #{{ order.ticket_display }} as CANCELLED DUPLICATE?\n\nThis indicates the order was entered in error or is a duplicate. The record is retained for compliance but excluded from all volume totals.\n\nThis cannot be undone.')">Mark as duplicate</button>
+                </form>
+                {% endif %}
+                <form method="POST" action="{{ url_for('orders.delete', order_id=order.id) }}" style="display:inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="ce-link-btn danger"
+                            onclick="return confirm('Permanently DELETE order #{{ order.ticket_display }}?\n\nThis cannot be undone. The ticket number will be freed for reuse.')">Delete order</button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+    </section>
+
+    <section class="ce-card" style="gap:6px;">
+        <div class="ce-card-head"><h2 class="ce-card-title">History</h2></div>
+        <ul class="ce-history">
+            {% if order.time_in %}<li><time>{{ order.time_in | chicago_time }}</time><span>Order entered{% if order.created_by %} by {{ order.created_by.display_name }}{% endif %}</span></li>{% endif %}
+            {% for fill in order.fills %}<li><time>{{ fill.fill_timestamp | chicago_time }}</time><span>Fill {{ loop.index }} · {{ "{:,}".format(fill.fill_quantity) }} · {{ fill.allocation_status | replace('_', ' ') }}</span></li>{% endfor %}
+            {% for ts in order.modification_timestamps or [] %}<li><time>{{ ts | chicago_time }}</time><span>Modified</span></li>{% endfor %}
+            {% for pe in print_events %}<li><time>{{ pe.created_at | chicago_time }}</time><span>{{ pe.event_type | capitalize }} printed</span></li>{% endfor %}
+            {% if order.time_out %}<li><time>{{ order.time_out | chicago_time }}</time><span>Order complete</span></li>{% endif %}
+        </ul>
+    </section>
+
+</aside>
+</div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+// Quick-pick fill quantities (new design only): set the fill box, mark the pick.
+document.querySelectorAll('.ce-pick').forEach(function (b) {
+    b.addEventListener('click', function () {
+        var box = document.getElementById('fill_quantity');
+        if (box) { box.value = b.dataset.qty; box.focus(); }
+        document.querySelectorAll('.ce-pick').forEach(function (o) { o.classList.toggle('is-on', o === b); });
+    });
+});
+var ceFill = document.getElementById('fill_quantity');
+if (ceFill) ceFill.addEventListener('input', function () {
+    document.querySelectorAll('.ce-pick').forEach(function (o) { o.classList.toggle('is-on', o.dataset.qty === ceFill.value); });
+});
+</script>
+{% endblock %}

@@ -17,6 +17,7 @@
 # =============================================================================
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request
+from app.theming import themed
 from flask_login import login_required, current_user
 from app.tenancy import active_tenant_id
 from app.extensions import db
@@ -187,7 +188,7 @@ def enter_counterparties(fill_id: int):
         from app.models.lookup import get_lookup_values, LookupType
         cp_lookups = get_lookup_values(active_tenant_id(), LookupType.COUNTERPARTY)
         return render_template(
-            "orders/counterparty_entry.html", fill=fill, order=order,
+            themed("orders/counterparty_entry.html"), fill=fill, order=order,
             cp_lookups=cp_lookups,
         )
 
@@ -284,7 +285,7 @@ def enter_counterparties(fill_id: int):
         from app.models.lookup import get_lookup_values, LookupType
         cp_lookups = get_lookup_values(active_tenant_id(), LookupType.COUNTERPARTY)
         return render_template(
-            "orders/counterparty_entry.html", fill=fill, order=order,
+            themed("orders/counterparty_entry.html"), fill=fill, order=order,
             cp_lookups=cp_lookups,
             submitted_cps=counterparties,
             submitted_house=house, submitted_account=account,

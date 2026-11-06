@@ -1,0 +1,121 @@
+{% extends "companies/form.html" %}
+{#- New-design layout for Add / Edit company. Same form fields as the classic
+    page (name, slug, brand_name, ui_theme, admin_*, copy_lookups_from,
+    switch_now), plus a live preview of the printed ticket header. -#}
+
+{% block content %}
+{% set editing = tenant is not none %}
+{% set f = form or {} %}
+{% set cur_theme = tenant.ui_theme if editing else 'classic' %}
+<div class="ce-stack" style="max-width:1100px;">
+
+<div class="ce-head">
+    <div>
+        <p class="ce-eyebrow">Super admin{% if editing %} · /{{ tenant.slug }}{% endif %}</p>
+        <h1 class="ce-h1">{% if editing %}Edit <span class="ce-serif">{{ tenant.name }}</span>{% else %}Add <span class="ce-serif">company</span>{% endif %}</h1>
+    </div>
+    <div class="ce-actions"><a href="{{ url_for('companies.company_list') }}" class="btn ce-lg">Back to companies</a></div>
+</div>
+
+<form method="POST" class="ce-cols">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="ce-main ce-stack">
+        <section class="ce-card">
+            <div class="ce-card-head"><h2 class="ce-card-title">Company</h2></div>
+            <div class="ce-fields">
+                <div class="ce-field" style="flex-basis:240px;"><label for="name">Company name</label>
+                    <input type="text" id="name" name="name" required value="{{ tenant.name if editing else f.get('name', '') }}"></div>
+                {% if not editing %}
+                <div class="ce-field" style="flex-basis:200px;"><label for="slug">Slug</label>
+                    <input type="text" id="slug" name="slug" value="{{ f.get('slug', '') }}" placeholder="Generated from the name">
+                </div>
+                {% endif %}
+                <div class="ce-field" style="flex-basis:240px;"><label for="brand_name">Brand name (header &amp; tickets)</label>
+                    <input type="text" id="brand_name" name="brand_name" value="{{ (tenant.brand_name or '') if editing else f.get('brand_name', '') }}" placeholder="Optional — defaults to the company name"></div>
+            </div>
+            {% if editing %}
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+                <span class="ce-label">Screen design</span>
+                <span class="ce-seg" role="radiogroup" aria-label="Screen design">
+                    {% for key, label in tenant.THEMES.items() %}
+                    <label class="ce-seg-opt{% if cur_theme == key %} is-on{% endif %}"><input type="radio" name="ui_theme" value="{{ key }}" {% if cur_theme == key %}checked{% endif %}>{{ 'Classic' if key == 'classic' else 'ConfirmEngine' }}</label>
+                    {% endfor %}
+                </span>
+            </div>
+            {% endif %}
+        </section>
+
+        {% if not editing %}
+        <section class="ce-card">
+            <div class="ce-card-head"><div><h2 class="ce-card-title">First admin</h2><span class="ce-card-sub">Optional — you can add users later</span></div></div>
+            <div class="ce-fields">
+                <div class="ce-field"><label for="admin_name">Full name</label><input type="text" id="admin_name" name="admin_name" value="{{ f.get('admin_name', '') }}"></div>
+                <div class="ce-field"><label for="admin_email">Email</label><input type="email" id="admin_email" name="admin_email" value="{{ f.get('admin_email', '') }}"></div>
+                <div class="ce-field"><label for="admin_password">Temporary password</label><input type="password" id="admin_password" name="admin_password"></div>
+            </div>
+        </section>
+        <section class="ce-card">
+            <div class="ce-card-head"><div><h2 class="ce-card-title">Starter lookups</h2><span class="ce-card-sub">Brokers, counterparties, houses, accounts and brackets are never copied — each company enters its own.</span></div></div>
+            <div class="ce-field"><label for="copy_lookups_from">Copy lists from</label>
+                <select id="copy_lookups_from" name="copy_lookups_from">
+                    <option value="">Start empty</option>
+                    {% for s in sources %}<option value="{{ s.id }}">Copy market/contract/expiry/C-P lists from {{ s.name }}</option>{% endfor %}
+                </select></div>
+            <label class="checkbox-label"><input type="checkbox" name="switch_now" value="1" checked> Switch to this company after creating it</label>
+        </section>
+        {% endif %}
+
+        <div class="ce-actions" style="justify-content:flex-end;">
+            <a href="{{ url_for('companies.company_list') }}" class="btn ce-lg">Cancel</a>
+            <button type="submit" class="btn ce-lg ce-btn-accent">{{ 'Save company' if editing else 'Create company' }}</button>
+        </div>
+    </div>
+
+    <aside class="ce-side ce-stack" style="flex-basis:440px;">
+        <section class="ce-card">
+            <div class="ce-card-head"><div><h2 class="ce-card-title">Ticket header preview</h2><span class="ce-card-sub">Updates as you type</span></div></div>
+            <div class="ce-tkt-prev" aria-hidden="true">
+                <div class="ce-tkt-row">
+                    <div>House: 684<br>Acct: TJM00684</div>
+                    <div class="ce-tkt-num">#1497</div>
+                    <div class="ce-tkt-title"><span id="ce-prev-name"></span><small id="ce-prev-by"><img src="{{ url_for('static', filename='img/confirmengine-mark.svg') }}" alt="" width="11" height="11">Confirm<b>Engine</b></small></div>
+                    <div></div>
+                    <div style="text-align:right;">2026/11/06<br><span style="font-size:9px;color:#555;">PAGE 1 OF 1</span></div>
+                </div>
+                <div class="ce-tkt-sides"><div>BUY</div><div>SELL</div></div>
+            </div>
+            <span class="form-help" id="ce-prev-note"></span>
+        </section>
+    </aside>
+</form>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+(function () {
+    var nameEl = document.getElementById('name'), brandEl = document.getElementById('brand_name');
+    var out = document.getElementById('ce-prev-name'), by = document.getElementById('ce-prev-by'), note = document.getElementById('ce-prev-note');
+    var initialTheme = {{ (tenant.ui_theme if tenant else "classic") | tojson }};
+    function theme() { var r = document.querySelector('input[name="ui_theme"]:checked'); return r ? r.value : initialTheme; }
+    function render() {
+        var t = theme();
+        document.querySelectorAll('.ce-seg-opt').forEach(function (l) { l.classList.toggle('is-on', l.querySelector('input').checked); });
+        if (t === 'confirmengine') {
+            var title = ((brandEl.value || nameEl.value || 'AXIS').trim() || 'AXIS').toUpperCase();
+            out.textContent = title; out.classList.toggle('is-long', title.length > 10);
+            out.style.letterSpacing = ''; by.hidden = false;
+            note.textContent = 'Printed tickets use the brand name, or the company name if no brand is set.';
+        } else {
+            out.textContent = 'A X I S'; out.classList.remove('is-long'); by.hidden = true;
+            note.textContent = 'Classic-design companies keep the original A X I S header.';
+        }
+    }
+    [nameEl, brandEl].forEach(function (el) { if (el) el.addEventListener('input', render); });
+    document.querySelectorAll('input[name="ui_theme"]').forEach(function (r) { r.addEventListener('change', render); });
+    render();
+})();
+</script>
+{% endblock %}

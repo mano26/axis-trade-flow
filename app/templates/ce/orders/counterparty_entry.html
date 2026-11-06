@@ -1,0 +1,101 @@
+{% extends "orders/counterparty_entry.html" %}
+{#- New-design counterparty entry. The form (ce_cp_form) and its support script
+    and autocomplete list (ce_cp_support) come from the classic page unchanged,
+    so every field name, the house auto-fill and the CVD futures maths are
+    identical. This file adds the layout, a live allocation bar, inline
+    half-future warnings, and shows only the rows in use (+ Add row). -#}
+
+{% block content %}
+<div class="ce-stack">
+
+<div class="ce-head">
+    <div>
+        <p class="ce-eyebrow">Order #{{ order.ticket_display }} · fill of {{ "{:,}".format(fill.fill_quantity) }}{% if active_tenant %} · {{ active_tenant.name }}{% endif %}</p>
+        <h1 class="ce-h1">Allocate <span class="ce-serif">counterparties</span></h1>
+    </div>
+    <div class="ce-actions"><a href="{{ url_for('orders.detail', order_id=order.id) }}" class="btn ce-lg">Back to order</a></div>
+</div>
+
+<section class="ce-card">
+    <div class="ce-facts" style="grid-template-columns: minmax(0, 2.4fr) repeat(3, minmax(0, 1fr));">
+        <div><span>Trade string</span><b class="ce-mono" style="white-space:normal;">{{ order.raw_input }}</b></div>
+        <div><span>This fill</span><b>{{ "{:,}".format(fill.fill_quantity) }} of {{ "{:,}".format(order.total_quantity) }}</b></div>
+        <div><span>Status</span><b><span class="status-badge ce-badge status-{{ fill.allocation_status }}">{{ fill.allocation_status | replace('_', ' ') | capitalize }}</span></b></div>
+        <div><span>Ticket</span><b>#{{ order.ticket_display }}</b></div>
+    </div>
+</section>
+
+{{ self.ce_cp_support() }}
+
+<section class="ce-card ce-embed ce-cp" data-fill-qty="{{ fill.fill_quantity }}">
+    <div class="ce-meter" aria-live="polite">
+        <div class="ce-meter-row"><b id="ce-alloc-text">0 of {{ "{:,}".format(fill.fill_quantity) }} allocated</b><span id="ce-alloc-left"></span></div>
+        <div class="ce-meter-bar"><div id="ce-alloc-fill"></div></div>
+    </div>
+    {{ self.ce_cp_form() }}
+</section>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+(function () {
+    var wrap = document.querySelector('.ce-cp');
+    if (!wrap) return;
+    var fillQty = parseInt(wrap.dataset.fillQty, 10) || 0;
+    var rows = Array.prototype.slice.call(wrap.querySelectorAll('.cp-entry-table tbody tr'));
+    var fmt = function (n) { return n.toLocaleString('en-US'); };
+
+    // Allocation bar: sum of the Qty column against the fill quantity.
+    function updateMeter() {
+        var sum = 0;
+        wrap.querySelectorAll('input[name^="cp_qty_"]').forEach(function (i) { sum += parseInt(i.value, 10) || 0; });
+        var left = fillQty - sum;
+        document.getElementById('ce-alloc-text').textContent = fmt(sum) + ' of ' + fmt(fillQty) + ' allocated';
+        var leftEl = document.getElementById('ce-alloc-left');
+        var bar = document.getElementById('ce-alloc-fill');
+        bar.style.width = Math.min(100, fillQty ? (sum / fillQty * 100) : 0) + '%';
+        wrap.classList.toggle('is-done', left === 0 && sum > 0);
+        wrap.classList.toggle('is-over', left < 0);
+        leftEl.textContent = left === 0 ? 'Fully allocated' : (left > 0 ? fmt(left) + ' left to allocate' : fmt(-left) + ' over the fill');
+    }
+
+    // Inline half-future warnings: show the message the classic script puts in the field's tooltip.
+    function updateFutHints() {
+        wrap.querySelectorAll('input[id^="cp_fut_qty_"]').forEach(function (f) {
+            var hint = f.parentNode.querySelector('.ce-fut-hint');
+            if (!hint) { hint = document.createElement('span'); hint.className = 'ce-fut-hint'; f.parentNode.appendChild(hint); }
+            hint.textContent = f.title ? f.title.replace('Half-future — must round to', 'Half-future · round to').replace(' before saving', '') : '';
+            f.classList.toggle('ce-warn', !!f.title || (f.value && parseFloat(f.value) % 1 !== 0));
+        });
+    }
+
+    // Show rows in use plus one empty row; "+ Add row" reveals the next.
+    function rowUsed(tr) {
+        return Array.prototype.some.call(tr.querySelectorAll('input'), function (i) {
+            return i.type !== 'hidden' && i.value && i.value.trim() !== '';
+        });
+    }
+    var lastUsed = -1;
+    rows.forEach(function (tr, k) { if (rowUsed(tr)) lastUsed = k; });
+    var shown = Math.max(lastUsed + 2, 2);
+    rows.forEach(function (tr, k) { if (k >= shown) tr.hidden = true; });
+    var actions = wrap.querySelector('.action-buttons');
+    if (actions) {
+        var add = document.createElement('button');
+        add.type = 'button'; add.className = 'btn'; add.textContent = '+ Add row';
+        add.addEventListener('click', function () {
+            var next = rows.find(function (tr) { return tr.hidden; });
+            if (next) { next.hidden = false; var q = next.querySelector('input'); if (q) q.focus(); }
+            if (!rows.some(function (tr) { return tr.hidden; })) add.disabled = true;
+        });
+        actions.insertBefore(add, actions.firstChild);
+    }
+
+    wrap.addEventListener('input', function () { updateMeter(); updateFutHints(); });
+    updateMeter(); updateFutHints();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,39 @@
+{% extends "orders/modify.html" %}
+{#- New-design layout. Same form (POST orders.modify, field trade_string). -#}
+
+{% block content %}
+<div class="ce-stack" style="max-width:880px;">
+
+<div class="ce-head">
+    <div>
+        <p class="ce-eyebrow">Order #{{ order.ticket_display }} · {{ order.status | replace('_', ' ') | capitalize }}</p>
+        <h1 class="ce-h1">Modify <span class="ce-serif">order</span></h1>
+    </div>
+    <div class="ce-actions"><a href="{{ url_for('orders.detail', order_id=order.id) }}" class="btn ce-lg">Back to order</a></div>
+</div>
+
+<section class="ce-card">
+    <div class="ce-card-head">
+        <div><h2 class="ce-card-title">New trade string</h2>
+        <span class="ce-card-sub">Ticket #{{ order.ticket_display }} stays the same. The previous trade string and legs are replaced, and the new string is re-parsed when you save.</span></div>
+    </div>
+    <div class="ce-field">
+        <label for="ce-current">Current trade string</label>
+        <input type="text" id="ce-current" value="{{ order.raw_input }}" readonly class="ce-mono-input ce-readonly">
+    </div>
+    <form method="POST" action="{{ url_for('orders.modify', order_id=order.id) }}" class="ce-stack" style="gap:14px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="ce-field">
+            <label for="ce-new">New trade string</label>
+            <input type="text" id="ce-new" name="trade_string" value="{{ order.raw_input }}" class="ce-mono-input ce-hero-input" autofocus autocomplete="off" spellcheck="false">
+        </div>
+        {% with ce_diff_input='#ce-new', ce_diff_was=order.raw_input %}{% include "ce/_diff.html" %}{% endwith %}
+        <div class="ce-actions" style="justify-content:flex-end;">
+            <a href="{{ url_for('orders.detail', order_id=order.id) }}" class="btn ce-lg">Cancel</a>
+            <button type="submit" class="btn ce-lg ce-btn-accent">Save changes</button>
+        </div>
+    </form>
+</section>
+
+</div>
+{% endblock %}

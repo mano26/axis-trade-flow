@@ -38,7 +38,7 @@ def user_list():
 @admin_bp.route("/users/create", methods=["GET", "POST"])
 def create_user():
     if request.method == "GET":
-        return render_template("auth/create_user.html", roles=UserRole.ALL)
+        return render_template(themed("auth/create_user.html"), roles=UserRole.ALL)
     email = request.form.get("email", "").strip()
     display_name = request.form.get("display_name", "").strip()
     password = request.form.get("password", "")

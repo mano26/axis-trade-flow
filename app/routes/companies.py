@@ -98,7 +98,7 @@ def company_list():
 def create_company():
     sources = Tenant.query.order_by(Tenant.name).all()
     if request.method == "GET":
-        return render_template("companies/form.html", tenant=None, sources=sources)
+        return render_template(themed("companies/form.html"), tenant=None, sources=sources)
 
     name = request.form.get("name", "").strip()
     slug = _slugify(request.form.get("slug", "").strip() or name)
@@ -122,7 +122,7 @@ def create_company():
         for e in errors:
             flash(e, "warning")
         return render_template(
-            "companies/form.html", tenant=None, sources=sources, form=request.form,
+            themed("companies/form.html"), tenant=None, sources=sources, form=request.form,
         )
 
     tenant = Tenant(name=name, slug=slug, brand_name=brand_name)
@@ -174,7 +174,7 @@ def create_company():
 def edit_company(tenant_id):
     tenant = db.get_or_404(Tenant, tenant_id)
     if request.method == "GET":
-        return render_template("companies/form.html", tenant=tenant, sources=[])
+        return render_template(themed("companies/form.html"), tenant=tenant, sources=[])
 
     before = {"name": tenant.name, "brand_name": tenant.brand_name, "ui_theme": tenant.ui_theme}
     name = request.form.get("name", "").strip()

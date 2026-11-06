@@ -325,3 +325,63 @@ def test_order_log_ticket_link_opens_linear_ticket(app, world):
         html = c.get("/reports/order-log").get_data(as_text=True)
         assert f"/tickets/order/{oid}/generate-with-cps-linear" in html, email
         assert f"/tickets/order/{oid}/generate\"" not in html, email
+
+
+# -----------------------------------------------------------------------------
+# Phase 2: order workflow pages and the parse preview
+# -----------------------------------------------------------------------------
+
+def _first_order_id(app, email):
+    with app.app_context():
+        uid = User.query.filter_by(email=email).first().id
+        return Order.query.execution_options(skip_tenant_guard=True).filter_by(created_by_id=uid).first().id
+
+
+def test_parse_preview_reads_without_saving(app, world):
+    c = _login(app, "admin@roma.com")
+    with app.app_context():
+        before = Order.query.execution_options(skip_tenant_guard=True).count()
+    ok = c.get("/orders/parse-preview", query_string={"s": "SFRZ6 96.25 96.50 CS 1.75/2500"}).get_json()
+    assert ok["ok"] and ok["strategy"] == "cs" and ok["volume"] == 2500 and ok["price"] == 1.75
+    assert ok["quarter_tick"] is False
+    qt = c.get("/orders/parse-preview", query_string={"s": "SFRM7 95.75 96.00 PS 1.25/500"}).get_json()
+    assert qt["ok"] and qt["quarter_tick"] is True
+    bad = c.get("/orders/parse-preview", query_string={"s": "SFRZ6 96.25 96.50 CSS 1.75/2500"}).get_json()
+    assert bad["ok"] is False and bad["error"]
+    with app.app_context():
+        assert Order.query.execution_options(skip_tenant_guard=True).count() == before
+
+
+def test_parse_preview_requires_login(app, world):
+    r = app.test_client().get("/orders/parse-preview", query_string={"s": "SFRZ6 96.25 96.50 CS 1/1"})
+    assert r.status_code in (302, 401)
+
+
+def test_new_design_order_detail_keeps_working_parts(app, world):
+    oid = _first_order_id(app, "admin@roma.com")
+    html = _login(app, "admin@roma.com").get(f"/orders/{oid}").get_data(as_text=True)
+    assert 'class="ce-steps"' in html                         # new layout
+    assert 'id="fill_quantity"' in html and 'name="fill_quantity"' in html
+    assert f"/orders/{oid}/record-fill" in html
+    assert 'id="legs-table"' in html                          # classic legs block reused
+    assert 'id="edit-ticket-form"' in html                    # classic ticket form reused
+    assert "/generate-with-cps\"" not in html                 # split ticket not offered in new design
+
+
+def test_classic_order_detail_unchanged_markers(app, world):
+    oid = _first_order_id(app, "admin@classic.com")
+    html = _login(app, "admin@classic.com").get(f"/orders/{oid}").get_data(as_text=True)
+    assert 'class="ce-steps"' not in html and 'id="legs-table"' in html
+
+
+def test_new_design_edit_pages_post_to_same_endpoints(app, world):
+    oid = _first_order_id(app, "admin@roma.com")
+    c = _login(app, "admin@roma.com")
+    html = c.get(f"/orders/{oid}/modify").get_data(as_text=True)
+    assert f'action="/orders/{oid}/modify"' in html and 'name="trade_string"' in html and 'id="ce-diff"' in html
+
+
+def test_new_design_add_user_keeps_fields(app, world):
+    html = _login(app, "admin@roma.com").get("/admin/users/create").get_data(as_text=True)
+    for needle in ('name="display_name"', 'name="email"', 'name="password"', 'type="radio" name="role" value="admin"'):
+        assert needle in html, needle

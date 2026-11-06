@@ -25,7 +25,7 @@
     </div>
 </section>
 
-{# Build JS map: uppercase symbol -> house (from "SYM/HOUSE" lookup values) #}
+{% block ce_cp_support %}{# Build JS map: uppercase symbol -> house (from "SYM/HOUSE" lookup values) #}
 <script>
 const CP_HOUSE_MAP = {
     {% for lv in cp_lookups %}
@@ -107,9 +107,9 @@ function updateFutQty(qtyInput) {
     {% set parts = lv.value.split('/') %}
     <option value="{{ parts[0].strip().upper() }}">{{ lv.value }}</option>
     {% endfor %}
-</datalist>
+</datalist>{% endblock %}
 
-<section>
+{% block ce_cp_form %}<section>
     <h2>House &amp; Account</h2>
     <form method="POST" action="{{ url_for('fills.enter_counterparties', fill_id=fill.id) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -294,5 +294,5 @@ function updateFutQty(qtyInput) {
             <a href="{{ url_for('orders.detail', order_id=order.id) }}" class="btn">Skip (Pending Allocation)</a>
         </div>
     </form>
-</section>
+</section>{% endblock %}
 {% endblock %}
