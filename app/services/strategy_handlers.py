@@ -16,7 +16,7 @@
 from __future__ import annotations
 from datetime import date
 from typing import Optional
-from app.services.trade_parser import TradeInput
+from app.services.trade_parser import TradeInput, ParseError
 
 
 # =========================================================================
@@ -520,7 +520,16 @@ def build_legs(trade: TradeInput) -> list[dict]:
     if builder is None:
         raise ValueError(f"Unrecognized strategy: '{trade.strategy}'")
 
-    legs = builder(trade)
+    try:
+        legs = builder(trade)
+    except IndexError:
+        # A builder indexed a strike that wasn't given (e.g. "CS" with one
+        # strike). Report it plainly instead of "list index out of range".
+        n = len(trade.strikes or [])
+        raise ParseError(
+            f"Not enough strikes for {trade.strategy.replace('_', ' ').upper()}: "
+            f"{n} given. List every strike, e.g. SFRH7 96.00 96.25 CS 4/500."
+        )
 
     # Stamp direction on straddle/strangle legs (both legs same side)
     if trade.strategy in ("straddle", "strangle"):

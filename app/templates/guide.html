@@ -29,6 +29,8 @@
 .workflow-steps li { counter-increment: step; display: flex; gap: 14px; align-items: flex-start; margin-bottom: 12px; }
 .workflow-steps li::before { content: counter(step); background: var(--navy); color: #fff; font-size: 12px; font-weight: 900; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
 .workflow-steps li span { font-size: 14px; line-height: 1.6; color: #333; }
+.guide-section .codes-table th, .guide-section .codes-table td { text-align: left; }
+.guide-section .codes-table .code { white-space: nowrap; }
 .tip-box { background: #fffbe6; border-left: 4px solid #f5a623; border-radius: 0 5px 5px 0; padding: 10px 14px; margin: 12px 0; font-size: 13px; color: #555; }
 .warn-box { background: #fff1f0; border-left: 4px solid #cc2222; border-radius: 0 5px 5px 0; padding: 10px 14px; margin: 12px 0; font-size: 13px; color: #555; }
 .guide-nav-btn { display: inline-block; background: var(--navy); color: #fff; padding: 10px 24px; border-radius: 5px; font-weight: 700; font-size: 14px; text-decoration: none; margin-top: 8px; }
@@ -62,6 +64,7 @@
         <li><a href="#delete-orders">Correcting, Deleting &amp; Marking Duplicate Orders</a></li>
         <li><a href="#modify-balance">Modifying the Balance</a></li>
         <li><a href="#order-log">Order Log</a></li>
+        <li><a href="#sofr-codes">SOFR Contract Codes: Bloomberg &amp; CME</a></li>
     </ol>
 </div>
 
@@ -109,16 +112,17 @@
 
     <h3>Contract Codes</h3>
     <p>Use standard CME Globex codes for SOFR options. Examples:</p>
-    <div class="code-block">SFRH6    SFRM6    SFRU6    SFRZ6
-SFRH27   SFRM7    SFRU7    SFRZ7
-0QH6     0QM6     2QZ6</div>
-    <p>Short-dated pack codes (<span class="code">0QN6</span>, <span class="code">2QM6</span>, etc.) are recognised automatically.</p>
+    <div class="code-block">SFRH7    SFRM7    SFRU7    SFRZ7
+SFRH28   SFRM8    SFRU8    SFRZ8
+0QH7     0QM7     2QZ7</div>
+    <p>Short-dated pack codes (<span class="code">0QN7</span>, <span class="code">2QM7</span>, etc.) are recognised automatically.</p>
+    <p>Use a contract month that is still listed: SOFR options are listed 24 quarterly expiries out, and a mid-curve is only valid if its underlying quarterly is. Expired or unlisted months are rejected. For Bloomberg and CME product codes, see <a href="#sofr-codes">SOFR Contract Codes</a>.</p>
 
     <h3>Strikes</h3>
-    <p>List one or more strikes as decimals after the contract code. Order does not matter — the system sorts them correctly for each strategy.</p>
-    <div class="code-block">SFRH6 96.25 CS 4/500           &lt;- one strike per leg inferred
-SFRH6 96.00 96.25 CS 4/500    &lt;- explicit strikes
-SFRH6 95.75 96.00 96.25 C FLY 2/200</div>
+    <p>List every strike as a decimal after the contract code: one for a single option, two for a spread, three for a fly, and so on. Order does not matter — the system sorts them correctly for each strategy.</p>
+    <div class="code-block">SFRH7 96.25 C 4/500             &lt;- single option, one strike
+SFRH7 96.00 96.25 CS 4/500      &lt;- call spread, two strikes
+SFRH7 95.75 96.00 96.25 C FLY 2/200</div>
 
     <h3>Option Type</h3>
     <p>Use <span class="code">C</span> or <span class="code">CALL</span> for calls, <span class="code">P</span> or <span class="code">PUT</span> for puts. For strategies that imply a type (CS, PS, BFLYC, BFLYP, etc.) the type token may be omitted.</p>
@@ -137,97 +141,97 @@ SFRH6 95.75 96.00 96.25 C FLY 2/200</div>
             <td><strong>Single Option</strong></td>
             <td><span class="code">C</span> / <span class="code">P</span> (no strategy keyword needed)</td>
             <td>1</td>
-            <td><span class="code">SFRH6 96.00 C 3/500</span></td>
+            <td><span class="code">SFRH7 96.00 C 3/500</span></td>
         </tr>
         <tr>
             <td><strong>Straddle</strong></td>
             <td><span class="code">^</span></td>
             <td>1</td>
-            <td><span class="code">SFRH6 96.00 ^ 3/500</span></td>
+            <td><span class="code">SFRH7 96.00 ^ 3/500</span></td>
         </tr>
         <tr>
             <td><strong>Strangle</strong></td>
             <td><span class="code">^^</span></td>
             <td>2</td>
-            <td><span class="code">SFRH6 95.75 96.25 ^^ 4/500</span></td>
+            <td><span class="code">SFRH7 95.75 96.25 ^^ 4/500</span></td>
         </tr>
         <tr>
             <td><strong>Risk Reversal</strong></td>
             <td><span class="code">RR</span> · <span class="code">RISKREV</span> · <span class="code">RV</span></td>
             <td>2</td>
-            <td><span class="code">SFRH6 95.75 96.25 RR 3/500</span></td>
+            <td><span class="code">SFRH7 95.75 96.25 RR 3/500</span></td>
         </tr>
         <tr>
             <td><strong>Call Spread</strong></td>
             <td><span class="code">CS</span> · <span class="code">CALLSPREAD</span> · <span class="code">CALLSP</span> · <span class="code">CSPD</span></td>
             <td>2</td>
-            <td><span class="code">SFRH6 96.00 96.25 CS 4/500</span></td>
+            <td><span class="code">SFRH7 96.00 96.25 CS 4/500</span></td>
         </tr>
         <tr>
             <td><strong>Put Spread</strong></td>
             <td><span class="code">PS</span> · <span class="code">PUTSPREAD</span> · <span class="code">PUTSP</span> · <span class="code">PSPD</span></td>
             <td>2</td>
-            <td><span class="code">SFRH6 95.75 96.00 PS 4/500</span></td>
+            <td><span class="code">SFRH7 95.75 96.00 PS 4/500</span></td>
         </tr>
         <tr>
             <td><strong>Call Butterfly</strong></td>
             <td><span class="code">BFLYC</span> · <span class="code">C FLY</span> · <span class="code">CALLFLY</span> · <span class="code">BUTTERFLYC</span></td>
             <td>3</td>
-            <td><span class="code">SFRH6 96.00 96.25 96.50 C FLY 2/200</span></td>
+            <td><span class="code">SFRH7 96.00 96.25 96.50 C FLY 2/200</span></td>
         </tr>
         <tr>
             <td><strong>Put Butterfly</strong></td>
             <td><span class="code">BFLYP</span> · <span class="code">P FLY</span> · <span class="code">PUTBFLY</span> · <span class="code">BUTTERFLYP</span></td>
             <td>3</td>
-            <td><span class="code">SFRH6 95.50 95.75 96.00 P FLY 2/200</span></td>
+            <td><span class="code">SFRH7 95.50 95.75 96.00 P FLY 2/200</span></td>
         </tr>
         <tr>
             <td><strong>Butterfly (mixed)</strong></td>
             <td><span class="code">BFLY</span> · <span class="code">FLY</span> · <span class="code">BUTTERFLY</span></td>
             <td>3</td>
-            <td><span class="code">SFRH6 95.75 96.00 96.25 FLY 2/200</span></td>
+            <td><span class="code">SFRH7 95.75 96.00 96.25 FLY 2/200</span></td>
         </tr>
         <tr>
             <td><strong>Call Condor</strong></td>
             <td><span class="code">CONDORC</span> · <span class="code">C CON</span> · <span class="code">CALLCONDOR</span></td>
             <td>4</td>
-            <td><span class="code">SFRH6 96.00 96.25 96.50 96.75 C CON 2/200</span></td>
+            <td><span class="code">SFRH7 96.00 96.25 96.50 96.75 C CON 2/200</span></td>
         </tr>
         <tr>
             <td><strong>Put Condor</strong></td>
             <td><span class="code">CONDORP</span> · <span class="code">P CON</span> · <span class="code">PUTCONDOR</span></td>
             <td>4</td>
-            <td><span class="code">SFRH6 95.25 95.50 95.75 96.00 P CON 2/200</span></td>
+            <td><span class="code">SFRH7 95.25 95.50 95.75 96.00 P CON 2/200</span></td>
         </tr>
         <tr>
             <td><strong>Iron Condor</strong></td>
             <td><span class="code">IC</span> · <span class="code">IRON CON</span> · <span class="code">IRONCONDOR</span></td>
             <td>4</td>
-            <td><span class="code">SFRH6 95.75 96.00 96.25 96.50 IC 4/500</span></td>
+            <td><span class="code">SFRH7 95.75 96.00 96.25 96.50 IC 4/500</span></td>
         </tr>
         <tr>
             <td><strong>Iron Butterfly</strong></td>
             <td><span class="code">IRON FLY</span></td>
             <td>3</td>
-            <td><span class="code">SFRH6 95.75 96.00 96.25 IRON FLY 3/300</span></td>
+            <td><span class="code">SFRH7 95.75 96.00 96.25 IRON FLY 3/300</span></td>
         </tr>
         <tr>
             <td><strong>Call Tree (Xmas)</strong></td>
             <td><span class="code">TREE</span> · <span class="code">CTREE</span> · <span class="code">C TREE</span> · <span class="code">XMAS</span></td>
             <td>3</td>
-            <td><span class="code">SFRH6 96.00 96.25 96.50 C TREE 4/500</span></td>
+            <td><span class="code">SFRH7 96.00 96.25 96.50 C TREE 4/500</span></td>
         </tr>
         <tr>
             <td><strong>Put Tree (Xmas)</strong></td>
             <td><span class="code">PTREE</span> · <span class="code">P TREE</span> · <span class="code">PUTTREE</span> · <span class="code">PUTXMAS</span></td>
             <td>3</td>
-            <td><span class="code">SFRH6 95.50 95.75 96.00 P TREE 5/500</span></td>
+            <td><span class="code">SFRH7 95.50 95.75 96.00 P TREE 5/500</span></td>
         </tr>
         <tr>
             <td><strong>Calendar Spread</strong></td>
             <td>Two contract codes + <span class="code">CS</span> or <span class="code">PS</span> with 1 strike</td>
             <td>1</td>
-            <td><span class="code">SFRM6 SFRU6 CS 96.00 4/500</span></td>
+            <td><span class="code">SFRM7 SFRU7 CS 96.00 4/500</span></td>
         </tr>
         </tbody>
     </table>
@@ -257,28 +261,28 @@ SFRH6 95.75 96.00 96.25 C FLY 2/200</div>
 
     <h3>Ratio Spreads</h3>
     <p>Add a ratio token like <span class="code">1X2</span>, <span class="code">1X3</span>, or <span class="code">1X2X1</span> to create unequal-leg structures. The base quantity from the price format is multiplied by each ratio number.</p>
-    <div class="code-block">SFRU6 96.3125 96.1875 P 1X2 7.5/4000    &lt;- buy 4000 @ 96.3125, sell 8000 @ 96.1875
-SFRH6 96.00 96.25 96.50 C FLY 1X2X1 2/200</div>
+    <div class="code-block">SFRU7 96.3125 96.1875 P 1X2 7.5/4000    &lt;- buy 4000 @ 96.3125, sell 8000 @ 96.1875
+SFRH7 96.00 96.25 96.50 C FLY 1X2X1 2/200</div>
 
     <h3>CVD (Covered / Delta Hedge)</h3>
     <p>Appending <span class="code">CVD &lt;futures_price&gt; D &lt;delta%&gt;</span> adds a futures leg to the trade at the specified delta.</p>
-    <div class="code-block">SFRH6 96.00 C 3/500 CVD 96.38 D 40      &lt;- buy 500 calls, sell 200 futures (40% delta)
-SFRH6 96.00 C 3/500 CVD 96.38 D 40 (+)  &lt;- force futures to buy side
-SFRH6 96.00 C 3/500 CVD 96.38(-) D 40   &lt;- force futures price to sell</div>
+    <div class="code-block">SFRH7 96.00 C 3/500 CVD 96.38 D 40      &lt;- buy 500 calls, sell 200 futures (40% delta)
+SFRH7 96.00 C 3/500 CVD 96.38 D 40 (+)  &lt;- force futures to buy side
+SFRH7 96.00 C 3/500 CVD 96.38(-) D 40   &lt;- force futures price to sell</div>
 
     <h3>VS — Opposing Segments</h3>
     <p><span class="code">VS</span> splits a trade into two segments going in <strong>opposite</strong> directions — the standard calendar/spread-of-spread separator.</p>
-    <div class="code-block">SFRM6 96.00 C VS SFRU6 96.00 C 4/500    &lt;- buy M6, sell U6 call</div>
+    <div class="code-block">SFRM7 96.00 C VS SFRU7 96.00 C 4/500    &lt;- buy M7, sell U7 call</div>
     <p>By default the <strong>first segment</strong> takes the direction of the price format (buy for <span class="code">/</span>, sell for <span class="code">@</span>). To specify which segment is the buy/sell without reordering, add a <strong>contract code in parentheses</strong> at the end of the string. The named contract takes the price-format direction; the other flips.</p>
-    <div class="code-block">SFRM6 96.375 ^ VS SFRU6 96.50 ^ 16/1000           &lt;- buys M6, sells U6 (default)
-SFRM6 96.375 ^ VS SFRU6 96.50 ^ 16/1000 (SFRU6)  &lt;- sells M6, buys U6
-SFRM6 96.375 ^ VS SFRU6 96.50 ^ 1000@16 (SFRU6)  &lt;- buys M6, sells U6</div>
-    <div class="tip-box">The parenthetical hint must be an exact contract code (e.g. <span class="code">SFRU6</span>, <span class="code">SFRH7</span>, <span class="code">0QM6</span>). Anything else — a note, a number, a strike — is stripped and ignored as usual.</div>
+    <div class="code-block">SFRM7 96.375 ^ VS SFRU7 96.50 ^ 16/1000           &lt;- buys M7, sells U7 (default)
+SFRM7 96.375 ^ VS SFRU7 96.50 ^ 16/1000 (SFRU7)  &lt;- sells M7, buys U7
+SFRM7 96.375 ^ VS SFRU7 96.50 ^ 1000@16 (SFRU7)  &lt;- buys M7, sells U7</div>
+    <div class="tip-box">The parenthetical hint must be an exact contract code (e.g. <span class="code">SFRU7</span>, <span class="code">SFRH8</span>, <span class="code">0QM7</span>). Anything else — a note, a number, a strike — is stripped and ignored as usual.</div>
 
     <h3>WITH — Same-Direction Segments</h3>
     <p><span class="code">WITH</span> splits a trade into two or more segments going in the <strong>same</strong> direction. Use it when the two segments have different strategies or different contracts.</p>
-    <div class="code-block">SFRM6 96.75 ^ WITH SFRZ6 96.00 C stupid 25/1000   &lt;- buy straddle AND buy call
-SFRM6 96.00 96.25 PS WITH SFRM6 97.50 98.00 CS stupid 10/200</div>
+    <div class="code-block">SFRM7 96.75 ^ WITH SFRZ7 96.00 C stupid 25/1000   &lt;- buy straddle AND buy call
+SFRM7 96.00 96.25 PS WITH SFRM7 97.50 98.00 CS stupid 10/200</div>
 
     <h3>STUPID / STRIP</h3>
     <p>Modifiers that indicate all segments go the same direction (no direction flip).</p>
@@ -286,12 +290,12 @@ SFRM6 96.00 96.25 PS WITH SFRM6 97.50 98.00 CS stupid 10/200</div>
         <li><span class="code">STUPID</span> — same-direction 2-segment trade</li>
         <li><span class="code">STRIP</span> — same-direction 3+ segment trade (typically multiple contracts, same strike)</li>
     </ul>
-    <div class="code-block">SFRU6 96.00 96.25 C stupid 4/500               &lt;- buy both calls
-SFRM7 SFRU7 SFRZ7 SFRH8 99.00 C strip 45/750  &lt;- buy all 4 contracts</div>
+    <div class="code-block">SFRU7 96.00 96.25 C stupid 4/500               &lt;- buy both calls
+SFRM8 SFRU8 SFRZ8 SFRH9 99.00 C strip 45/750  &lt;- buy all 4 contracts</div>
 
     <h3>Bracket Wrapper [ ]</h3>
     <p>Wrap multiple comma-separated segments in square brackets with a shared price/quantity at the end. Each segment inside uses its own contract and strategy but shares the package price.</p>
-    <div class="code-block">[SFRH6 C 96.00, SFRM6 P 95.50] 4/500</div>
+    <div class="code-block">[SFRH7 C 96.00, SFRM7 P 95.50] 4/500</div>
 </div>
 
 
@@ -378,7 +382,7 @@ SFRM7 SFRU7 SFRZ7 SFRH8 99.00 C strip 45/750  &lt;- buy all 4 contracts</div>
     <p>The system does not validate that per-counterparty futures quantities sum to the order's total futures volume — that reconciliation is your responsibility before printing.</p>
 
     <h3>Multi-Expiration Futures (Two Futures Legs)</h3>
-    <p>Some CVD strategies use two separate futures expirations — for example <em>SFRZ7</em> as the primary hedge and <em>SFRM8</em> as a secondary. When the trade string includes two futures legs, the counterparty entry form shows <strong>two Futures Qty columns</strong>: <em>Futures Qty (1st exp)</em> and <em>Futures Qty (2nd exp)</em>. Each is calculated independently using the same delta formula, and each can be overridden independently.</p>
+    <p>Some CVD strategies use two separate futures expirations — for example <em>SFRZ8</em> as the primary hedge and <em>SFRM9</em> as a secondary. When the trade string includes two futures legs, the counterparty entry form shows <strong>two Futures Qty columns</strong>: <em>Futures Qty (1st exp)</em> and <em>Futures Qty (2nd exp)</em>. Each is calculated independently using the same delta formula, and each can be overridden independently.</p>
 
     <div class="warn-box">Make sure to allocate futures for <em>both</em> expirations on multi-leg CVD trades. Leaving the second futures qty at zero will produce incorrect broker cards.</div>
 
@@ -427,7 +431,7 @@ SFRM7 SFRU7 SFRZ7 SFRH8 99.00 C strip 45/750  &lt;- buy all 4 contracts</div>
     <p>Save Amendment commits both price and counterparty changes in a single transaction. The order status updates to <em>AMENDED</em> and a full before/after record is written to the audit trail.</p>
 
     <h3>Correct Trade String</h3>
-    <p>For company admins and super admins. If the wrong expiry, contract code or strike was entered on a filled order (e.g. H6 instead of H7, or 96.50 instead of 96.625), click <strong>Correct Trade String</strong> on the order. This opens a page showing the current legs and a form for the corrected trade string.</p>
+    <p>For company admins and super admins. If the wrong expiry, contract code or strike was entered on a filled order (e.g. H7 instead of H8, or 96.50 instead of 96.625), click <strong>Correct Trade String</strong> on the order. This opens a page showing the current legs and a form for the corrected trade string.</p>
     <p>The contract code, expiry and strikes are updated. Sides, option types, volumes, the price and quantity, and counterparties must stay the same, and a corrected strike can't move past another strike (that would reorder the legs — re-enter the trade instead). Entered prices are kept, so re-check them after changing a strike. A reason is required for the audit log. Reprint cards and tickets and download a new keypunch file after correcting.</p>
 
     <div class="tip-box">To amend the trade structure itself (strikes, strategy, direction) use the <strong>Modify Order</strong> button. This re-parses a new trade string and rebuilds the legs.</div>
@@ -509,8 +513,8 @@ SFRM7 SFRU7 SFRZ7 SFRH8 99.00 C strip 45/750  &lt;- buy all 4 contracts</div>
     </ol>
 
     <h3>Example</h3>
-    <p>Original order: <code>SFRZ6 96.125 96.25 96.375 C FLY 4/2000</code> — 2000 lots working at 4 ticks. You fill 800 lots. Now the client wants to work the balance differently — they want to add a CVD and increase to 4000 lots at 4.5 ticks:</p>
-    <pre style="background:#f5f5f5;border:1px solid #ddd;border-radius:4px;padding:10px;font-family:monospace;font-size:13px;margin:8px 0">SFRZ6 96.125 96.25 96.375 C FLY CVD 95.965 D 10 4.5/4000</pre>
+    <p>Original order: <code>SFRZ7 96.125 96.25 96.375 C FLY 4/2000</code> — 2000 lots working at 4 ticks. You fill 800 lots. Now the client wants to work the balance differently — they want to add a CVD and increase to 4000 lots at 4.5 ticks:</p>
+    <pre style="background:#f5f5f5;border:1px solid #ddd;border-radius:4px;padding:10px;font-family:monospace;font-size:13px;margin:8px 0">SFRZ7 96.125 96.25 96.375 C FLY CVD 95.965 D 10 4.5/4000</pre>
     <p>After submitting:</p>
     <ul>
         <li>Original order #0162 closes at 800 lots — trade string updates to <code>4/800</code>, status becomes <em>PARTIAL CANCELLED</em></li>
@@ -522,9 +526,9 @@ SFRM7 SFRU7 SFRZ7 SFRH8 99.00 C strip 45/750  &lt;- buy all 4 contracts</div>
     <h3>What to enter as the balance string</h3>
     <p>Enter only what still needs to be filled — the parser treats it as a fresh order. You can:</p>
     <ul>
-        <li><strong>Change price only</strong> — same structure, different price/qty: <code>SFRZ6 96.125 96.25 96.375 C FLY 4.5/1200</code></li>
-        <li><strong>Change quantity</strong> — same structure, more or fewer lots: <code>SFRZ6 96.125 96.25 96.375 C FLY 4/500</code></li>
-        <li><strong>Add CVD</strong> — add a futures hedge that wasn't on the original: <code>SFRZ6 96.125 96.25 96.375 C FLY CVD 95.965 D 10 4/4000</code></li>
+        <li><strong>Change price only</strong> — same structure, different price/qty: <code>SFRZ7 96.125 96.25 96.375 C FLY 4.5/1200</code></li>
+        <li><strong>Change quantity</strong> — same structure, more or fewer lots: <code>SFRZ7 96.125 96.25 96.375 C FLY 4/500</code></li>
+        <li><strong>Add CVD</strong> — add a futures hedge that wasn't on the original: <code>SFRZ7 96.125 96.25 96.375 C FLY CVD 95.965 D 10 4/4000</code></li>
         <li><strong>Change structure entirely</strong> — if the trade has shifted, enter a completely different strategy</li>
     </ul>
 
@@ -547,11 +551,63 @@ SFRM7 SFRU7 SFRZ7 SFRH8 99.00 C strip 45/750  &lt;- buy all 4 contracts</div>
         <li><strong>Strategy</strong> — type the strategy code (e.g. <span class="code">cs</span>, <span class="code">bflyc</span>, <span class="code">ptree</span>)</li>
         <li><strong>House</strong> — partial match</li>
         <li><strong>Account</strong> — partial match</li>
-        <li><strong>Search</strong> — searches the raw trade string (e.g. type <span class="code">SFRK6</span> to find all trades on that contract)</li>
+        <li><strong>Search</strong> — searches the raw trade string (e.g. type <span class="code">SFRK7</span> to find all trades on that contract)</li>
     </ul>
     <p>Click any row to open the order detail. Cards and tickets are accessible directly from the log for filled orders.</p>
 </div>
 
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="guide-section" id="sofr-codes">
+    <h2>16 — SOFR Contract Codes: Bloomberg &amp; CME</h2>
+    <p>Quick reference for looking up SOFR products on Bloomberg and CME. Only the SOFR products are listed. Source: IR Bloomberg codes reference sheet, as of July 2026.</p>
+    <div class="tip-box">On Bloomberg, replace the <span class="code">A</span> in a ticker with a month and year code to pick a specific contract (e.g. <span class="code">SFRH7 &lt;Comdty&gt;</span> for March 2027); <span class="code">A</span> brings up the active (front) contract. Month codes: F Jan, G Feb, H Mar, J Apr, K May, M Jun, N Jul, Q Aug, U Sep, V Oct, X Nov, Z Dec.</div>
+    <div class="warn-box">Trade strings in this system accept 3-Month SOFR options and the 1-, 2- and 3-year mid-curves only (the rows marked <strong>Yes</strong> below). The other codes are here for reference.</div>
+    <h3>3-Month SOFR options</h3>
+    <table class="strat-table codes-table">
+        <tr><th>Product</th><th>Bloomberg</th><th>CME Globex</th><th>CME ClearPort</th><th>In trade strings</th><th>Notes</th></tr>
+        <tr><td>SOFR options</td><td><span class="code">SFRA &lt;Comdty&gt; OMON</span></td><td><span class="code">SR3</span></td><td><span class="code">SR3</span></td><td>Yes — <span class="code">SFR</span> or <span class="code">SR3</span></td><td></td></tr>
+        <tr><td>SOFR 1-Yr Mid-Curve options</td><td><span class="code">0QA &lt;Comdty&gt; OMON</span></td><td><span class="code">S0</span></td><td><span class="code">S0</span></td><td>Yes — <span class="code">0Q</span> or <span class="code">S0</span></td><td>Must use active contract &quot;A&quot; or contract month code</td></tr>
+        <tr><td>SOFR 2-Yr Mid-Curve options</td><td><span class="code">2QA &lt;Comdty&gt; OMON</span></td><td><span class="code">S2</span></td><td><span class="code">S2</span></td><td>Yes — <span class="code">2Q</span> or <span class="code">S2</span></td><td>Must use active contract &quot;A&quot; or contract month code</td></tr>
+        <tr><td>SOFR 3-Yr Mid-Curve options</td><td><span class="code">3QA &lt;Comdty&gt; OMON</span></td><td><span class="code">S3</span></td><td><span class="code">S3</span></td><td>Yes — <span class="code">3Q</span> or <span class="code">S3</span></td><td>Must use active contract &quot;A&quot; or contract month code</td></tr>
+        <tr><td>SOFR 4-Yr Mid-Curve options</td><td><span class="code">4QA &lt;Comdty&gt; OMON</span></td><td><span class="code">S4</span></td><td><span class="code">S4</span></td><td>Reference only</td><td>Must use active contract &quot;A&quot; or contract month code</td></tr>
+        <tr><td>SOFR 5-Yr Mid-Curve options</td><td><span class="code">5QA &lt;Comdty&gt; OMON</span></td><td><span class="code">S5</span></td><td><span class="code">S5</span></td><td>Reference only</td><td>Must use active contract &quot;A&quot; or contract month code</td></tr>
+        <tr><td>SOFR 1-Yr Mid-Curve Weekly options</td><td><span class="code">SOEA &lt;Comdty&gt; OMON</span></td><td><span class="code">S01-S05</span></td><td><span class="code">S01-S05</span></td><td>Reference only</td><td></td></tr>
+        <tr><td>SOFR 2-Yr Mid-Curve Weekly options</td><td><span class="code">SOTA &lt;Comdty&gt; OMON</span></td><td><span class="code">S21-S25</span></td><td><span class="code">S21-S25</span></td><td>Reference only</td><td></td></tr>
+        <tr><td>SOFR 3-Yr Mid-Curve Weekly options</td><td><span class="code">SSOA &lt;Comdty&gt; OMON</span></td><td><span class="code">S31-S35</span></td><td><span class="code">S31-S35</span></td><td>Reference only</td><td></td></tr>
+        <tr><td>SOFR Monthly options — First Mar</td><td><span class="code">UHOA &lt;Comdty&gt; OMON</span></td><td><span class="code">1YH</span></td><td><span class="code">1YH</span></td><td>Reference only</td><td></td></tr>
+        <tr><td>SOFR Monthly options — First Jun</td><td><span class="code">UMOA &lt;Comdty&gt; OMON</span></td><td><span class="code">1YM</span></td><td><span class="code">1YM</span></td><td>Reference only</td><td></td></tr>
+        <tr><td>SOFR Monthly options — First Sep</td><td><span class="code">UUOA &lt;Comdty&gt; OMON</span></td><td><span class="code">1YU</span></td><td><span class="code">1YU</span></td><td>Reference only</td><td></td></tr>
+        <tr><td>SOFR Monthly options — First Dec</td><td><span class="code">UZOA &lt;Comdty&gt; OMON</span></td><td><span class="code">1YZ</span></td><td><span class="code">1YZ</span></td><td>Reference only</td><td></td></tr>
+        <tr><td>SOFR Monthly options — Second Mar</td><td><span class="code">VHTA &lt;Comdty&gt; OMON</span></td><td><span class="code">2YH</span></td><td><span class="code">2YH</span></td><td>Reference only</td><td></td></tr>
+        <tr><td>SOFR Monthly options — Second Jun</td><td><span class="code">VMTA &lt;Comdty&gt; OMON</span></td><td><span class="code">2YM</span></td><td><span class="code">2YM</span></td><td>Reference only</td><td></td></tr>
+        <tr><td>SOFR Monthly options — Second Sep</td><td><span class="code">VUTA &lt;Comdty&gt; OMON</span></td><td><span class="code">2YU</span></td><td><span class="code">2YU</span></td><td>Reference only</td><td></td></tr>
+        <tr><td>SOFR Monthly options — Second Dec</td><td><span class="code">VZTA &lt;Comdty&gt; OMON</span></td><td><span class="code">2YZ</span></td><td><span class="code">2YZ</span></td><td>Reference only</td><td></td></tr>
+    </table>
+    <h3>3-Month SOFR futures, ICS, packs &amp; bundles</h3>
+    <table class="strat-table codes-table">
+        <tr><th>Product</th><th>Bloomberg</th><th>CME Globex</th><th>CME ClearPort</th><th>Notes</th></tr>
+        <tr><td>3-Month SOFR futures</td><td><span class="code">SFRA &lt;Comdty&gt; CT</span></td><td><span class="code">SR3</span></td><td><span class="code">SR3</span></td><td>&quot;tickerA&quot; Brings up active contract (front month)</td></tr>
+        <tr><td>3-Month SOFR vs. T-Bill ICS</td><td><span class="code">SFRTZR &lt;Comdty&gt; CT</span></td><td><span class="code">SR3-TBF3</span></td><td><span class="code">SR3</span></td><td></td></tr>
+        <tr><td>SOFR White Pack</td><td><span class="code">SFR1YZ5 &lt;Comdty&gt;</span></td><td><span class="code">SR3:AB 01Y Z5</span></td><td>—</td><td>Dec &#x27;25 Example</td></tr>
+        <tr><td>SOFR Red Pack</td><td><span class="code">SFR1YZ6 &lt;Comdty&gt;</span></td><td><span class="code">SR3:AB 01Y Z6</span></td><td>—</td><td>Dec &#x27;26 Example</td></tr>
+        <tr><td>SOFR Green Pack</td><td><span class="code">SFR1YZ7 &lt;Comdty&gt;</span></td><td><span class="code">SR3:AB 01Y Z7</span></td><td>—</td><td>Dec &#x27;27 Example</td></tr>
+        <tr><td>SOFR Blue Pack</td><td><span class="code">SFR1YZ8 &lt;Comdty&gt;</span></td><td><span class="code">SR3:AB 01Y Z8</span></td><td>—</td><td>Dec &#x27;28 Example</td></tr>
+        <tr><td>SOFR Gold Pack</td><td><span class="code">SFR1YZ9 &lt;Comdty&gt;</span></td><td><span class="code">SR3:AB 01Y Z9</span></td><td>—</td><td>Dec &#x27;29 Example</td></tr>
+        <tr><td>SOFR 2Y Bundle</td><td><span class="code">SFR2YZ5 &lt;Comdty&gt;</span></td><td><span class="code">SR3:AB 02Y Z5</span></td><td>—</td><td>Dec &#x27;25 Example</td></tr>
+        <tr><td>SOFR 3Y Bundle</td><td><span class="code">SFR3YZ5 &lt;Comdty&gt;</span></td><td><span class="code">SR3:AB 03Y Z5</span></td><td>—</td><td>Dec &#x27;25 Example</td></tr>
+        <tr><td>SOFR 4Y Bundle</td><td><span class="code">SFR4YZ5 &lt;Comdty&gt;</span></td><td><span class="code">SR3:AB 04Y Z5</span></td><td>—</td><td>Dec &#x27;25 Example</td></tr>
+        <tr><td>SOFR 5Y Bundle</td><td><span class="code">SFR5YZ5 &lt;Comdty&gt;</span></td><td><span class="code">SR3:AB 05Y Z5</span></td><td>—</td><td>Dec &#x27;25 Example</td></tr>
+    </table>
+    <h3>1-Month SOFR</h3>
+    <table class="strat-table codes-table">
+        <tr><th>Product</th><th>Bloomberg</th><th>CME Globex</th><th>CME ClearPort</th><th>Notes</th></tr>
+        <tr><td>1-Month SOFR futures</td><td><span class="code">SERA &lt;Comdty&gt; CT</span></td><td><span class="code">SR1</span></td><td><span class="code">SR1</span></td><td></td></tr>
+        <tr><td>1-Month SOFR vs. Fed Funds ICS</td><td><span class="code">SERFF &lt;Comdty&gt; CT</span></td><td><span class="code">SR1-ZQ</span></td><td><span class="code">SR1</span></td><td>&quot;tickerA&quot; does not work for spreads</td></tr>
+        <tr><td>1-Month SOFR vs. 3-Month SOFR ICS</td><td><span class="code">SERSFR &lt;Comdty&gt; CT</span></td><td><span class="code">SR1-SR3</span></td><td><span class="code">SR1</span></td><td>&quot;tickerA&quot; does not work for spreads</td></tr>
+        <tr><td>1-Month SOFR options</td><td><span class="code">SERA &lt;Comdty&gt; OMON</span></td><td><span class="code">SR1</span></td><td><span class="code">SR1</span></td><td></td></tr>
+    </table>
+</div>
 
 <div style="text-align:center; margin-top: 48px; padding-top: 24px; border-top: 1px solid #dde3ec;">
     <a href="{{ url_for('orders.index') }}" class="guide-nav-btn">Go to Orders →</a>
