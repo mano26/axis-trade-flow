@@ -92,6 +92,58 @@ def get_expiry(code: str, is_future: bool = False) -> str:
     return f"{month_name}{str(year_num)[-2:]}"
 
 
+# -------------------------------------------------------------------------
+# Listed-expiry limit for SOFR options
+# -------------------------------------------------------------------------
+# SOFR quarterly options are listed for 24 quarterly expiries, counting from
+# the current quarter (e.g. on 6 Nov 2026: Dec 26 … Sep 32). Serial-month
+# options and mid-curves (S0/S2/S3, 0Q/2Q/3Q) trade off the quarterlies, so
+# each is valid only if its corresponding quarterly is listed. Futures legs
+# are not limited by this.
+LISTED_QUARTERLY_EXPIRIES = 24
+
+_MONTH_NAME_NUM = {m: i for i, m in enumerate(
+    ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"], 1)}
+
+
+def last_listed_quarterly(today: Optional[date] = None) -> tuple:
+    """(year, month) of the furthest listed quarterly SOFR option."""
+    today = today or date.today()
+    q_month = ((today.month - 1) // 3 + 1) * 3        # first quarterly month >= today
+    total = today.year * 12 + (q_month - 1) + 3 * (LISTED_QUARTERLY_EXPIRIES - 1)
+    return total // 12, total % 12 + 1
+
+
+def check_listed_option_expiry(code: str) -> None:
+    """Raise ParseError if an option contract code resolves past the last
+    listed quarterly. Uses the same year resolution as get_expiry."""
+    from app.services.trade_parser import ParseError
+
+    resolved = get_expiry(code, is_future=False)          # e.g. "MAR36"
+    mon, yy = resolved[:3], resolved[3:]
+    month = _MONTH_NAME_NUM.get(mon)
+    if month is None or not yy.isdigit():
+        return                                            # unknown shape: leave to the parser
+    year = 2000 + int(yy)
+    q_month = ((month - 1) // 3 + 1) * 3                  # serial month -> its quarterly
+    ly, lm = last_listed_quarterly()
+    if (year, q_month) <= (ly, lm):
+        return
+
+    import calendar
+    names = list(calendar.month_name)[1:]                # "January" … "December"
+    last = f"{names[lm - 1][:3]} {ly}"
+    suffix = code.upper().strip()[-2:]
+    first_guess = 2020 + int(suffix[1]) + (10 if int(suffix[1]) < 5 else 0)
+    expired = ""
+    if first_guess != year:
+        expired = f"{names[month - 1]} {first_guess} has expired, and "
+    raise ParseError(
+        f"{code.upper()}: {expired}{names[month - 1]} {year} is past the last "
+        f"listed SOFR option expiry ({last}). Check the contract month and year."
+    )
+
+
 def get_contract_type(code: str, is_future: bool = False) -> str:
     if is_future:
         return "SR3"
@@ -199,6 +251,8 @@ def _build_leg(
 ) -> dict:
     expiry_code = trade.contract_codes[0]
     type_code = trade.contract_codes[1] if len(trade.contract_codes) > 1 else expiry_code
+    if not is_future:
+        check_listed_option_expiry(expiry_code)
     return {
         "side": side,
         "volume": volume,
