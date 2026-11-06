@@ -12,6 +12,7 @@ from app.services.ticket_generator import (
 )
 from app.services.validation import validate_before_generate, ValidationError
 from app.services import audit_service
+from app.services.print_branding import apply_print_branding
 
 tickets_bp = Blueprint("tickets", __name__)
 
@@ -43,7 +44,7 @@ def generate(order_id):
     db.session.commit()
 
     # Generate and return HTML
-    html = generate_ticket_html(order)
+    html = apply_print_branding(generate_ticket_html(order))
     response = make_response(html)
     response.headers["Content-Type"] = "text/html"
     return response
@@ -74,7 +75,7 @@ def generate_with_cps(order_id):
     audit_service.log_print_event(order, active_tenant_id(), "ticket_with_cps")
     db.session.commit()
 
-    html = generate_ticket_with_cps_html(order)
+    html = apply_print_branding(generate_ticket_with_cps_html(order))
     response = make_response(html)
     response.headers["Content-Type"] = "text/html"
     return response
@@ -106,7 +107,7 @@ def generate_with_cps_linear(order_id):
     audit_service.log_print_event(order, active_tenant_id(), "ticket_with_cps_linear")
     db.session.commit()
 
-    html = generate_ticket_with_cps_html(order, layout="linear")
+    html = apply_print_branding(generate_ticket_with_cps_html(order, layout="linear"))
     response = make_response(html)
     response.headers["Content-Type"] = "text/html"
     return response

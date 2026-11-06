@@ -10,6 +10,7 @@ from app.models.print_event import PrintEvent, PrintEventType
 from app.services.card_generator import generate_cards_html, build_card_data_snapshot
 from app.services.validation import validate_before_generate, ValidationError
 from app.services import audit_service
+from app.services.print_branding import apply_print_branding
 
 cards_bp = Blueprint("cards", __name__)
 
@@ -41,7 +42,7 @@ def generate(order_id):
     db.session.commit()
 
     # Generate and return HTML
-    html = generate_cards_html(order)
+    html = apply_print_branding(generate_cards_html(order))
     response = make_response(html)
     response.headers["Content-Type"] = "text/html"
     return response

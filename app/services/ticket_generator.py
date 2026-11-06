@@ -222,9 +222,16 @@ body {{ font-family:Arial,Helvetica,sans-serif; background:#e0e0e0; padding:0; }
 .tickets-wrap {{ display:flex; flex-wrap:wrap; gap:0.25in; justify-content:center; padding:0.4in; }}
 .ticket {{ width:8in; height:5.5in; border:1.5px solid #000; background:#fff;
   padding:14px 18px; display:flex; flex-direction:column; page-break-inside:avoid; }}
-.tkt-header {{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:1px; }}
-.tkt-num {{ font-size:{sF}px; color:#cc2222; font-weight:900; font-family:monospace; flex:1; text-align:center; }}
-.tkt-title {{ font-size:{tF}px; font-weight:900; letter-spacing:5px; text-align:center; flex:1; }}
+/* Header: five equal-weight columns around the title so the title sits at the
+   exact horizontal centre of the ticket; the ticket # sits midway between the
+   House/Acct block and the title. */
+.tkt-header {{ display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto minmax(0,1fr) minmax(0,1fr);
+  align-items:flex-start; margin-bottom:1px; }}
+.tkt-header > * {{ grid-row:1; }}
+.tkt-acct-left {{ grid-column:1; }}
+.tkt-num {{ font-size:{sF}px; color:#cc2222; font-weight:900; font-family:monospace; grid-column:2; text-align:center; }}
+.tkt-title {{ font-size:{tF}px; font-weight:900; letter-spacing:5px; padding-left:5px; text-align:center; grid-column:3; white-space:nowrap; }}
+.tkt-acct, .tkt-meta {{ grid-column:5; }}
 .tkt-bk-meta {{ font-size:11px; font-weight:900; letter-spacing:2px; margin-bottom:2px; }}
 .tkt-house-left {{ font-size:13px; font-weight:900; margin-bottom:1px; }}
 .tkt-house-row {{ font-size:13px; font-weight:900; padding:2px 0; }}
@@ -1870,9 +1877,14 @@ body{{font-family:Arial,Helvetica,sans-serif;background:#e0e0e0;padding:0}}
 .tickets-wrap{{display:flex;flex-wrap:wrap;gap:0.25in;justify-content:center;padding:0.4in}}
 .ticket{{width:8in;min-height:3.5in;border:1.5px solid #000;background:#fff;
   padding:10px 14px;display:flex;flex-direction:column;page-break-inside:avoid}}
-.tkt-header{{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px}}
-.tkt-num{{font-size:13px;color:#cc2222;font-weight:700;font-family:monospace}}
-.tkt-title{{font-size:{tF}px;font-weight:900;letter-spacing:5px;text-align:center;flex:1}}
+/* Header: title at the exact horizontal centre (see _ticket_html_header) */
+.tkt-header{{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto minmax(0,1fr) minmax(0,1fr);
+  align-items:baseline;margin-bottom:4px}}
+.tkt-header>*{{grid-row:1}}
+.tkt-acct-left{{grid-column:1}}
+.tkt-num{{font-size:13px;color:#cc2222;font-weight:700;font-family:monospace;grid-column:2;text-align:center}}
+.tkt-title{{font-size:{tF}px;font-weight:900;letter-spacing:5px;padding-left:5px;text-align:center;grid-column:3;white-space:nowrap}}
+.tkt-meta{{grid-column:5}}
 .tkt-meta{{text-align:right;font-size:12px;font-weight:600;line-height:1.6}}
 .tkt-acct-left{{font-size:12px;font-weight:600;line-height:1.6;text-align:left}}
 .tkt-pg{{font-size:9px;font-weight:700;color:#555}}

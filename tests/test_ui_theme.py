@@ -185,3 +185,65 @@ def test_login_page_stays_classic(app, world):
         from flask import url_for
         login_url = url_for("auth.login")
     assert not any(m in c.get(login_url).get_data(as_text=True) for m in NEW_MARKERS)
+
+
+# -----------------------------------------------------------------------------
+# Printed tickets / cards: company branding
+# -----------------------------------------------------------------------------
+
+SAMPLE_PRINT = (
+    "<html><head><title>AXIS Ticket</title><style></style></head><body>"
+    "<div class='print-nav'>\n  <span class='brand'>AXIS TRADE FLOW</span>\n</div>"
+    "<div class='tkt-header'><div class='tkt-title'>A X I S</div></div>"
+    "<div class='tkt-header'><span class='tkt-title'>A X I S</span></div>"
+    "<div class='ln-cont-bar'>AXIS &nbsp;·&nbsp; ACCT &nbsp;·&nbsp; PAGE 2 OF 2</div>"
+    "</body></html>"
+)
+
+
+def _brand(app, tenant):
+    from flask import g
+    from app.services.print_branding import apply_print_branding
+    with app.test_request_context():
+        g.tenant = tenant
+        return apply_print_branding(SAMPLE_PRINT)
+
+
+def test_classic_company_prints_are_untouched(app):
+    with app.app_context():
+        t = Tenant(name="AXIS", slug="axis")
+        assert _brand(app, t) == SAMPLE_PRINT
+
+
+def test_prints_outside_a_request_are_untouched(app):
+    from app.services.print_branding import apply_print_branding
+    assert apply_print_branding(SAMPLE_PRINT) == SAMPLE_PRINT
+
+
+def test_new_design_company_prints_its_own_name(app):
+    with app.app_context():
+        t = Tenant(name="Roma Ventures", slug="roma", ui_theme="confirmengine")
+        html = _brand(app, t)
+    assert "A X I S" not in html and "AXIS TRADE FLOW" not in html
+    assert html.count("ROMA VENTURES</span>") == 2          # both title styles
+    assert "<title>ROMA VENTURES Ticket" in html
+    assert "ROMA VENTURES &nbsp;·&nbsp; ACCT" in html        # continuation bar
+    assert "ce-print-nav" in html and "Confirm<b>Engine</b>" in html
+    assert "class='print-nav ce-print-nav'" in html          # still hidden when printing
+
+
+def test_brand_name_wins_and_is_escaped(app):
+    with app.app_context():
+        t = Tenant(name="Roma Ventures", slug="roma", ui_theme="confirmengine",
+                   brand_name="R&D <Desk>")
+        html = _brand(app, t)
+    assert "R&amp;D &lt;DESK&gt;" in html and "<DESK>" not in html
+
+
+def test_ticket_title_is_centred_by_layout():
+    """The title sits in the middle grid column on every ticket layout."""
+    from app.services.ticket_generator import _ticket_html_header, _ticket_html_header_cps
+    for css in (_ticket_html_header(1), _ticket_html_header_cps(1), _ticket_html_header_cps(1, "linear")):
+        compact = css.replace(" ", "")
+        assert "grid-template-columns:minmax(0,1fr)minmax(0,1fr)autominmax(0,1fr)minmax(0,1fr)" in compact
+        assert "grid-column:3" in compact
