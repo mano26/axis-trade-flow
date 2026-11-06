@@ -1,0 +1,266 @@
+/* =============================================================================
+   ConfirmEngine design layer
+   =============================================================================
+   Loaded ONLY by layouts/base_confirmengine.html, i.e. only for companies whose
+   ui_theme is 'confirmengine'. Classic companies never download this file.
+
+   Safety rules for this file:
+     - every selector starts with body.theme-ce
+     - everything sits inside @media screen, so browser printing falls back to
+       main.css exactly as before (cards / tickets are separate documents and
+       are not affected at all)
+     - it only restyles existing classes; it never hides or moves form fields,
+       buttons or data, so every workflow behaves identically
+   ============================================================================= */
+
+@media screen {
+
+/* --- Tokens: re-point main.css variables so existing rules pick up the new look --- */
+body.theme-ce {
+    --navy: #0E1726;
+    --navy-light: #1E2A40;
+    --blue-ink: #2456E6;
+    --red: #B42318;
+    --red-light: #FDECEC;
+    --green: #15703A;
+    --green-light: #E7F6EC;
+    --bg: #F4F5F7;
+    --bg-card: #FFFFFF;
+    --border: #E1E4EB;
+    --text: #0E1726;
+    --text-muted: #5B6475;
+    --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --font-body: Inter, system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    --radius: 12px;
+
+    --ce-ink: #0E1726;
+    --ce-cobalt: #2456E6;
+    --ce-cobalt-dark: #1A3FB0;
+    --ce-cobalt-soft: #EEF2FE;
+    --ce-teal: #1E9C8F;
+    --ce-signal: #F2542D;
+    --ce-sub: #3A4354;
+    --ce-line: #EEF0F3;
+    --ce-card-radius: 22px;
+    --ce-serif: "Instrument Serif", Georgia, serif;
+
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    padding: 20px;
+}
+body.theme-ce a { color: var(--ce-cobalt); }
+body.theme-ce a:hover { color: var(--ce-cobalt-dark); text-decoration: none; }
+
+/* --- Header --- */
+body.theme-ce .ce-header {
+    position: relative; overflow: hidden;
+    max-width: 1400px; margin: 0 auto;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px;
+    background: #FFFFFF; border: 1px solid #E6E8EE; border-radius: var(--ce-card-radius);
+    padding: 12px 14px 12px 20px;
+}
+body.theme-ce .ce-ribbons {
+    position: absolute; right: 0; top: 0; width: 46%; height: 100%; pointer-events: none;
+}
+body.theme-ce .ce-brand {
+    position: relative; display: flex; align-items: center; gap: 10px; color: var(--ce-ink);
+}
+body.theme-ce .ce-brand:hover { color: var(--ce-ink); }
+body.theme-ce .ce-brand-name { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; white-space: nowrap; }
+body.theme-ce .ce-accent { color: var(--ce-cobalt); }
+body.theme-ce .ce-nav {
+    position: relative; flex: 1 1 560px;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 2px;
+}
+body.theme-ce .ce-nav-link {
+    height: 40px; display: inline-flex; align-items: center; padding: 0 12px;
+    border-radius: 999px; color: var(--ce-sub); font-size: 14px; font-weight: 500;
+}
+body.theme-ce .ce-nav-link:hover { background: rgba(14, 23, 38, 0.05); color: var(--ce-ink); }
+body.theme-ce .ce-nav-link.is-active { background: var(--ce-ink); color: #FFFFFF; padding: 0 16px; }
+body.theme-ce .ce-nav-sep { width: 1px; height: 20px; background: #E1E4EB; margin: 0 6px; }
+body.theme-ce .ce-user { position: relative; display: flex; align-items: center; gap: 8px; }
+body.theme-ce .ce-switcher, body.theme-ce .ce-tenant-chip {
+    height: 38px; display: inline-flex; align-items: center; gap: 8px; padding: 0 6px 0 12px;
+    border: 1px solid #E1E4EB; border-radius: 999px; background: rgba(255, 255, 255, 0.92);
+    font-size: 13px; font-weight: 500;
+}
+body.theme-ce .ce-tenant-chip { padding-right: 14px; }
+body.theme-ce .ce-switcher-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--ce-teal); flex: 0 0 auto; }
+body.theme-ce .ce-switcher select {
+    border: 0; background: transparent; font: inherit; color: var(--ce-ink);
+    max-width: 220px; padding: 6px 4px; cursor: pointer;
+}
+body.theme-ce .ce-switcher select:focus { outline: 2px solid var(--ce-cobalt); outline-offset: 2px; border-radius: 6px; }
+body.theme-ce .ce-avatar {
+    width: 38px; height: 38px; border-radius: 999px; background: var(--ce-ink); color: #FFFFFF;
+    display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600;
+}
+body.theme-ce .ce-logout { height: 38px; display: inline-flex; align-items: center; padding: 0 8px; font-size: 13px; color: var(--ce-sub); }
+body.theme-ce .ce-banner {
+    max-width: 1400px; margin: 12px auto 0; border-radius: 14px; border: 1px solid #F0C38A;
+}
+
+/* --- Layout --- */
+body.theme-ce .main-content { max-width: 1400px; padding: 24px 0 40px; }
+body.theme-ce .flash-container { max-width: 1400px; margin: 12px auto 0; padding: 0; }
+body.theme-ce .flash { border-radius: 14px; padding: 12px 16px; font-size: 14px; }
+
+/* --- Page header --- */
+body.theme-ce .page-header { flex-wrap: wrap; align-items: center; gap: 12px 16px; margin: 4px 4px 20px; }
+body.theme-ce .page-header h1 { font-size: 34px; font-weight: 500; letter-spacing: -0.03em; line-height: 1.15; }
+body.theme-ce .page-date { font-family: var(--font-body); font-size: 14px; color: var(--text-muted); }
+body.theme-ce .page-header input[type="text"] {
+    height: 36px; border: 1px solid #DADEE6; border-radius: 10px; padding: 0 10px !important;
+    font-size: 13px !important; width: 72px !important;
+}
+
+/* --- Cards: every top-level section becomes a white card --- */
+body.theme-ce .main-content > section,
+body.theme-ce .main-content > form > section,
+body.theme-ce .order-summary,
+body.theme-ce .fill-card {
+    background: var(--bg-card); border: 1px solid #E6E8EE; border-radius: var(--ce-card-radius);
+    padding: 22px 24px; margin-bottom: 20px;
+}
+body.theme-ce .fill-card { border-radius: 16px; padding: 16px 18px; }
+body.theme-ce section h2 {
+    font-size: 17px; font-weight: 600; letter-spacing: -0.01em;
+    border-bottom: 0; padding-bottom: 0; margin-bottom: 14px;
+}
+body.theme-ce .summary-item label { font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--text-muted); }
+body.theme-ce .summary-item span { font-size: 15px; font-weight: 500; }
+
+/* --- Tables --- */
+body.theme-ce table { font-size: 14px; }
+body.theme-ce thead { background: transparent; color: var(--text-muted); }
+body.theme-ce thead th {
+    background: #F6F7F9; color: var(--text-muted);
+    font-size: 12.5px; font-weight: 500; letter-spacing: 0; text-transform: none;
+    padding: 11px 12px;
+}
+body.theme-ce thead th:first-child { border-radius: 12px 0 0 12px; }
+body.theme-ce thead th:last-child { border-radius: 0 12px 12px 0; }
+body.theme-ce td { padding: 12px; border-bottom: 1px solid var(--ce-line); }
+body.theme-ce tbody tr:last-child td { border-bottom: 0; }
+body.theme-ce tbody tr:hover { background: #FAFBFC; }
+body.theme-ce .clickable-row:hover { background: var(--ce-cobalt-soft) !important; }
+
+/* --- Status badges (same classes, softer pills) --- */
+body.theme-ce .status-badge {
+    padding: 4px 11px; border-radius: 999px; font-size: 12px; font-weight: 600; letter-spacing: 0.02em;
+}
+body.theme-ce .status-open { background: #EEF2FE; color: #1F44B8; }
+body.theme-ce .status-partial_fill, body.theme-ce .status-pending_allocation { background: #FFF4E0; color: #8A5300; }
+body.theme-ce .status-filled, body.theme-ce .status-report_accepted { background: #E7F6EC; color: #15703A; }
+body.theme-ce .status-allocated { background: #E6F4F2; color: #12645B; }
+body.theme-ce .status-reported { background: #EEF0F4; color: #3A4354; }
+body.theme-ce .status-amended { background: #E8EEFF; color: #1F44B8; }
+body.theme-ce .status-cancelled, body.theme-ce .status-partial_cancelled, body.theme-ce .status-report_failed { background: #FDECEC; color: #A12A2A; }
+body.theme-ce .status-cancelled_duplicate { background: #F1F2F4; color: #5B6475; }
+
+/* --- Trade strings, tickets, direction --- */
+body.theme-ce .trade-string { font-size: 13px; }
+body.theme-ce .ticket-num { color: var(--ce-ink); }
+body.theme-ce .direction-B { color: #1F44B8; }
+body.theme-ce .direction-S { color: #9A3F0E; }
+
+/* --- Buttons --- */
+body.theme-ce .btn {
+    min-height: 40px; padding: 9px 18px; border-radius: 999px; font-size: 14px; font-weight: 500;
+    border: 1px solid #DADEE6; background: #FFFFFF; color: var(--ce-ink);
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+}
+body.theme-ce .btn:hover { background: #F6F7F9; }
+body.theme-ce .btn-primary { background: var(--ce-ink); border-color: var(--ce-ink); color: #FFFFFF; }
+body.theme-ce .btn-primary:hover { background: var(--navy-light); color: #FFFFFF; }
+body.theme-ce .btn-danger { background: #FFFFFF; border-color: #F3C9C9; color: #A12A2A; }
+body.theme-ce .btn-danger:hover { background: #FDECEC; }
+body.theme-ce .btn-sm { min-height: 34px; padding: 5px 14px; font-size: 13px; }
+body.theme-ce .btn-side-toggle { border-radius: 8px; min-width: 34px; min-height: 30px; }
+body.theme-ce .btn-side-B { color: #1F44B8; border-color: #C9D6FA; background: #EEF2FE; }
+body.theme-ce .btn-side-S { color: #9A3F0E; border-color: #F5D2BE; background: #FFF1E8; }
+
+/* --- Trade entry: the hero input --- */
+body.theme-ce .trade-entry-section { padding: 24px; }
+body.theme-ce .trade-input-row { gap: 10px; flex-wrap: wrap; }
+body.theme-ce .trade-input {
+    min-height: 54px; padding: 12px 18px; font-size: 17px; letter-spacing: 0.3px;
+    background: #FFFFFF; border: 1.5px solid #C9D3EA; border-radius: 16px; min-width: 260px;
+}
+body.theme-ce .trade-input:focus {
+    border-color: var(--ce-cobalt); box-shadow: 0 0 0 4px rgba(36, 86, 230, 0.14);
+}
+body.theme-ce .trade-input-row .btn-primary {
+    min-height: 54px; padding: 0 26px; background: var(--ce-cobalt); border-color: var(--ce-cobalt); font-size: 15px;
+}
+body.theme-ce .trade-input-row .btn-primary:hover { background: var(--ce-cobalt-dark); }
+
+/* --- Inputs & forms --- */
+body.theme-ce .form-group label { font-size: 12.5px; font-weight: 500; color: var(--ce-sub); }
+body.theme-ce .form-group input,
+body.theme-ce .form-group select,
+body.theme-ce .form-group textarea,
+body.theme-ce .filter-input,
+body.theme-ce .lookup-select {
+    min-height: 40px; border: 1px solid #DADEE6; border-radius: 12px; padding: 8px 12px;
+    font-size: 14px; background: #FFFFFF; color: var(--ce-ink);
+}
+body.theme-ce .form-group input:focus,
+body.theme-ce .form-group select:focus,
+body.theme-ce .form-group textarea:focus,
+body.theme-ce .filter-input:focus,
+body.theme-ce .lookup-select:focus,
+body.theme-ce .price-input:focus,
+body.theme-ce .cp-entry-table input:focus,
+body.theme-ce .cp-entry-table select:focus,
+body.theme-ce .editable-legs-table input:focus,
+body.theme-ce .editable-legs-table select:focus {
+    outline: none; border-color: var(--ce-cobalt); box-shadow: 0 0 0 3px rgba(36, 86, 230, 0.14);
+}
+body.theme-ce .price-input,
+body.theme-ce .cp-entry-table input,
+body.theme-ce .cp-entry-table select,
+body.theme-ce .editable-legs-table input,
+body.theme-ce .editable-legs-table select { border-color: #DADEE6; border-radius: 8px; min-height: 32px; }
+body.theme-ce .fill-qty-input { border: 1.5px solid #C9D3EA; border-radius: 12px; }
+body.theme-ce .fill-qty-input:focus { outline: none; border-color: var(--ce-cobalt); box-shadow: 0 0 0 3px rgba(36, 86, 230, 0.14); }
+/* Filters and inline selects carry fixed pixel widths from the templates;
+   keep horizontal padding tight so their placeholders still fit. */
+body.theme-ce .filter-input { padding: 6px 9px; font-size: 13px; border-radius: 10px; }
+body.theme-ce select.filter-input { padding: 6px 4px 6px 8px; }
+body.theme-ce .checkbox-label input[type="checkbox"] { accent-color: var(--ce-cobalt); }
+body.theme-ce .form-help { color: var(--text-muted); }
+
+/* --- Auth pages (shown when a logged-in super admin is in a new-design company) --- */
+body.theme-ce .auth-card { border: 1px solid #E6E8EE; border-radius: var(--ce-card-radius); }
+body.theme-ce .auth-title { color: var(--ce-ink); letter-spacing: -0.02em; font-weight: 600; }
+
+/* --- Guide (its page styles use the same variables; these refine the rest) --- */
+body.theme-ce .guide-wrap { max-width: 980px; }
+body.theme-ce .guide-hero {
+    background: #FFFFFF; color: var(--ce-ink); border: 1px solid #E6E8EE; border-radius: var(--ce-card-radius);
+}
+body.theme-ce .guide-hero h1 { font-family: var(--ce-serif); font-weight: 400; letter-spacing: 0; font-size: 40px; }
+body.theme-ce .guide-hero p { color: var(--text-muted); }
+body.theme-ce .guide-toc { background: #FFFFFF; border: 1px solid #E6E8EE; border-radius: 18px; }
+body.theme-ce .guide-toc a { color: var(--ce-ink); font-weight: 500; }
+body.theme-ce .guide-section h2 { color: var(--ce-ink); border-bottom: 1px solid #E6E8EE; font-weight: 600; }
+body.theme-ce .code { background: #F1F3F6; border-color: #E1E4EB; color: var(--ce-ink); border-radius: 6px; }
+body.theme-ce .code-block { background: var(--ce-ink); border-color: var(--ce-ink); color: #E6EBF5; border-radius: 14px; }
+body.theme-ce .strat-table th { background: #F6F7F9; color: var(--text-muted); letter-spacing: 0; text-transform: none; font-weight: 500; font-size: 12.5px; }
+body.theme-ce .tip-box { background: #F3F6FE; border-left-color: var(--ce-cobalt); border-radius: 0 12px 12px 0; color: var(--ce-sub); }
+body.theme-ce .warn-box { background: #FFF4EF; border-left-color: var(--ce-signal); border-radius: 0 12px 12px 0; color: var(--ce-sub); }
+body.theme-ce .guide-nav-btn { background: var(--ce-ink); border-radius: 999px; }
+body.theme-ce .workflow-steps li::before { background: var(--ce-cobalt); }
+
+/* --- Small screens --- */
+@media (max-width: 720px) {
+    body.theme-ce { padding: 10px; }
+    body.theme-ce .ce-ribbons { width: 100%; opacity: 0.5; }
+    body.theme-ce .page-header h1 { font-size: 28px; }
+    body.theme-ce .main-content > section { padding: 16px; overflow-x: auto; }
+}
+
+} /* end @media screen */

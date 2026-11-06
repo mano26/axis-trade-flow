@@ -23,6 +23,17 @@
         {{ field('slug', 'Slug', value=f.get('slug', ''), help='Optional. Generated from the name if left blank.') }}
         {% endif %}
         {{ field('brand_name', 'Brand name (nav bar)', value=((tenant.brand_name or '') if editing else f.get('brand_name', '')), help="Falls back to AXIS TRADE FLOW.") }}
+        {% if editing %}
+        <div class="form-group" style="margin-bottom:16px;">
+            <label for="ui_theme" style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">Screen design</label>
+            <select id="ui_theme" name="ui_theme" style="width:100%;padding:8px 12px;border:1px solid #d0d0d0;border-radius:4px;font-size:14px;">
+                {% for key, label in tenant.THEMES.items() %}
+                <option value="{{ key }}" {% if tenant.ui_theme == key %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+            <div class="form-help">Changes how screens look for everyone in this company. Orders, prints and keypunch files are the same in both designs.</div>
+        </div>
+        {% endif %}
 
         {% if not editing %}
         <h3 style="margin:24px 0 8px;font-size:14px;">First admin (optional)</h3>

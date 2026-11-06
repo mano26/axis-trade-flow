@@ -175,18 +175,23 @@ def edit_company(tenant_id):
     if request.method == "GET":
         return render_template("companies/form.html", tenant=tenant, sources=[])
 
-    before = {"name": tenant.name, "brand_name": tenant.brand_name}
+    before = {"name": tenant.name, "brand_name": tenant.brand_name, "ui_theme": tenant.ui_theme}
     name = request.form.get("name", "").strip()
     if not name:
         flash("Company name is required.", "warning")
         return redirect(url_for("companies.edit_company", tenant_id=tenant.id))
     tenant.name = name
     tenant.brand_name = request.form.get("brand_name", "").strip() or None
+    # Screen design is optional in the form; unknown values are ignored so a
+    # bad request can never put a company into an undefined design.
+    ui_theme = request.form.get("ui_theme")
+    if ui_theme in Tenant.THEMES:
+        tenant.ui_theme = ui_theme
     audit_service.log_action(
         action="tenant_updated", entity_type="tenant",
         entity_id=tenant.id, tenant_id=tenant.id,
         before_value=before,
-        after_value={"name": tenant.name, "brand_name": tenant.brand_name},
+        after_value={"name": tenant.name, "brand_name": tenant.brand_name, "ui_theme": tenant.ui_theme},
     )
     db.session.commit()
     flash(f"Company '{tenant.name}' updated.", "success")

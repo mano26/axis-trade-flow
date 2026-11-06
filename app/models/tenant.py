@@ -49,6 +49,15 @@ class Tenant(db.Model):
         doc="Whether this tenant's account is active. Inactive tenants "
             "cannot log in or create orders."
     )
+    ui_theme = db.Column(
+        db.String(20),
+        nullable=False,
+        default="classic",
+        server_default="classic",
+        doc="Which screen design this company sees: 'classic' (original AXIS "
+            "look) or 'confirmengine' (new design). Visual only — routes, "
+            "parsing, prints and keypunch output are identical in both."
+    )
 
     # --- Ticket Counter State ---
     # Persistent sequential counter across all days. Increments 1 per order,
@@ -83,6 +92,16 @@ class Tenant(db.Model):
     # --- Relationships ---
     users = db.relationship("User", back_populates="tenant", lazy="dynamic")
     orders = db.relationship("Order", back_populates="tenant", lazy="dynamic")
+
+    # Allowed values for ui_theme, in the order shown in the company form.
+    THEMES = {
+        "classic": "Classic (current AXIS design)",
+        "confirmengine": "ConfirmEngine (new design)",
+    }
+
+    @property
+    def uses_new_design(self) -> bool:
+        return self.ui_theme == "confirmengine"
 
     def __repr__(self):
         return f"<Tenant {self.slug}>"
