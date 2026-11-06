@@ -385,3 +385,30 @@ def test_new_design_add_user_keeps_fields(app, world):
     html = _login(app, "admin@roma.com").get("/admin/users/create").get_data(as_text=True)
     for needle in ('name="display_name"', 'name="email"', 'name="password"', 'type="radio" name="role" value="admin"'):
         assert needle in html, needle
+
+
+
+# -----------------------------------------------------------------------------
+# Header lockup: ConfirmEngine wordmark, company name underneath
+# -----------------------------------------------------------------------------
+
+def test_header_shows_wordmark_with_company_below(app, world):
+    html = _login(app, "admin@roma.com").get("/orders/").get_data(as_text=True)
+    head = html[html.index('class="ce-brand-lockup"'):html.index('class="ce-nav"')]
+    assert 'Confirm<span class="ce-accent">Engine</span>' in head
+    assert head.index("</a>") < head.index('class="ce-brand-company">Roma Ventures</div>')
+
+
+def test_header_company_uses_brand_name_and_escapes(app, world):
+    with app.app_context():
+        t = Tenant.query.filter_by(slug="roma").one()
+        t.brand_name = "R&D <Desk>"
+        db.session.commit()
+    html = _login(app, "admin@roma.com").get("/orders/").get_data(as_text=True)
+    assert 'class="ce-brand-company">R&amp;D &lt;Desk&gt;</div>' in html
+    assert 'Confirm<span class="ce-accent">Engine</span>' in html
+
+
+def test_classic_header_unchanged(app, world):
+    html = _login(app, "admin@classic.com").get("/orders/").get_data(as_text=True)
+    assert "ce-brand-company" not in html
