@@ -1,7 +1,7 @@
 """add ui_theme to tenants
 
 Revision ID: d4e5f6a7b8c9
-Revises: c1d2e3f4a5b6
+Revises: e1f2a3b4c5d6
 Create Date: 2026-11-06
 
 Adds a per-company screen design switch. Every existing company gets
@@ -14,7 +14,7 @@ import sqlalchemy as sa
 
 
 revision = 'd4e5f6a7b8c9'
-down_revision = 'c1d2e3f4a5b6'
+down_revision = 'e1f2a3b4c5d6'
 branch_labels = None
 depends_on = None
 
