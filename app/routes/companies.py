@@ -17,6 +17,7 @@ import re
 from flask import (
     Blueprint, render_template, redirect, url_for, flash, request, abort,
 )
+from app.theming import themed
 from flask_login import login_required, current_user
 
 from app.extensions import db
@@ -89,7 +90,7 @@ def company_list():
         .group_by(User.tenant_id).all()
     )
     return render_template(
-        "companies/list.html", tenants=tenants, user_counts=user_counts,
+        themed("companies/list.html"), tenants=tenants, user_counts=user_counts,
     )
 
 
@@ -198,6 +199,31 @@ def edit_company(tenant_id):
     return redirect(url_for("companies.company_list"))
 
 
+@companies_bp.route("/<int:tenant_id>/design", methods=["POST"])
+def set_design(tenant_id):
+    """Switch one company between the classic and new screen design.
+
+    Super admin only (blueprint guard). Touches nothing but ui_theme.
+    """
+    tenant = db.get_or_404(Tenant, tenant_id)
+    ui_theme = request.form.get("ui_theme")
+    if ui_theme not in Tenant.THEMES:
+        flash("Unknown screen design.", "warning")
+        return redirect(url_for("companies.company_list"))
+    before = tenant.ui_theme
+    if ui_theme != before:
+        tenant.ui_theme = ui_theme
+        audit_service.log_action(
+            action="tenant_updated", entity_type="tenant",
+            entity_id=tenant.id, tenant_id=tenant.id,
+            before_value={"ui_theme": before},
+            after_value={"ui_theme": ui_theme},
+        )
+        db.session.commit()
+        flash(f"{tenant.name} switched to: {Tenant.THEMES[ui_theme]}.", "success")
+    return redirect(url_for("companies.company_list"))
+
+
 @companies_bp.route("/<int:tenant_id>/toggle-active", methods=["POST"])
 def toggle_active(tenant_id):
     tenant = db.get_or_404(Tenant, tenant_id)
@@ -233,7 +259,7 @@ def user_list():
         .all()
     )
     tenants = Tenant.query.order_by(Tenant.name).all()
-    return render_template("companies/users.html", users=users, tenants=tenants)
+    return render_template(themed("companies/users.html"), users=users, tenants=tenants)
 
 
 @companies_bp.route("/users/create", methods=["GET", "POST"])

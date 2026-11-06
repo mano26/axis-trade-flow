@@ -1,0 +1,48 @@
+{% extends "guide.html" %}
+{#- New-design layout: the original guide content (super()) inside an article
+    card, with its contents list as a sidebar. The guide text itself lives
+    only in guide.html, so both designs always show the same guide. -#}
+
+{% set ce_toc = [
+    ("workflow", "Workflow Overview"),
+    ("order-entry", "Order Entry & Ticket Numbering"),
+    ("syntax", "Trade String Syntax"),
+    ("strategies", "Strategy Keywords & Aliases"),
+    ("price-format", "Price Format & Direction"),
+    ("advanced", "Advanced Modifiers"),
+    ("tick-check", "Quarter-Tick Check"),
+    ("generic", "Generic Trade Mode"),
+    ("fills", "Recording Fills & Partial Fills"),
+    ("futures-qty", "CVD & Futures Qty on CP Entry"),
+    ("cards-tickets", "Cards & Tickets"),
+    ("amend", "Amending a Trade"),
+    ("delete-orders", "Correcting & Deleting Orders"),
+    ("modify-balance", "Modifying the Balance"),
+    ("order-log", "Order Log"),
+] %}
+
+{% block content %}
+<div class="ce-stack">
+
+<div class="ce-head">
+    <div>
+        <p class="ce-eyebrow">User guide</p>
+        <h1 class="ce-h1">How it <span class="ce-serif">works</span></h1>
+    </div>
+    <div class="ce-actions"><button type="button" class="btn ce-lg" onclick="window.print()">Print guide</button></div>
+</div>
+
+<div class="ce-guide">
+    <nav class="ce-guide-toc ce-card" aria-label="Guide contents">
+        <span class="ce-guide-toc-title">Contents</span>
+        {% for anchor, label in ce_toc %}
+        <a href="#{{ anchor }}"><span class="ce-guide-num">{{ loop.index }}</span>{{ label }}</a>
+        {% endfor %}
+    </nav>
+    <article class="ce-card ce-guide-body">
+        {{ super() }}
+    </article>
+</div>
+
+</div>
+{% endblock %}

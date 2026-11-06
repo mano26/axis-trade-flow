@@ -1,0 +1,63 @@
+{% extends "auth/user_list.html" %}
+{#- New-design layout. Same forms and endpoints as auth/user_list.html. -#}
+
+{% block content %}
+<div class="ce-stack">
+
+<div class="ce-head">
+    <div>
+        <p class="ce-eyebrow">Admin · {{ active_tenant.name if active_tenant else '' }}</p>
+        <h1 class="ce-h1">Users <span class="ce-serif">&amp; roles</span></h1>
+    </div>
+    <div class="ce-actions"><a href="{{ url_for('admin.create_user') }}" class="btn ce-lg ce-btn-accent">+ Add User</a></div>
+</div>
+
+<section class="ce-card">
+    <div class="ce-card-head">
+        <div><h2 class="ce-card-title">{{ active_tenant.name if active_tenant else 'Company' }} users</h2>
+        <span class="ce-card-sub">{{ users | length }} users · {{ users | selectattr('is_active_user') | list | length }} active</span></div>
+    </div>
+    {% if users %}
+    <div class="ce-table-wrap">
+    <table class="ce-table" style="min-width:1000px;">
+        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Created</th><th>Last Login</th><th style="text-align:right;">Actions</th></tr></thead>
+        <tbody>
+        {% for user in users %}
+            <tr>
+                <td><span class="ce-person"><span class="ce-avatar-sm">{{ ((user.display_name or '?').split() | map('first') | join | upper)[:2] }}</span><span class="strong">{{ user.display_name }}</span></span></td>
+                <td class="muted">{{ user.email }}</td>
+                <td>{{ user.role | capitalize }}{% if user.is_super_admin %} <span class="ce-tag">SUPER</span>{% endif %}</td>
+                <td>{% if user.is_active_user %}<span class="status-badge ce-badge status-filled">Active</span>{% else %}<span class="status-badge ce-badge status-cancelled_duplicate">Inactive</span>{% endif %}</td>
+                <td class="muted">{{ user.created_at.strftime('%b %-d, %Y') if user.created_at else '' }}</td>
+                <td class="muted">{{ user.last_login_at.strftime('%b %-d, %H:%M') if user.last_login_at else 'Never' }}</td>
+                <td style="white-space:nowrap;text-align:right;">
+                    {% if user.id != current_user.id %}
+                        <a href="{{ url_for('admin.reset_password', user_id=user.id) }}">Reset password</a>
+                        &nbsp;&nbsp;
+                        {% if user.is_active_user %}
+                        <form method="POST" action="{{ url_for('admin.deactivate_user', user_id=user.id) }}" style="display:inline">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="ce-link-btn danger" onclick="return confirm('Deactivate {{ user.display_name }}?')">Deactivate</button>
+                        </form>
+                        {% else %}
+                        <form method="POST" action="{{ url_for('admin.reactivate_user', user_id=user.id) }}" style="display:inline">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="ce-link-btn">Reactivate</button>
+                        </form>
+                        {% endif %}
+                    {% else %}
+                        <span class="form-help">(you)</span>
+                    {% endif %}
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="empty-state">No users found.</p>
+    {% endif %}
+</section>
+
+</div>
+{% endblock %}

@@ -1,0 +1,113 @@
+{% extends "reports/order_log.html" %}
+{#- New-design layout. Filters, bulk delete, IDs and the page script are
+    inherited unchanged from reports/order_log.html. -#}
+
+{% block content %}
+<div class="ce-stack">
+
+<div class="ce-head">
+    <div>
+        <p class="ce-eyebrow">History across any date range · {{ orders | length }} orders loaded</p>
+        <h1 class="ce-h1">Order <span class="ce-serif">log</span></h1>
+    </div>
+</div>
+
+<section class="ce-card">
+    <form method="GET" action="{{ url_for('reports.order_log') }}" class="ce-fields">
+        <div class="ce-field ce-fixed"><label for="log-from">From</label>
+            <input type="date" id="log-from" name="date_from" value="{{ date_from.isoformat() }}"></div>
+        <div class="ce-field ce-fixed"><label for="log-to">To</label>
+            <input type="date" id="log-to" name="date_to" value="{{ date_to.isoformat() }}"></div>
+        <button type="submit" class="btn btn-primary ce-lg">Load</button>
+        <a href="{{ url_for('reports.order_log') }}" class="btn ce-lg">Today</a>
+    </form>
+    <div class="ce-divider"></div>
+    <div class="ce-fields">
+        <div class="ce-field"><label for="f-ticket">Ticket #</label><input type="text" id="f-ticket" oninput="applyFilters()" class="filter-input" placeholder="e.g. 42"></div>
+        <div class="ce-field"><label for="f-strategy">Strategy</label><input type="text" id="f-strategy" oninput="applyFilters()" class="filter-input text-upper" placeholder="CS, FLY…"></div>
+        <div class="ce-field"><label for="f-house">House</label><input type="text" id="f-house" oninput="applyFilters()" class="filter-input text-upper" placeholder="684"></div>
+        <div class="ce-field"><label for="f-account">Account</label><input type="text" id="f-account" oninput="applyFilters()" class="filter-input text-upper" placeholder="TJM00684"></div>
+        <div class="ce-field"><label for="f-status">Status</label><input type="text" id="f-status" oninput="applyFilters()" class="filter-input text-upper" placeholder="filled…"></div>
+        <div class="ce-field"><label for="f-broker">Filling Broker</label><input type="text" id="f-broker" oninput="applyFilters()" class="filter-input text-upper" placeholder="GKX"></div>
+        <div class="ce-field"><label for="f-cp">Counterparty</label><input type="text" id="f-cp" oninput="applyFilters()" class="filter-input text-upper" placeholder="MANO"></div>
+        <div class="ce-field" style="flex-basis:180px;"><label for="f-search">Search (strike, expiry…)</label><input type="text" id="f-search" oninput="applyFilters()" class="filter-input text-upper" placeholder="SFRK6, 96.25…"></div>
+        <button type="button" class="btn ce-lg" onclick="clearFilters()">Clear</button>
+    </div>
+    <div id="filter-count" class="form-help"></div>
+</section>
+
+{% if orders %}
+<form method="POST" action="{{ url_for('orders.bulk_delete') }}" id="bulk-delete-form" class="ce-card">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="ce-card-head">
+        <div><h2 class="ce-card-title">Orders</h2><span class="ce-card-sub">{{ date_from.strftime('%-d %b %Y') }}{% if date_to != date_from %} – {{ date_to.strftime('%-d %b %Y') }}{% endif %}</span></div>
+        {% if current_user.is_admin() %}
+        <div class="ce-actions">
+            <span id="selected-count" class="form-help"></span>
+            <button type="button" class="btn btn-danger" onclick="confirmBulkDelete()">Delete Selected</button>
+        </div>
+        {% endif %}
+    </div>
+    <div class="ce-table-wrap">
+    <table class="ce-table" id="log-table" style="min-width:1240px;">
+        <thead>
+            <tr>
+                {% if current_user.is_admin() %}
+                <th style="width:32px;"><input type="checkbox" id="select-all" title="Select all" aria-label="Select all" onchange="toggleAll(this)" style="cursor:pointer;"></th>
+                {% endif %}
+                <th>Ticket</th><th>Date</th><th>Time In</th><th>Time Out</th><th>B/S</th><th>Strategy</th>
+                <th>House</th><th>Account</th><th>Trade String</th><th>Status</th><th style="text-align:right;">Links</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for order in orders %}
+            {% set brokers = [] %}{% set cps = [] %}
+            {% for fill in order.fills %}
+              {% for cp in fill.counterparties %}
+                {% if cp.broker and cp.broker.upper() not in brokers %}{% set _ = brokers.append(cp.broker.upper()) %}{% endif %}
+                {% if cp.symbol and cp.symbol.upper() not in cps %}{% set _ = cps.append(cp.symbol.upper()) %}{% endif %}
+              {% endfor %}
+            {% endfor %}
+            <tr class="clickable-row log-row"
+                onclick="rowClick(event, '{{ url_for('orders.detail', order_id=order.id) }}')"
+                data-ticket="{{ order.ticket_display }}"
+                data-strategy="{{ order.strategy | upper }}"
+                data-house="{{ (order.house or '') | upper }}"
+                data-account="{{ (order.account or '') | upper }}"
+                data-status="{{ order.status | upper }}{% if order.status == 'partial_fill' %} OPEN{% endif %}"
+                data-brokers="{{ brokers | join(',') }}"
+                data-cps="{{ cps | join(',') }}"
+                data-search="{{ order.raw_input | upper }}">
+                {% if current_user.is_admin() %}
+                <td onclick="event.stopPropagation()">
+                    <input type="checkbox" name="order_ids" value="{{ order.id }}" class="order-cb" aria-label="Select ticket {{ order.ticket_display }}" onchange="updateCount()" style="cursor:pointer;">
+                </td>
+                {% endif %}
+                <td class="strong">#{{ order.ticket_display }}</td>
+                <td class="muted">{{ order.trade_date.strftime('%b %-d') }}</td>
+                <td class="muted">{{ order.time_in  | chicago_time if order.time_in  else '' }}</td>
+                <td class="muted">{{ order.time_out | chicago_time if order.time_out else '—' }}</td>
+                <td><span class="ce-side-pill ce-side-{{ order.direction }}">{{ order.direction }}</span></td>
+                <td>{{ order.strategy | upper | replace('_', ' ') }}{% if order.is_generic %} (GEN){% endif %}</td>
+                <td class="muted">{{ order.house or '' }}</td>
+                <td class="muted">{{ order.account or '' }}</td>
+                <td><span class="ce-mono">{{ order.raw_input }}</span></td>
+                <td><span class="status-badge ce-badge status-{{ order.status }}">{{ order.status | replace('_',' ') | capitalize }}</span></td>
+                <td onclick="event.stopPropagation()" style="white-space:nowrap;text-align:right;">
+                    {% if order.status in ('filled','partial_fill','partial_cancelled','amended') %}
+                    <a href="{{ url_for('tickets.generate', order_id=order.id) }}">Ticket</a>
+                    &nbsp;&nbsp;<a href="{{ url_for('cards.generate', order_id=order.id) }}">Cards</a>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</form>
+{% else %}
+<section class="ce-card"><p class="empty-state">No orders found for the selected date range.</p></section>
+{% endif %}
+
+</div>
+{% endblock %}

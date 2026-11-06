@@ -4,6 +4,7 @@
 # =============================================================================
 from datetime import date, timedelta
 from flask import Blueprint, render_template, request
+from app.theming import themed
 from flask_login import login_required, current_user
 from app.tenancy import active_tenant_id
 from sqlalchemy import func
@@ -61,7 +62,7 @@ def order_log():
     orders = query.all()
 
     return render_template(
-        "reports/order_log.html",
+        themed("reports/order_log.html"),
         orders=orders,
         date_from=date_from,
         date_to=date_to,
@@ -190,7 +191,7 @@ def eod_summary():
         })
 
     return render_template(
-        "reports/eod_summary.html",
+        themed("reports/eod_summary.html"),
         report_date       = report_date,
         total_orders      = len(all_orders),
         filled_count      = sum(1 for o in all_orders if o.status in TRADED),

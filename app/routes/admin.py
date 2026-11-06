@@ -6,6 +6,7 @@
 # =============================================================================
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request
+from app.theming import themed
 from flask_login import login_required, current_user
 from app.tenancy import active_tenant_id
 from app.extensions import db
@@ -31,7 +32,7 @@ def require_admin():
 @admin_bp.route("/users")
 def user_list():
     users = User.query.filter_by(tenant_id=active_tenant_id()).all()
-    return render_template("auth/user_list.html", users=users)
+    return render_template(themed("auth/user_list.html"), users=users)
 
 
 @admin_bp.route("/users/create", methods=["GET", "POST"])
@@ -143,7 +144,7 @@ def lookup_list():
             .all()
         )
     return render_template(
-        "admin/lookups.html",
+        themed("admin/lookups.html"),
         lookups=lookups,
         lookup_types=LookupType.ALL,
         lookup_labels=LookupType.LABELS,

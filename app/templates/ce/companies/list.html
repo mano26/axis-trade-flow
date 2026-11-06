@@ -1,0 +1,76 @@
+{% extends "companies/list.html" %}
+{#- New-design layout. Same actions as companies/list.html, plus a visible
+    Screen design switch per company (companies.set_design). -#}
+
+{% block content %}
+<div class="ce-stack">
+
+<div class="ce-head">
+    <div>
+        <p class="ce-eyebrow">Super admin · {{ tenants | length }} companies</p>
+        <h1 class="ce-h1"><span class="ce-serif">Companies</span></h1>
+    </div>
+    <div class="ce-actions"><a href="{{ url_for('companies.create_company') }}" class="btn ce-lg ce-btn-accent">+ Add Company</a></div>
+</div>
+
+<section class="ce-grid-cards" style="grid-template-columns:repeat(auto-fill,minmax(380px,1fr));">
+{% for t in tenants %}
+    {% set is_view = active_tenant and t.id == active_tenant.id %}
+    <div class="ce-card" style="{% if is_view %}border:2px solid var(--ce-cobalt);{% endif %}">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+            <div style="display:flex;align-items:center;gap:14px;min-width:0;">
+                <span style="width:48px;height:48px;border-radius:14px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;{% if is_view %}background:var(--ce-ink);color:#fff;{% else %}background:#F1F3F6;color:var(--ce-ink);{% endif %}">{{ t.name[:2] | upper }}</span>
+                <div style="display:flex;flex-direction:column;gap:2px;min-width:0;">
+                    <span style="font-size:18px;font-weight:600;">{{ t.name }}{% if t.id == current_user.tenant_id %} <span class="form-help">(home)</span>{% endif %}</span>
+                    <span class="ce-mono" style="color:var(--text-muted);text-transform:none;">/{{ t.slug }}</span>
+                </div>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
+                {% if is_view %}<span class="status-badge ce-badge" style="background:var(--ce-cobalt);color:#fff;">Active view</span>{% endif %}
+                {% if t.is_active %}<span class="status-badge ce-badge status-filled">Active</span>{% else %}<span class="status-badge ce-badge status-cancelled">Suspended</span>{% endif %}
+            </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:14px 16px;border-radius:14px;background:#F7F8FA;">
+            <div style="display:flex;flex-direction:column;gap:2px;min-width:0;"><span class="form-help">Brand</span><span style="font-size:13.5px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ t.brand_name or '—' }}</span></div>
+            <div style="display:flex;flex-direction:column;gap:2px;"><span class="form-help">Users</span><span style="font-family:var(--ce-serif);font-size:26px;line-height:1;">{{ user_counts.get(t.id, 0) }}</span></div>
+            <div style="display:flex;flex-direction:column;gap:2px;"><span class="form-help">Created</span><span style="font-size:13.5px;font-weight:500;">{{ t.created_at.strftime('%b %Y') if t.created_at else '' }}</span></div>
+        </div>
+
+        <form method="POST" action="{{ url_for('companies.set_design', tenant_id=t.id) }}" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <span style="font-size:13px;font-weight:500;color:var(--ce-sub);">Screen design</span>
+            <span class="ce-seg" role="group" aria-label="Screen design for {{ t.name }}">
+                <button type="submit" name="ui_theme" value="classic" class="{{ 'is-on' if t.ui_theme == 'classic' else '' }}" aria-pressed="{{ 'true' if t.ui_theme == 'classic' else 'false' }}">Classic</button>
+                <button type="submit" name="ui_theme" value="confirmengine" class="{{ 'is-on' if t.ui_theme == 'confirmengine' else '' }}" aria-pressed="{{ 'true' if t.ui_theme == 'confirmengine' else 'false' }}">ConfirmEngine</button>
+            </span>
+        </form>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+            <span style="display:flex;gap:16px;align-items:center;">
+                <a href="{{ url_for('companies.edit_company', tenant_id=t.id) }}">Edit company</a>
+                {% if t.id != current_user.tenant_id %}
+                <form method="POST" action="{{ url_for('companies.toggle_active', tenant_id=t.id) }}" style="display:inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="ce-link-btn {% if t.is_active %}danger{% endif %}"
+                            onclick="return confirm('{{ 'Suspend' if t.is_active else 'Reactivate' }} {{ t.name }}?')">{{ 'Suspend' if t.is_active else 'Reactivate' }}</button>
+                </form>
+                {% endif %}
+            </span>
+            {% if is_view %}
+            <span class="form-help">You are here</span>
+            {% else %}
+            <form method="POST" action="{{ url_for('companies.switch') }}" style="display:inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="tenant_id" value="{{ t.id }}">
+                <button type="submit" class="btn btn-primary">Switch to</button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+{% endfor %}
+</section>
+<p class="form-help" style="margin:0 4px;">To manage a company's users, brokers or other lookups, switch to it and use Users / Lookups.</p>
+
+</div>
+{% endblock %}

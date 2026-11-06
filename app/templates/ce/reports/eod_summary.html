@@ -1,0 +1,168 @@
+{% extends "reports/eod_summary.html" %}
+{#- New-design layout. Filters, IDs, data attributes and the page script are
+    inherited unchanged from reports/eod_summary.html. -#}
+
+{% block content %}
+<div class="ce-stack">
+
+<div class="ce-head">
+    <div>
+        <p class="ce-eyebrow">{{ report_date.strftime('%A, %-d %B %Y') }}</p>
+        <h1 class="ce-h1">End-of-day <span class="ce-serif">summary</span></h1>
+    </div>
+</div>
+
+<form method="GET" action="{{ url_for('reports.eod_summary') }}" class="ce-card ce-card-row">
+    <div class="ce-field ce-fixed">
+        <label for="eod-date">Date</label>
+        <input type="date" id="eod-date" name="date" value="{{ report_date.isoformat() }}">
+    </div>
+    <button type="submit" class="btn btn-primary ce-lg">View</button>
+    <div class="ce-actions" style="margin-left:auto;">
+        <button type="button" class="btn ce-lg" onclick="window.print()">Print</button>
+    </div>
+</form>
+
+<section aria-label="Summary" class="ce-kpis">
+    <div class="ce-kpi">
+        <span class="ce-kpi-label">Total Orders</span>
+        <span class="ce-kpi-val">{{ "{:,}".format(total_orders) }}</span>
+        <span class="ce-kpi-note">{{ total_orders - filled_count }} not traded (open or cancelled)</span>
+    </div>
+    <div class="ce-kpi">
+        <span class="ce-kpi-label">Filled Orders</span>
+        <span class="ce-kpi-val">{{ "{:,}".format(filled_count) }}</span>
+        <span class="ce-kpi-note">{% if total_orders %}{{ ((filled_count / total_orders) * 100) | round | int }}% fill rate{% else %}No orders{% endif %}</span>
+    </div>
+    <div class="ce-kpi">
+        <span class="ce-kpi-label">Options Volume</span>
+        <span class="ce-kpi-val">{{ "{:,}".format(total_options_vol) }}</span>
+        <span class="ce-kpi-note">contracts</span>
+    </div>
+    <div class="ce-kpi">
+        <span class="ce-kpi-label">Futures Volume</span>
+        <span class="ce-kpi-val">{{ "{:,}".format(total_futures_vol) }}</span>
+        <span class="ce-kpi-note">CVD hedges</span>
+    </div>
+    <div class="ce-kpi ce-kpi-dark">
+        <span class="ce-kpi-label">Combined Volume</span>
+        <span class="ce-kpi-val">{{ "{:,}".format(total_combined) }}</span>
+        <span class="ce-kpi-note">options + futures</span>
+    </div>
+</section>
+<p class="form-help" style="margin:-8px 4px 0;">Volumes include filled and partial-fill orders only. Open and cancelled orders are excluded.</p>
+
+{% if strategy_counts %}
+{% set max_vol = (strategy_counts.values() | map(attribute='volume') | max) or 1 %}
+<section class="ce-card">
+    <div class="ce-card-head">
+        <div><h2 class="ce-card-title">By Strategy</h2><span class="ce-card-sub">Orders and volume by strategy</span></div>
+    </div>
+    <div class="ce-table-wrap">
+    <table class="ce-table" style="min-width:640px;">
+        <thead><tr><th>Strategy</th><th class="num">Orders</th><th class="num">Options Volume</th><th style="width:45%;">Share</th></tr></thead>
+        <tbody>
+        {% for strategy, data in strategy_counts.items() | sort(attribute='1.volume', reverse=True) %}
+            <tr>
+                <td class="strong">{{ strategy | upper | replace('_', ' ') }}</td>
+                <td class="num muted">{{ data.count }}</td>
+                <td class="num muted">{{ "{:,}".format(data.volume) }}</td>
+                <td><div class="ce-bar{% if loop.index <= 2 %} ce-bar-strong{% endif %}" style="width: {{ (data.volume / max_vol * 100) | round(1) }}%;"></div></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</section>
+{% endif %}
+
+{% if breakdown %}
+<section class="ce-card">
+    <div class="ce-card-head">
+        <div><h2 class="ce-card-title">Breakdown</h2><span class="ce-card-sub">Every order for the day, with brokers and volume</span></div>
+    </div>
+
+    <div class="ce-fields">
+        <div class="ce-field"><label for="f-status">Status</label><input type="text" id="f-status" placeholder="open, filled…" oninput="applyFilters()" class="filter-input text-upper"></div>
+        <div class="ce-field"><label for="f-ticket">Ticket #</label><input type="text" id="f-ticket" placeholder="e.g. 42" oninput="applyFilters()" class="filter-input"></div>
+        <div class="ce-field"><label for="f-house">House</label><input type="text" id="f-house" placeholder="684" oninput="applyFilters()" class="filter-input text-upper"></div>
+        <div class="ce-field"><label for="f-account">Account</label><input type="text" id="f-account" placeholder="TJM00684" oninput="applyFilters()" class="filter-input text-upper"></div>
+        <div class="ce-field"><label for="f-broker">Filling Broker</label><input type="text" id="f-broker" placeholder="GKX" oninput="applyFilters()" class="filter-input text-upper"></div>
+        <div class="ce-field"><label for="f-cp">Counterparty</label><input type="text" id="f-cp" placeholder="MANO" oninput="applyFilters()" class="filter-input text-upper"></div>
+        <div class="ce-field"><label for="f-strategy">Strategy</label><input type="text" id="f-strategy" placeholder="CS, FLY…" oninput="applyFilters()" class="filter-input text-upper"></div>
+        <div class="ce-field" style="flex-basis:180px;"><label for="f-search">Search (strike, expiry…)</label><input type="text" id="f-search" placeholder="96.25, SFRK6" oninput="applyFilters()" class="filter-input text-upper"></div>
+        <button type="button" class="btn ce-lg" onclick="clearFilters()">Clear</button>
+    </div>
+
+    <div id="live-totals" class="ce-totals">
+        <span>Visible options <b id="lt-opts">{{ total_options_vol }}</b></span>
+        <span>Visible futures <b id="lt-futs">{{ total_futures_vol }}</b></span>
+        <span>Combined <b id="lt-comb">{{ total_combined }}</b></span>
+        <span id="lt-note" style="margin-left:auto;"></span>
+    </div>
+
+    <div class="ce-table-wrap">
+    <table class="ce-table" id="breakdown-table" style="min-width:1240px;">
+        <thead>
+            <tr id="order-header">
+                <th>Ticket</th><th>Time In</th><th>Time Out</th><th>B/S</th><th>Strategy</th><th>Status</th>
+                <th>House</th><th>Account</th><th>Broker(s)</th><th class="num">Options</th><th class="num">Futures</th><th>Trade String</th>
+            </tr>
+            <tr id="fill-header" style="display:none;">
+                <th>Ticket</th><th>Time In</th><th>Time Out</th><th>B/S</th><th>Strategy</th><th>House</th>
+                <th>Account</th><th>Filling Broker</th><th>Counterparty</th><th>CP House</th><th>Bracket</th><th class="num">Qty</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for row in breakdown %}
+        {% set o = row.order %}
+        <tr class="order-row clickable-row"
+            onclick="window.location='{{ url_for('orders.detail', order_id=o.id) }}'"
+            data-ticket="{{ o.ticket_display }}" data-status="{{ o.status }}"
+            data-house="{{ o.house or '' }}" data-account="{{ o.account or '' }}"
+            data-brokers="{{ row.brokers }}" data-cps="{{ row.cps }}"
+            data-opts="{{ row.opts_vol }}" data-futs="{{ row.fut_vol }}"
+            data-strategy="{{ o.strategy | upper }}" data-search="{{ o.raw_input | upper }}">
+            <td class="strong">#{{ o.ticket_display }}</td>
+            <td class="muted">{{ o.time_in | chicago_time if o.time_in else '' }}</td>
+            <td class="muted">{{ o.time_out | chicago_time if o.time_out else '' }}</td>
+            <td><span class="ce-side-pill ce-side-{{ o.direction }}">{{ o.direction }}</span></td>
+            <td>{{ o.strategy | upper | replace('_', ' ') }}{% if o.is_generic %} <span style="color:#9A3F0E;">(G)</span>{% endif %}</td>
+            <td><span class="status-badge ce-badge status-{{ o.status }}">{{ o.status | replace('_',' ') | capitalize }}</span></td>
+            <td class="muted">{{ o.house or '' }}</td>
+            <td class="muted">{{ o.account or '' }}</td>
+            <td>{{ row.brokers }}</td>
+            <td class="num muted">{{ "{:,}".format(row.opts_vol) if row.opts_vol else '—' }}</td>
+            <td class="num muted">{{ "{:,}".format(row.fut_vol) if row.fut_vol else '—' }}</td>
+            <td><span class="ce-mono">{{ o.raw_input }}</span></td>
+        </tr>
+        {% for cp in row.cp_rows %}
+        <tr class="fill-row clickable-row" style="display:none;"
+            data-ticket="{{ o.ticket_display }}" data-status="{{ o.status }}"
+            data-house="{{ o.house or '' }}" data-account="{{ o.account or '' }}"
+            data-broker="{{ cp.broker }}" data-cp="{{ cp.cp }}"
+            data-opts="{{ cp.fill_qty }}" data-futs="0"
+            onclick="window.location='{{ url_for('orders.detail', order_id=o.id) }}'">
+            <td class="strong">#{{ o.ticket_display }}</td>
+            <td class="muted">{{ o.time_in | chicago_time if o.time_in else '' }}</td>
+            <td class="muted">{{ o.time_out | chicago_time if o.time_out else '' }}</td>
+            <td><span class="ce-side-pill ce-side-{{ o.direction }}">{{ o.direction }}</span></td>
+            <td>{{ o.strategy | upper | replace('_', ' ') }}</td>
+            <td class="muted">{{ o.house or '' }}</td>
+            <td class="muted">{{ o.account or '' }}</td>
+            <td>{{ cp.broker }}</td>
+            <td>{{ cp.cp }}</td>
+            <td class="muted">{{ cp.cp_house }}</td>
+            <td class="muted">{{ cp.bracket }}</td>
+            <td class="num muted">{{ cp.fill_qty }}</td>
+        </tr>
+        {% endfor %}
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</section>
+{% endif %}
+
+</div>
+{% endblock %}

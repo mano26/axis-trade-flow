@@ -1,0 +1,71 @@
+{% extends "admin/lookups.html" %}
+{#- New-design layout. Same forms and endpoints as admin/lookups.html. -#}
+
+{% block content %}
+<div class="ce-stack">
+
+<div class="ce-head">
+    <div>
+        <p class="ce-eyebrow">Admin · {{ lookup_types | length }} lists</p>
+        <h1 class="ce-h1">Manage <span class="ce-serif">dropdown lists</span></h1>
+    </div>
+</div>
+
+<section class="ce-card">
+    <div class="ce-card-head">
+        <div><h2 class="ce-card-title">Add New Value</h2><span class="ce-card-sub">Values are saved in upper case. Separate several with commas.</span></div>
+    </div>
+    <form method="POST" action="{{ url_for('admin.lookup_add') }}" class="ce-fields">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="ce-field" style="flex:0 1 240px;">
+            <label for="lookup-type">List</label>
+            <select name="lookup_type" id="lookup-type">
+                {% for lt in lookup_types %}<option value="{{ lt }}">{{ lookup_labels[lt] }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="ce-field" style="flex:3 1 360px;">
+            <label for="lookup-value">Value</label>
+            <input type="text" name="value" id="lookup-value" class="text-upper" placeholder="Value or comma-separated list (e.g., GFI, ICAP, BGC)">
+        </div>
+        <button type="submit" class="btn ce-lg ce-btn-accent">+ Add</button>
+    </form>
+</section>
+
+<section class="ce-grid-cards">
+{% for lt in lookup_types %}
+    {% set vals = lookups[lt] %}
+    <div class="ce-card" style="gap:6px;">
+        <div class="ce-card-head" style="padding-bottom:6px;">
+            <h2 class="ce-card-title" style="font-size:16px;">{{ lookup_labels[lt] }}</h2>
+            <span class="form-help">{{ vals | selectattr('is_active') | list | length }} active</span>
+        </div>
+        {% if vals %}
+            {% for lv in vals %}
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;{% if not loop.last %}border-bottom:1px solid var(--ce-line);{% endif %}">
+                <span class="ce-mono" style="font-size:14px;font-weight:500;{% if not lv.is_active %}color:#8E96A6;{% endif %}">{{ lv.value }}</span>
+                <span style="display:flex;align-items:center;gap:10px;">
+                    {% if lv.is_active %}
+                    <span class="status-badge ce-badge status-filled">Active</span>
+                    <form method="POST" action="{{ url_for('admin.lookup_deactivate', lookup_id=lv.id) }}" style="display:inline">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="ce-link-btn danger" style="font-size:13px;">Deactivate</button>
+                    </form>
+                    {% else %}
+                    <span class="status-badge ce-badge status-cancelled_duplicate">Inactive</span>
+                    <form method="POST" action="{{ url_for('admin.lookup_activate', lookup_id=lv.id) }}" style="display:inline">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="ce-link-btn" style="font-size:13px;">Reactivate</button>
+                    </form>
+                    {% endif %}
+                </span>
+            </div>
+            {% endfor %}
+        {% else %}
+            <p class="empty-state" style="padding:4px 0;">No values yet.</p>
+        {% endif %}
+    </div>
+{% endfor %}
+</section>
+
+</div>
+{% endblock %}

@@ -247,3 +247,66 @@ def test_ticket_title_is_centred_by_layout():
         compact = css.replace(" ", "")
         assert "grid-template-columns:minmax(0,1fr)minmax(0,1fr)autominmax(0,1fr)minmax(0,1fr)" in compact
         assert "grid-column:3" in compact
+
+
+# -----------------------------------------------------------------------------
+# New-design page layouts (templates/ce/…) and the Companies design switch
+# -----------------------------------------------------------------------------
+
+LAYOUT_PAGES = {
+    "/orders/": 'id="order-form"',
+    "/reports/order-log": 'id="log-table"',
+    "/reports/eod-summary": "End-of-day",
+    "/admin/lookups": "dropdown lists",
+    "/admin/users": "&amp; roles",
+}
+
+
+def test_new_design_company_gets_new_page_layouts(app, world):
+    c = _login(app, "admin@roma.com")
+    for path, marker in LAYOUT_PAGES.items():
+        html = c.get(path).get_data(as_text=True)
+        assert 'class="ce-stack"' in html, path
+        assert marker in html, path
+
+
+def test_classic_company_never_gets_new_page_layouts(app, world):
+    c = _login(app, "admin@classic.com")
+    for path in LAYOUT_PAGES:
+        assert 'class="ce-stack"' not in c.get(path).get_data(as_text=True), path
+
+
+def test_new_orders_page_keeps_every_form_field(app, world):
+    """Field names / IDs the order form, its script and the server depend on."""
+    html = _login(app, "admin@roma.com").get("/orders/").get_data(as_text=True)
+    for needle in ('name="trade_string"', 'id="trade_string"', 'name="house"', 'name="account"',
+                   'name="ticket_override"', 'id="is_generic_hidden"', 'id="quarter_tick_hidden"',
+                   'id="generic_checkbox"', 'id="order-form"', 'name="csrf_token"',
+                   'id="f-ticket"', 'id="f-status"', 'function filterOrders()'):
+        assert needle in html, needle
+
+
+def test_super_admin_design_switch(app, world):
+    sup = _login(app, "super@x.com")
+    sup.post("/companies/switch", data={"tenant_id": world["modern"]})
+    html = sup.get("/companies/").get_data(as_text=True)
+    assert "Screen design" in html and f"/companies/{world['classic']}/design" in html
+
+    with app.app_context():
+        db.session.get(Tenant, world["classic"]).brand_name = "Keep Me"
+        db.session.commit()
+    sup.post(f"/companies/{world['classic']}/design", data={"ui_theme": "confirmengine"})
+    with app.app_context():
+        t = db.session.get(Tenant, world["classic"])
+        assert t.ui_theme == "confirmengine" and t.brand_name == "Keep Me"   # nothing else touched
+    sup.post(f"/companies/{world['classic']}/design", data={"ui_theme": "bogus"})
+    with app.app_context():
+        assert db.session.get(Tenant, world["classic"]).ui_theme == "confirmengine"
+
+
+def test_regular_admin_cannot_use_design_switch(app, world):
+    c = _login(app, "admin@classic.com")
+    r = c.post(f"/companies/{world['classic']}/design", data={"ui_theme": "confirmengine"})
+    assert r.status_code == 404
+    with app.app_context():
+        assert db.session.get(Tenant, world["classic"]).ui_theme == "classic"

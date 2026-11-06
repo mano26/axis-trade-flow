@@ -1,0 +1,122 @@
+{% extends "orders/index.html" %}
+{#- New-design layout. Every form field name, element ID and the page script
+    (house/account check, quarter-tick prompt, generic toggle, filters) are
+    inherited unchanged from orders/index.html. -#}
+
+{% block content %}
+<div class="ce-stack">
+
+<div class="ce-head">
+    <div>
+        <p class="ce-eyebrow">{{ today.strftime('%A, %-d %B %Y') }}</p>
+        <h1 class="ce-h1">Orders <span class="ce-serif">today</span></h1>
+    </div>
+</div>
+
+<section class="ce-card trade-entry-section">
+    <div class="ce-card-head">
+        <div><h2 class="ce-card-title">Trade Entry</h2><span class="ce-card-sub">Type a trade string. Ticket numbers auto-increment unless you set one.</span></div>
+    </div>
+    <form method="POST" action="{{ url_for('orders.create') }}" class="trade-entry-form" id="order-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="is_generic" id="is_generic_hidden" value="0">
+        <input type="hidden" name="quarter_tick_confirmed" id="quarter_tick_hidden" value="0">
+        <div class="ce-fields">
+            <div class="ce-field" style="flex:0 0 110px;">
+                <label for="ticket_override">Ticket #</label>
+                <input type="text" id="ticket_override" name="ticket_override" placeholder="auto" maxlength="4"
+                       title="Leave blank to auto-increment. Enter a number to force this order's ticket number (applies once).">
+            </div>
+            <div class="ce-field" style="flex:3 1 420px;">
+                <label for="trade_string">Trade string</label>
+                <input type="text" name="trade_string" id="trade_string" class="trade-input"
+                       placeholder="Enter trade string (e.g., SFRH6 C 96.00 96.25 CS 4/500)"
+                       autofocus autocomplete="off" spellcheck="false">
+            </div>
+            <div class="ce-field" style="flex:1 1 130px;">
+                <label for="entry-house">House</label>
+                {% if lookups.house %}
+                <select name="house" id="entry-house" class="text-upper">
+                    <option value="">-- Select --</option>
+                    {% for lv in lookups.house %}<option value="{{ lv.value }}">{{ lv.value }}</option>{% endfor %}
+                </select>
+                {% else %}
+                <input type="text" name="house" id="entry-house" class="text-upper" placeholder="House">
+                {% endif %}
+            </div>
+            <div class="ce-field" style="flex:1 1 150px;">
+                <label for="entry-account">Account</label>
+                {% if lookups.account %}
+                <select name="account" id="entry-account" class="text-upper">
+                    <option value="">-- Select --</option>
+                    {% for lv in lookups.account %}<option value="{{ lv.value }}">{{ lv.value }}</option>{% endfor %}
+                </select>
+                {% else %}
+                <input type="text" name="account" id="entry-account" class="text-upper" placeholder="Account">
+                {% endif %}
+            </div>
+            <button type="submit" class="btn btn-primary ce-submit">Submit Order</button>
+        </div>
+        <label class="checkbox-label" style="margin-top:12px;">
+            <input type="checkbox" id="generic_checkbox" onchange="toggleGeneric()">
+            <span>Generic entry (manual legs)</span>
+        </label>
+    </form>
+</section>
+
+<section class="ce-card order-blotter">
+    {% set n_open = orders | selectattr('status', 'equalto', 'open') | list | length %}
+    {% set n_partial = orders | selectattr('status', 'equalto', 'partial_fill') | list | length %}
+    {% set n_filled = orders | selectattr('status', 'equalto', 'filled') | list | length %}
+    <div class="ce-card-head">
+        <div><h2 class="ce-card-title">Today's Orders</h2><span class="ce-card-sub">{{ orders | length }} order{{ '' if orders | length == 1 else 's' }} · {{ today.strftime('%A, %-d %B %Y') }}</span></div>
+        <div class="ce-actions">
+            <span class="ce-count">Open <b>{{ n_open }}</b></span>
+            <span class="ce-count">Partial <b>{{ n_partial }}</b></span>
+            <span class="ce-count">Filled <b>{{ n_filled }}</b></span>
+            <span class="ce-count">Other <b>{{ orders | length - n_open - n_partial - n_filled }}</b></span>
+        </div>
+    </div>
+    <div class="ce-fields">
+        <div class="ce-field"><label for="f-ticket">Ticket #</label><input type="text" id="f-ticket" oninput="filterOrders()" placeholder="Ticket #" class="filter-input"></div>
+        <div class="ce-field"><label for="f-strategy">Strategy</label><input type="text" id="f-strategy" oninput="filterOrders()" placeholder="Strategy" class="filter-input text-upper"></div>
+        <div class="ce-field"><label for="f-house">House</label><input type="text" id="f-house" oninput="filterOrders()" placeholder="House" class="filter-input text-upper"></div>
+        <div class="ce-field"><label for="f-account">Account</label><input type="text" id="f-account" oninput="filterOrders()" placeholder="Account" class="filter-input text-upper"></div>
+        <div class="ce-field"><label for="f-status">Status</label><input type="text" id="f-status" oninput="filterOrders()" placeholder="Status" class="filter-input text-upper"></div>
+        <button type="button" class="btn ce-lg" onclick="clearOrderFilters()">Clear</button>
+    </div>
+    {% if orders %}
+    <div class="ce-table-wrap">
+    <table class="ce-table blotter-table" id="orders-table" style="min-width:900px;">
+        <thead>
+            <tr><th>Ticket</th><th>B/S</th><th>Strategy</th><th>House</th><th>Trade String</th><th>Status</th><th style="text-align:right;">Actions</th></tr>
+        </thead>
+        <tbody>
+            {% for order in orders %}
+            <tr class="clickable-row order-blotter-row"
+                onclick="window.location='{{ url_for('orders.detail', order_id=order.id) }}'"
+                data-ticket="{{ order.ticket_display }}"
+                data-strategy="{{ order.strategy | upper }}{% if order.is_generic %} GEN{% endif %}"
+                data-house="{{ (order.house or '') | upper }}"
+                data-account="{{ (order.account or '') | upper }}"
+                data-status="{{ order.status | upper }}{% if order.status == 'partial_fill' %} OPEN{% endif %}">
+                <td class="strong">#{{ order.ticket_display }}</td>
+                <td><span class="ce-side-pill ce-side-{{ order.direction }}">{{ order.direction }}</span></td>
+                <td>{{ order.strategy | upper | replace('_', ' ') }}{% if order.is_generic %} (GEN){% endif %}</td>
+                <td class="muted">{{ order.house or '—' }}</td>
+                <td><span class="ce-mono">{{ order.raw_input }}</span></td>
+                <td><span class="status-badge ce-badge status-{{ order.status }}">{{ order.status | replace('_', ' ') | capitalize }}</span></td>
+                <td style="text-align:right;"><a href="{{ url_for('orders.detail', order_id=order.id) }}" class="btn btn-sm">View</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    <p id="orders-count" class="form-help"></p>
+    {% else %}
+    <p class="empty-state">No orders entered today.</p>
+    {% endif %}
+</section>
+
+</div>
+{% endblock %}

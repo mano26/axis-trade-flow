@@ -255,6 +255,139 @@ body.theme-ce .warn-box { background: #FFF4EF; border-left-color: var(--ce-signa
 body.theme-ce .guide-nav-btn { background: var(--ce-ink); border-radius: 999px; }
 body.theme-ce .workflow-steps li::before { background: var(--ce-cobalt); }
 
+
+/* =========================================================================
+   Page components for the new-design page templates (templates/ce/…)
+   ========================================================================= */
+body.theme-ce .ce-stack { display: flex; flex-direction: column; gap: 20px; }
+body.theme-ce .ce-stack > section, body.theme-ce .ce-stack > form { margin-bottom: 0; }
+body.theme-ce .ce-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px; padding: 4px 4px 0; }
+body.theme-ce .ce-eyebrow { margin: 0 0 6px; font-size: 13px; color: var(--text-muted); }
+body.theme-ce .ce-h1 { margin: 0; font-size: 42px; line-height: 1.1; font-weight: 500; letter-spacing: -0.03em; }
+body.theme-ce .ce-serif { font-family: var(--ce-serif); font-style: italic; font-weight: 400; font-size: 1.14em; letter-spacing: -0.01em; }
+body.theme-ce .ce-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+body.theme-ce .ce-card {
+    background: #FFFFFF; border: 1px solid #E6E8EE; border-radius: var(--ce-card-radius);
+    padding: 24px; display: flex; flex-direction: column; gap: 18px; min-width: 0;
+}
+body.theme-ce .ce-card-row { flex-direction: row; flex-wrap: wrap; align-items: flex-end; gap: 12px; padding: 18px 24px; }
+body.theme-ce .ce-card-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+body.theme-ce .ce-card-title { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; border: 0; padding: 0; }
+body.theme-ce .ce-card-sub { display: block; margin-top: 4px; font-size: 13px; color: var(--text-muted); font-weight: 400; }
+body.theme-ce .ce-divider { height: 1px; background: var(--ce-line); }
+body.theme-ce .ce-cols { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
+body.theme-ce .ce-cols > .ce-main { flex: 999 1 560px; min-width: 0; }
+body.theme-ce .ce-cols > .ce-side { flex: 1 1 320px; min-width: 0; }
+
+/* KPI tiles */
+body.theme-ce .ce-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+body.theme-ce .ce-kpi {
+    background: #FFFFFF; border: 1px solid #E6E8EE; border-radius: var(--ce-card-radius);
+    padding: 20px 22px; display: flex; flex-direction: column; gap: 12px; min-width: 0;
+}
+body.theme-ce .ce-kpi-dark { background: var(--ce-ink); border-color: var(--ce-ink); color: #FFFFFF; }
+body.theme-ce .ce-kpi-label { font-size: 14px; font-weight: 500; }
+body.theme-ce .ce-kpi-val { font-family: var(--ce-serif); font-size: 48px; line-height: 1; font-variant-numeric: lining-nums; }
+body.theme-ce .ce-kpi-note { font-size: 13px; color: var(--text-muted); }
+body.theme-ce .ce-kpi-dark .ce-kpi-note { color: #C7CDDA; }
+
+/* Fields */
+body.theme-ce .ce-fields { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+body.theme-ce .ce-field { flex: 1 1 140px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+body.theme-ce .ce-field.ce-fixed { flex: 0 1 190px; }
+body.theme-ce .ce-field > label { font-size: 12.5px; font-weight: 500; color: var(--ce-sub); }
+body.theme-ce .ce-input,
+body.theme-ce .ce-field input[type="text"],
+body.theme-ce .ce-field input[type="date"],
+body.theme-ce .ce-field input[type="email"],
+body.theme-ce .ce-field input[type="password"],
+body.theme-ce .ce-field select {
+    width: 100% !important; height: 44px; padding: 0 14px !important; border: 1px solid #DADEE6; border-radius: 12px;
+    font: inherit; font-size: 14px !important; color: var(--ce-ink); background: #FFFFFF; box-sizing: border-box;
+}
+body.theme-ce .ce-field input:focus, body.theme-ce .ce-field select:focus, body.theme-ce .ce-input:focus {
+    outline: none; border-color: var(--ce-cobalt); box-shadow: 0 0 0 3px rgba(36, 86, 230, 0.14);
+}
+body.theme-ce .ce-btn-accent { background: var(--ce-cobalt) !important; border-color: var(--ce-cobalt) !important; color: #FFFFFF !important; }
+body.theme-ce .ce-btn-accent:hover { background: var(--ce-cobalt-dark) !important; }
+body.theme-ce .btn.ce-lg { min-height: 44px; padding: 0 20px; }
+
+/* Segmented control */
+body.theme-ce .ce-seg { display: inline-flex; gap: 4px; padding: 4px; background: #F1F3F6; border-radius: 999px; }
+body.theme-ce .ce-seg a, body.theme-ce .ce-seg button {
+    height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent;
+    font: inherit; font-size: 13px; color: var(--ce-sub); display: inline-flex; align-items: center; cursor: pointer;
+}
+body.theme-ce .ce-seg .is-on { background: #FFFFFF; color: var(--ce-ink); font-weight: 500; box-shadow: 0 1px 2px rgba(14, 23, 38, 0.08); }
+
+/* Tables inside new-design cards */
+body.theme-ce .ce-table-wrap { overflow-x: auto; }
+body.theme-ce .ce-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+body.theme-ce .ce-table th { text-align: left; white-space: nowrap; }
+body.theme-ce .ce-table td { text-align: left; vertical-align: middle; padding: 14px 12px; }
+body.theme-ce .ce-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+body.theme-ce .ce-table .muted { color: var(--ce-sub); font-variant-numeric: tabular-nums; }
+body.theme-ce .ce-table .strong { font-weight: 600; }
+body.theme-ce .ce-mono { font-family: var(--font-mono); font-size: 13px; white-space: nowrap; text-transform: uppercase; }
+body.theme-ce .ce-side-pill {
+    display: inline-flex; width: 28px; height: 28px; align-items: center; justify-content: center;
+    border-radius: 8px; font-weight: 600; font-size: 13px;
+}
+body.theme-ce .ce-side-B { background: #E8EEFF; color: #1F44B8; }
+body.theme-ce .ce-side-S { background: #FFF1E8; color: #9A3F0E; }
+body.theme-ce .ce-badge { text-transform: none !important; letter-spacing: 0 !important; font-weight: 500 !important; font-size: 12.5px !important; white-space: nowrap; }
+body.theme-ce .ce-count { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 999px; background: #F4F5F7; font-size: 13px; }
+body.theme-ce .ce-count b { font-weight: 600; }
+body.theme-ce .ce-totals { display: flex; flex-wrap: wrap; gap: 8px 24px; padding: 10px 14px; border-radius: 12px; background: #F3F6FE; font-size: 13px; color: var(--ce-sub); }
+body.theme-ce .ce-totals b { color: var(--ce-ink); }
+
+/* Share bars */
+body.theme-ce .ce-bar { height: 14px; border-radius: 6px; background: #C9D6FA; min-width: 4px; }
+body.theme-ce .ce-bar-strong { background: repeating-linear-gradient(135deg, #2456E6 0 6px, #4A74EE 6px 9px); }
+
+/* Avatars and chips */
+body.theme-ce .ce-person { display: inline-flex; align-items: center; gap: 12px; }
+body.theme-ce .ce-avatar-sm {
+    width: 36px; height: 36px; border-radius: 999px; background: var(--ce-cobalt-soft); color: var(--ce-cobalt-dark);
+    display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; flex: 0 0 auto;
+}
+body.theme-ce .ce-tag { display: inline-block; padding: 3px 8px; border-radius: 6px; background: var(--ce-ink); color: #FFFFFF; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; }
+body.theme-ce .ce-link-btn { border: 0; background: transparent; padding: 0; font: inherit; font-size: 14px; font-weight: 500; color: var(--ce-cobalt); cursor: pointer; }
+body.theme-ce .ce-link-btn.danger { color: #A12A2A; }
+body.theme-ce .ce-grid-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; align-items: start; }
+
+
+/* Orders: trade entry */
+body.theme-ce .trade-entry-section .ce-field input,
+body.theme-ce .trade-entry-section .ce-field select { height: 54px; }
+body.theme-ce .trade-entry-section .ce-field input.trade-input {
+    font-family: var(--font-mono); font-size: 16px !important; letter-spacing: 0.3px;
+    border: 1.5px solid #C9D3EA; border-radius: 16px; padding: 0 18px !important; text-transform: uppercase;
+}
+body.theme-ce .trade-entry-section .ce-field input.trade-input::placeholder { text-transform: none; color: #8E96A6; }
+body.theme-ce .btn.ce-submit {
+    min-height: 54px; padding: 0 26px; font-size: 15px;
+    background: var(--ce-cobalt); border-color: var(--ce-cobalt); color: #FFFFFF;
+}
+body.theme-ce .btn.ce-submit:hover { background: var(--ce-cobalt-dark); }
+
+
+/* Guide */
+body.theme-ce .ce-guide { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
+body.theme-ce .ce-guide-toc { flex: 1 1 260px; max-width: 300px; padding: 16px; gap: 2px; position: sticky; top: 16px; }
+body.theme-ce .ce-guide-toc-title { font-size: 12px; font-weight: 600; color: var(--text-muted); letter-spacing: 0.06em; text-transform: uppercase; padding: 4px 12px 8px; }
+body.theme-ce .ce-guide-toc a { display: flex; gap: 10px; padding: 9px 12px; border-radius: 12px; color: var(--ce-sub); font-size: 14px; }
+body.theme-ce .ce-guide-toc a:hover { background: var(--ce-cobalt-soft); color: var(--ce-cobalt-dark); }
+body.theme-ce .ce-guide-num { width: 20px; flex: 0 0 auto; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+body.theme-ce .ce-guide-body { flex: 999 1 600px; min-width: 0; padding: 36px 44px; }
+body.theme-ce .ce-guide-body .guide-wrap { max-width: none; margin: 0; padding: 0; }
+body.theme-ce .ce-guide-body .guide-hero,
+body.theme-ce .ce-guide-body .guide-toc { display: none; }
+body.theme-ce .ce-guide-body .guide-section { scroll-margin-top: 16px; }
+body.theme-ce .ce-guide-body .guide-section h2 { font-size: 26px; font-weight: 500; letter-spacing: -0.02em; border-bottom: 0; padding-bottom: 0; }
+@media (max-width: 860px) { body.theme-ce .ce-guide-toc { position: static; max-width: none; } body.theme-ce .ce-guide-body { padding: 22px; } }
+
 /* --- Small screens --- */
 @media (max-width: 720px) {
     body.theme-ce { padding: 10px; }
