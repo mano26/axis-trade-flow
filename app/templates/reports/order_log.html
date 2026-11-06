@@ -135,7 +135,7 @@
                 <td onclick="event.stopPropagation()" style="white-space:nowrap;">
                     {% if order.status in ('filled','partial_fill','partial_cancelled','amended') %}
                     <a href="{{ url_for('cards.generate', order_id=order.id) }}"  class="btn btn-sm">Cards</a>
-                    <a href="{{ url_for('tickets.generate', order_id=order.id) }}" class="btn btn-sm">Ticket</a>
+                    <a href="{{ url_for('tickets.generate_with_cps_linear', order_id=order.id) }}" class="btn btn-sm">Ticket</a>
                     {% endif %}
                 </td>
             </tr>

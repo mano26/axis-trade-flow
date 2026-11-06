@@ -95,7 +95,7 @@
                 <td><span class="status-badge ce-badge status-{{ order.status }}">{{ order.status | replace('_',' ') | capitalize }}</span></td>
                 <td onclick="event.stopPropagation()" style="white-space:nowrap;text-align:right;">
                     {% if order.status in ('filled','partial_fill','partial_cancelled','amended') %}
-                    <a href="{{ url_for('tickets.generate', order_id=order.id) }}">Ticket</a>
+                    <a href="{{ url_for('tickets.generate_with_cps_linear', order_id=order.id) }}">Ticket</a>
                     &nbsp;&nbsp;<a href="{{ url_for('cards.generate', order_id=order.id) }}">Cards</a>
                     {% endif %}
                 </td>

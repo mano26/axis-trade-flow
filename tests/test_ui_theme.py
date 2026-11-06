@@ -310,3 +310,18 @@ def test_regular_admin_cannot_use_design_switch(app, world):
     assert r.status_code == 404
     with app.app_context():
         assert db.session.get(Tenant, world["classic"]).ui_theme == "classic"
+
+
+def test_order_log_ticket_link_opens_linear_ticket(app, world):
+    """Order Log 'Ticket' opens the linear ticket in both designs."""
+    for email in ("admin@classic.com", "admin@roma.com"):
+        c = _login(app, email)
+        with app.app_context():
+            o = Order.query.execution_options(skip_tenant_guard=True).filter(
+                Order.created_by_id == User.query.filter_by(email=email).first().id).first()
+            o.status = OrderStatus.FILLED
+            db.session.commit()
+            oid = o.id
+        html = c.get("/reports/order-log").get_data(as_text=True)
+        assert f"/tickets/order/{oid}/generate-with-cps-linear" in html, email
+        assert f"/tickets/order/{oid}/generate\"" not in html, email
